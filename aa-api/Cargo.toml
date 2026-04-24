@@ -9,7 +9,7 @@ description = "HTTP presentation layer with OpenAPI spec generation for Agent As
 [dependencies]
 aa-core = { path = "../aa-core" }
 aa-gateway = { path = "../aa-gateway" }
-axum = "0.7"
+axum = "0.8"
 tokio = { version = "1", features = ["full"] }
 utoipa = { version = "4", features = ["axum_extras"] }
 utoipa-swagger-ui = { version = "7", features = ["axum"] }
