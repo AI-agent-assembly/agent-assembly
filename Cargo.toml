@@ -2,6 +2,7 @@
 members = [
     "aa-core",
     "aa-runtime",
+    "aa-ebpf",
 ]
 resolver = "2"
 
