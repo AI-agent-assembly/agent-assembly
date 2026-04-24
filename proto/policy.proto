@@ -27,3 +27,36 @@ enum RiskTier {
   RISK_TIER_MEDIUM = 2;
   RISK_TIER_HIGH = 3;
 }
+
+// EvaluatePolicyRequest asks the gateway to evaluate a policy for an agent action.
+message EvaluatePolicyRequest {
+  string agent_id = 1;
+  string action = 2;
+  map<string, string> context = 3;
+}
+
+// EvaluatePolicyResponse returns the enforcement decision.
+message EvaluatePolicyResponse {
+  bool allowed = 1;
+  string reason = 2;
+  string policy_id = 3;
+}
+
+// GetPolicyRequest identifies a policy to retrieve.
+message GetPolicyRequest {
+  string id = 1;
+}
+
+// GetPolicyResponse returns a single policy record.
+message GetPolicyResponse {
+  Policy policy = 1;
+}
+
+// PolicyService handles policy evaluation and retrieval.
+service PolicyService {
+  // EvaluatePolicy checks whether an agent action is permitted under policy.
+  rpc EvaluatePolicy(EvaluatePolicyRequest) returns (EvaluatePolicyResponse);
+
+  // GetPolicy retrieves a policy definition by its ID.
+  rpc GetPolicy(GetPolicyRequest) returns (GetPolicyResponse);
+}
