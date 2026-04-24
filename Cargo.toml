@@ -8,6 +8,7 @@ members = [
     "aa-ffi-node",
     "aa-wasm",
     "aa-gateway",
+    "aa-api",
 ]
 resolver = "2"
 
