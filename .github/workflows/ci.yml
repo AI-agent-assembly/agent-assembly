@@ -66,7 +66,7 @@ jobs:
       - name: Install cargo-nextest
         uses: taiki-e/install-action@cargo-nextest
       - name: Run tests
-        run: cargo nextest run --workspace
+        run: cargo nextest run --workspace --no-tests=pass
 
   coverage:
     name: Coverage
