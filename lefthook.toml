@@ -1,0 +1,24 @@
+[pre-commit]
+parallel = true
+
+[pre-commit.commands.fmt]
+glob = "*.rs"
+run = "cargo fmt --all -- --check"
+fail_text = "Formatting issues found. Run 'cargo fmt --all' to fix."
+
+[pre-commit.commands.clippy]
+glob = "*.rs"
+run = "cargo clippy --all-targets --all-features -- -D warnings"
+fail_text = "Clippy warnings found. Run 'cargo clippy --fix' or fix manually."
+
+[pre-commit.commands.deny]
+glob = "Cargo.toml"
+run = "cargo deny check"
+fail_text = "cargo-deny check failed. Review license or advisory violations."
+
+[pre-push]
+parallel = true
+
+[pre-push.commands.doc]
+run = "cargo doc --workspace --no-deps"
+fail_text = "Documentation build failed. Fix rustdoc errors before pushing."
