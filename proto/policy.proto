@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package agent_assembly.v1;
+
+// Policy defines a governance rule set applied to one or more agents.
+message Policy {
+  // Unique identifier for the policy.
+  string id = 1;
+
+  // Human-readable name of the policy.
+  string name = 2;
+
+  // Risk tier this policy enforces.
+  RiskTier tier = 3;
+
+  // Serialised rule definitions (YAML/JSON body).
+  string rules = 4;
+
+  // ISO 8601 timestamp of when the policy was created.
+  string created_at = 5;
+}
+
+// RiskTier classifies policies by the risk level they govern.
+enum RiskTier {
+  RISK_TIER_UNSPECIFIED = 0;
+  RISK_TIER_LOW = 1;
+  RISK_TIER_MEDIUM = 2;
+  RISK_TIER_HIGH = 3;
+}
