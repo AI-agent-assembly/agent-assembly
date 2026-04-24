@@ -1,0 +1,15 @@
+[package]
+name = "aa-gateway"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Control plane — policy enforcement engine and agent registry for Agent Assembly"
+
+[dependencies]
+aa-core = { path = "../aa-core" }
+aa-runtime = { path = "../aa-runtime" }
+tokio = { version = "1", features = ["full"] }
+
+[lints]
+workspace = true
