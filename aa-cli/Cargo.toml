@@ -1,0 +1,18 @@
+[package]
+name = "aa-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "aasm — command-line tool for Agent Assembly"
+
+[[bin]]
+name = "aasm"
+path = "src/main.rs"
+
+[dependencies]
+aa-core = { path = "../aa-core" }
+clap = { version = "4", features = ["derive"] }
+
+[lints]
+workspace = true
