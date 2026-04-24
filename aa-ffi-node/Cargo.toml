@@ -1,0 +1,21 @@
+[package]
+name = "aa-ffi-node"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Node.js FFI bindings for Agent Assembly via napi-rs"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+aa-core = { path = "../aa-core" }
+napi = { version = "2", features = ["napi4"] }
+napi-derive = "2"
+
+[build-dependencies]
+napi-build = "2"
+
+[lints]
+workspace = true
