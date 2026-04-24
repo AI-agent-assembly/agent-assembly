@@ -6,6 +6,7 @@ members = [
     "aa-proxy",
     "aa-ffi-python",
     "aa-ffi-node",
+    "aa-wasm",
 ]
 resolver = "2"
 
