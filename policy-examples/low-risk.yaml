@@ -1,0 +1,23 @@
+apiVersion: agent-assembly/v1
+kind: Policy
+metadata:
+  name: low-risk-default
+  description: >
+    Permissive policy for low-risk AI agents. All actions are allowed
+    and logged. No approval gates are required.
+
+spec:
+  tier: low
+
+  rules:
+    - id: allow-all-actions
+      description: Permit all agent actions and emit an audit event.
+      match:
+        actions: ["*"]
+      effect: allow
+      audit: true
+
+  notifications:
+    on_block: false
+    on_allow: false
+    on_anomaly: true
