@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package agent_assembly.v1;
+
+// Agent represents a registered AI agent in the governance system.
+message Agent {
+  // Unique identifier for the agent instance.
+  string id = 1;
+
+  // Human-readable name of the agent.
+  string name = 2;
+
+  // Current lifecycle status of the agent.
+  AgentStatus status = 3;
+
+  // ISO 8601 timestamp of when the agent was registered.
+  string registered_at = 4;
+
+  // Arbitrary key-value metadata attached to the agent.
+  map<string, string> labels = 5;
+}
+
+// AgentStatus enumerates the lifecycle states an agent can be in.
+enum AgentStatus {
+  AGENT_STATUS_UNSPECIFIED = 0;
+  AGENT_STATUS_ACTIVE = 1;
+  AGENT_STATUS_INACTIVE = 2;
+  AGENT_STATUS_QUARANTINED = 3;
+}
