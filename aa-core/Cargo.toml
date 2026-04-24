@@ -1,0 +1,12 @@
+[package]
+name = "aa-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Pure domain logic for Agent Assembly — no_std compatible"
+
+[dependencies]
+
+[lints]
+workspace = true
