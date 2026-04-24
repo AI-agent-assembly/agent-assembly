@@ -27,3 +27,46 @@ enum AgentStatus {
   AGENT_STATUS_INACTIVE = 2;
   AGENT_STATUS_QUARANTINED = 3;
 }
+
+// RegisterAgentRequest is the input for registering a new agent.
+message RegisterAgentRequest {
+  string name = 1;
+  map<string, string> labels = 2;
+}
+
+// RegisterAgentResponse returns the newly created agent record.
+message RegisterAgentResponse {
+  Agent agent = 1;
+}
+
+// GetAgentRequest identifies an agent to retrieve.
+message GetAgentRequest {
+  string id = 1;
+}
+
+// GetAgentResponse returns a single agent record.
+message GetAgentResponse {
+  Agent agent = 1;
+}
+
+// ListAgentsRequest provides optional filters for agent listing.
+message ListAgentsRequest {
+  AgentStatus status_filter = 1;
+}
+
+// ListAgentsResponse returns all matching agents.
+message ListAgentsResponse {
+  repeated Agent agents = 1;
+}
+
+// AgentService manages agent registration and lifecycle.
+service AgentService {
+  // RegisterAgent registers a new agent with the governance gateway.
+  rpc RegisterAgent(RegisterAgentRequest) returns (RegisterAgentResponse);
+
+  // GetAgent retrieves a single agent by its ID.
+  rpc GetAgent(GetAgentRequest) returns (GetAgentResponse);
+
+  // ListAgents returns all agents, optionally filtered by status.
+  rpc ListAgents(ListAgentsRequest) returns (ListAgentsResponse);
+}
