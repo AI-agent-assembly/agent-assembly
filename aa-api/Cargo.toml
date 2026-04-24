@@ -12,7 +12,7 @@ aa-gateway = { path = "../aa-gateway" }
 axum = "0.7"
 tokio = { version = "1", features = ["full"] }
 utoipa = { version = "4", features = ["axum_extras"] }
-utoipa-swagger-ui = { version = "7", features = ["axum"] }
+utoipa-swagger-ui = { version = "9", features = ["axum"] }
 
 [lints]
 workspace = true
