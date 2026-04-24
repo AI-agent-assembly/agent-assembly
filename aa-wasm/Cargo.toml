@@ -1,0 +1,17 @@
+[package]
+name = "aa-wasm"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "WebAssembly target for Agent Assembly via wasm-bindgen"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+aa-core = { path = "../aa-core" }
+wasm-bindgen = "0.2"
+
+[lints]
+workspace = true
