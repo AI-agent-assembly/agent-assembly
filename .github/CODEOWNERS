@@ -1,0 +1,39 @@
+# Default: Pioneer team reviews everything
+* @AI-agent-assembly/pioneer
+
+# Rust workspace root
+Cargo.toml @AI-agent-assembly/pioneer
+deny.toml @AI-agent-assembly/pioneer
+rustfmt.toml @AI-agent-assembly/pioneer
+clippy.toml @AI-agent-assembly/pioneer
+
+# Core runtime crates
+/aa-core/ @AI-agent-assembly/pioneer
+/aa-runtime/ @AI-agent-assembly/pioneer
+/aa-gateway/ @AI-agent-assembly/pioneer
+
+# FFI crates
+/aa-ffi-python/ @AI-agent-assembly/pioneer
+/aa-ffi-node/ @AI-agent-assembly/pioneer
+/aa-wasm/ @AI-agent-assembly/pioneer
+
+# Infrastructure crates
+/aa-ebpf/ @AI-agent-assembly/pioneer
+/aa-proxy/ @AI-agent-assembly/pioneer
+
+# API and CLI
+/aa-api/ @AI-agent-assembly/pioneer
+/aa-cli/ @AI-agent-assembly/pioneer
+
+# Protocol definitions
+/proto/ @AI-agent-assembly/pioneer
+/openapi/ @AI-agent-assembly/pioneer
+
+# Dashboard
+/dashboard/ @AI-agent-assembly/pioneer
+
+# CI/CD and GitHub config
+/.github/ @AI-agent-assembly/pioneer
+
+# Documentation
+*.md @AI-agent-assembly/pioneer
