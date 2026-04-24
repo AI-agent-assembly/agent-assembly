@@ -1,0 +1,28 @@
+codecov:
+  token: $CODECOV_TOKEN
+  branch: main
+  strict_yaml_branch: main
+
+coverage:
+  precision: 2
+  round: down
+  range: "70..100"
+
+comment:
+  layout: "reach,diff,flags,tree"
+  behavior: default
+  require_changes: false
+
+flags:
+  rust:
+    paths:
+      - aa-core/src/
+      - aa-runtime/src/
+      - aa-ebpf/src/
+      - aa-proxy/src/
+      - aa-ffi-python/src/
+      - aa-ffi-node/src/
+      - aa-wasm/src/
+      - aa-gateway/src/
+      - aa-api/src/
+      - aa-cli/src/
