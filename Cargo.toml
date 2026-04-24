@@ -1,5 +1,7 @@
 [workspace]
-members = []
+members = [
+    "aa-core",
+]
 resolver = "2"
 
 [workspace.package]
