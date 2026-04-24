@@ -1,0 +1,30 @@
+# Rust build artifacts
+/target/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Coverage
+lcov.info
+coverage/
+*.profraw
+*.profdata
+codecov.xml
+
+# Logs
+*.log
+
+# Lefthook
+.lefthook/
