@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "aa-core",
+    "aa-runtime",
 ]
 resolver = "2"
 
