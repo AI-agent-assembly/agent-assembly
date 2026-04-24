@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package agent_assembly.v1;
+
+// AuditEvent records a single governance-relevant action by an agent.
+message AuditEvent {
+  // Unique identifier for this audit record.
+  string event_id = 1;
+
+  // ID of the agent that performed the action.
+  string agent_id = 2;
+
+  // Description of the action attempted.
+  string action = 3;
+
+  // Whether the action was allowed or blocked by policy.
+  bool allowed = 4;
+
+  // ID of the policy that produced the decision.
+  string policy_id = 5;
+
+  // ISO 8601 timestamp of when the event occurred.
+  string timestamp = 6;
+
+  // Arbitrary key-value context captured at decision time.
+  map<string, string> context = 7;
+}
