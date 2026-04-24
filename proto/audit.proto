@@ -25,3 +25,36 @@ message AuditEvent {
   // Arbitrary key-value context captured at decision time.
   map<string, string> context = 7;
 }
+
+// RecordEventRequest submits a new audit event.
+message RecordEventRequest {
+  AuditEvent event = 1;
+}
+
+// RecordEventResponse acknowledges the recorded event.
+message RecordEventResponse {
+  string event_id = 1;
+}
+
+// QueryEventsRequest filters the audit log.
+message QueryEventsRequest {
+  string agent_id = 1;
+  string action_prefix = 2;
+  string since = 3;
+  string until = 4;
+  int32 limit = 5;
+}
+
+// QueryEventsResponse returns matching audit events.
+message QueryEventsResponse {
+  repeated AuditEvent events = 1;
+}
+
+// AuditService manages the immutable audit trail.
+service AuditService {
+  // RecordEvent appends a governance decision to the audit log.
+  rpc RecordEvent(RecordEventRequest) returns (RecordEventResponse);
+
+  // QueryEvents retrieves audit events matching the given filters.
+  rpc QueryEvents(QueryEventsRequest) returns (QueryEventsResponse);
+}
