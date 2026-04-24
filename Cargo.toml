@@ -9,6 +9,7 @@ members = [
     "aa-wasm",
     "aa-gateway",
     "aa-api",
+    "aa-cli",
 ]
 resolver = "2"
 
