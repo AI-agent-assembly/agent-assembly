@@ -5,6 +5,7 @@ members = [
     "aa-ebpf",
     "aa-proxy",
     "aa-ffi-python",
+    "aa-ffi-node",
 ]
 resolver = "2"
 
