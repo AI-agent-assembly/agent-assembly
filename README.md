@@ -3,7 +3,7 @@
 > Governance-native runtime for AI agents — open-source core.
 
 [![CI](https://github.com/AI-agent-assembly/agent-assembly/actions/workflows/ci.yml/badge.svg)](https://github.com/AI-agent-assembly/agent-assembly/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/AI-agent-assembly/agent-assembly/branch/main/graph/badge.svg)](https://codecov.io/gh/AI-agent-assembly/agent-assembly)
+[![codecov](https://codecov.io/gh/AI-agent-assembly/agent-assembly/branch/master/graph/badge.svg)](https://codecov.io/gh/AI-agent-assembly/agent-assembly)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
 ## Overview
