@@ -1,39 +1,87 @@
-# Default: Pioneer team reviews everything
-* @AI-agent-assembly/pioneer
+# CODEOWNERS — agent-assembly
+#
+# Defines who is automatically requested for review when a pull request
+# touches the matched path. Rules are evaluated top-to-bottom; the LAST
+# matching rule for a given path wins (GitHub behaviour).
+#
+# Syntax reference:
+#   https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+#
+# Owner formats accepted:
+#   @username          — individual GitHub account
+#   @org/team-slug     — GitHub team (must have read access to the repo)
+#
+# Pioneer team lead — primary reviewer and merge authority for all paths
+# unless a more specific rule below overrides.
+#
+# NOTE: @Chisanan232 is the project lead and is listed explicitly on
+# sensitive paths so that review requests are always routed to them
+# regardless of team membership changes.
 
-# Rust workspace root
-Cargo.toml @AI-agent-assembly/pioneer
-deny.toml @AI-agent-assembly/pioneer
-rustfmt.toml @AI-agent-assembly/pioneer
-clippy.toml @AI-agent-assembly/pioneer
+# ──────────────────────────────────────────────────────────────────────
+# Default: catch-all — every file not matched below
+# ──────────────────────────────────────────────────────────────────────
+* @Chisanan232
 
-# Core runtime crates
-/aa-core/ @AI-agent-assembly/pioneer
-/aa-runtime/ @AI-agent-assembly/pioneer
-/aa-gateway/ @AI-agent-assembly/pioneer
+# ──────────────────────────────────────────────────────────────────────
+# Rust workspace root — changes here affect the entire build graph
+# ──────────────────────────────────────────────────────────────────────
+Cargo.toml   @Chisanan232
+Cargo.lock   @Chisanan232
+deny.toml    @Chisanan232
+rustfmt.toml @Chisanan232
+clippy.toml  @Chisanan232
+lefthook.toml @Chisanan232
 
-# FFI crates
-/aa-ffi-python/ @AI-agent-assembly/pioneer
-/aa-ffi-node/ @AI-agent-assembly/pioneer
-/aa-wasm/ @AI-agent-assembly/pioneer
+# ──────────────────────────────────────────────────────────────────────
+# Core runtime crates — stable public API; breaking changes need lead sign-off
+# ──────────────────────────────────────────────────────────────────────
+/aa-core/    @Chisanan232
+/aa-runtime/ @Chisanan232
+/aa-gateway/ @Chisanan232
 
-# Infrastructure crates
-/aa-ebpf/ @AI-agent-assembly/pioneer
-/aa-proxy/ @AI-agent-assembly/pioneer
+# ──────────────────────────────────────────────────────────────────────
+# FFI crates — language-boundary code; correctness issues are hard to catch
+# ──────────────────────────────────────────────────────────────────────
+/aa-ffi-python/ @Chisanan232
+/aa-ffi-node/   @Chisanan232
+/aa-wasm/       @Chisanan232
 
-# API and CLI
-/aa-api/ @AI-agent-assembly/pioneer
-/aa-cli/ @AI-agent-assembly/pioneer
+# ──────────────────────────────────────────────────────────────────────
+# Infrastructure crates — low-level / kernel-space code
+# ──────────────────────────────────────────────────────────────────────
+/aa-ebpf/  @Chisanan232
+/aa-proxy/ @Chisanan232
 
-# Protocol definitions
-/proto/ @AI-agent-assembly/pioneer
-/openapi/ @AI-agent-assembly/pioneer
+# ──────────────────────────────────────────────────────────────────────
+# API and CLI — user-facing surface; changes here may break downstream SDKs
+# ──────────────────────────────────────────────────────────────────────
+/aa-api/ @Chisanan232
+/aa-cli/ @Chisanan232
 
-# Dashboard
-/dashboard/ @AI-agent-assembly/pioneer
+# ──────────────────────────────────────────────────────────────────────
+# Protocol definitions — any change here is a potential breaking change
+# for all SDK consumers and must be reviewed by the lead
+# ──────────────────────────────────────────────────────────────────────
+/proto/   @Chisanan232
+/openapi/ @Chisanan232
 
-# CI/CD and GitHub config
-/.github/ @AI-agent-assembly/pioneer
+# ──────────────────────────────────────────────────────────────────────
+# Dashboard — React/TypeScript community UI
+# ──────────────────────────────────────────────────────────────────────
+/dashboard/ @Chisanan232
 
-# Documentation
-*.md @AI-agent-assembly/pioneer
+# ──────────────────────────────────────────────────────────────────────
+# Policy examples — documents the intended security model; reviewed carefully
+# ──────────────────────────────────────────────────────────────────────
+/policy-examples/ @Chisanan232
+
+# ──────────────────────────────────────────────────────────────────────
+# CI/CD and GitHub configuration — pipeline changes affect everyone
+# ──────────────────────────────────────────────────────────────────────
+/.github/ @Chisanan232
+
+# ──────────────────────────────────────────────────────────────────────
+# Documentation — README, CONTRIBUTING, SECURITY, etc.
+# ──────────────────────────────────────────────────────────────────────
+*.md @Chisanan232
