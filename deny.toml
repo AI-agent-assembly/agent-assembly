@@ -1,8 +1,8 @@
 [advisories]
-unmaintained = "warn"
-unsound = "deny"
-yanked = "warn"
-notice = "warn"
+unmaintained = "all"
+unsound = "all"
+yanked = "all"
+notice = "all"
 ignore = []
 
 [licenses]
