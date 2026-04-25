@@ -2,45 +2,77 @@ syntax = "proto3";
 
 package agent_assembly.v1;
 
-// Policy defines a governance rule set applied to one or more agents.
-message Policy {
-  // Unique identifier for the policy.
-  string id = 1;
-
-  // Human-readable name of the policy.
-  string name = 2;
-
-  // Risk tier this policy enforces.
-  RiskTier tier = 3;
-
-  // Serialised rule definitions (YAML/JSON body).
-  string rules = 4;
-
-  // ISO 8601 timestamp of when the policy was created.
-  string created_at = 5;
-}
+// ─── Risk tier ───────────────────────────────────────────────────────────────
 
 // RiskTier classifies policies by the risk level they govern.
 enum RiskTier {
   RISK_TIER_UNSPECIFIED = 0;
-  RISK_TIER_LOW = 1;
-  RISK_TIER_MEDIUM = 2;
-  RISK_TIER_HIGH = 3;
+  RISK_TIER_LOW         = 1;  // Log-only; no blocking.
+  RISK_TIER_MEDIUM      = 2;  // Block and optionally require approval.
+  RISK_TIER_HIGH        = 3;  // Always block; mandatory human review.
 }
 
-// EvaluatePolicyRequest asks the gateway to evaluate a policy for an agent action.
+// ─── Enforcement decision ────────────────────────────────────────────────────
+
+// EnforcementDecision is the outcome returned by the policy engine for an
+// intercepted action. Maps to aa-core/src/policy.rs EnforcementDecision.
+enum EnforcementDecision {
+  ENFORCEMENT_DECISION_UNSPECIFIED     = 0;
+  // Action is permitted immediately.
+  ENFORCEMENT_DECISION_ALLOW           = 1;
+  // Action is blocked; no further recourse.
+  ENFORCEMENT_DECISION_DENY            = 2;
+  // Action is held pending a human reviewer decision (approval queue).
+  ENFORCEMENT_DECISION_REQUIRE_APPROVAL = 3;
+}
+
+// ─── Policy ──────────────────────────────────────────────────────────────────
+
+// Policy defines a governance rule set applied to one or more agents.
+// Maps to aa-core/src/policy.rs Policy struct.
+message Policy {
+  // Unique identifier assigned by the gateway.
+  string   id         = 1;
+  // Human-readable name.
+  string   name       = 2;
+  // Risk tier this policy enforces.
+  RiskTier tier       = 3;
+  // Serialised rule body (YAML, JSON, or OPA Rego source).
+  string   rules      = 4;
+  // Whether this policy is currently enforced.
+  bool     enabled    = 5;
+  // ISO 8601 UTC creation timestamp.
+  string   created_at = 6;
+  // ISO 8601 UTC last-update timestamp.
+  string   updated_at = 7;
+}
+
+// ─── Evaluate ────────────────────────────────────────────────────────────────
+
+// EvaluatePolicyRequest asks the gateway to evaluate a policy for an
+// intercepted agent action. Sent by aa-runtime via aa-core/src/interceptor.rs.
 message EvaluatePolicyRequest {
-  string agent_id = 1;
-  string action = 2;
-  map<string, string> context = 3;
+  // ID of the agent attempting the action.
+  string              agent_id = 1;
+  // Fully-qualified action name (e.g. "tool.web_search", "file.write").
+  string              action   = 2;
+  // Arbitrary key-value context captured at interception time.
+  map<string, string> context  = 3;
 }
 
-// EvaluatePolicyResponse returns the enforcement decision.
+// EvaluatePolicyResponse returns the enforcement decision for an action.
 message EvaluatePolicyResponse {
-  bool allowed = 1;
-  string reason = 2;
-  string policy_id = 3;
+  // The enforcement outcome.
+  EnforcementDecision decision    = 1;
+  // Human-readable explanation of the decision.
+  string              reason      = 2;
+  // ID of the policy that produced this decision.
+  string              policy_id   = 3;
+  // Present only when decision == REQUIRE_APPROVAL; identifies the queued item.
+  string              approval_id = 4;
 }
+
+// ─── Get / List policies ─────────────────────────────────────────────────────
 
 // GetPolicyRequest identifies a policy to retrieve.
 message GetPolicyRequest {
@@ -52,11 +84,126 @@ message GetPolicyResponse {
   Policy policy = 1;
 }
 
+// ListPoliciesRequest supports optional tier filtering and pagination.
+message ListPoliciesRequest {
+  // Optional: filter by risk tier. Omit to return all tiers.
+  RiskTier tier_filter = 1;
+  bool     enabled_only = 2;
+  int32    page_size    = 3;
+  string   page_token   = 4;
+}
+
+// ListPoliciesResponse returns a page of policy records.
+message ListPoliciesResponse {
+  repeated Policy policies       = 1;
+  string          next_page_token = 2;
+}
+
+// ─── PolicyService ───────────────────────────────────────────────────────────
+
 // PolicyService handles policy evaluation and retrieval.
+// Consumed by aa-runtime/src/gateway_client.rs and aa-gateway/src/policy_engine.rs.
 service PolicyService {
   // EvaluatePolicy checks whether an agent action is permitted under policy.
   rpc EvaluatePolicy(EvaluatePolicyRequest) returns (EvaluatePolicyResponse);
 
   // GetPolicy retrieves a policy definition by its ID.
   rpc GetPolicy(GetPolicyRequest) returns (GetPolicyResponse);
+
+  // ListPolicies returns a paginated list of policies with optional filters.
+  rpc ListPolicies(ListPoliciesRequest) returns (ListPoliciesResponse);
+}
+
+// ─── Approval model ──────────────────────────────────────────────────────────
+
+// ApprovalStatus tracks the lifecycle of a human-in-the-loop approval request.
+// Maps to aa-gateway/src/approval.rs ApprovalStatus.
+enum ApprovalStatus {
+  APPROVAL_STATUS_UNSPECIFIED = 0;
+  // Awaiting a reviewer decision.
+  APPROVAL_STATUS_PENDING     = 1;
+  // Reviewer approved; the held action will be released.
+  APPROVAL_STATUS_APPROVED    = 2;
+  // Reviewer rejected; the held action will be denied.
+  APPROVAL_STATUS_REJECTED    = 3;
+  // No reviewer acted before the deadline; treated as deny.
+  APPROVAL_STATUS_EXPIRED     = 4;
+}
+
+// ApprovalItem represents a single entry in the human-in-the-loop queue.
+// Created automatically when EvaluatePolicy returns REQUIRE_APPROVAL.
+message ApprovalItem {
+  string         id          = 1;
+  // Agent that triggered the held action.
+  string         agent_id    = 2;
+  // Policy that required approval.
+  string         policy_id   = 3;
+  // The action that is pending review.
+  string         action      = 4;
+  // Context snapshot captured at interception time.
+  map<string, string> context = 5;
+  ApprovalStatus status      = 6;
+  // Optional note left by the reviewer on approve / reject.
+  string         reviewer_note = 7;
+  // ISO 8601 UTC when the request was created.
+  string         created_at  = 8;
+  // ISO 8601 UTC deadline; if not reviewed by this time the item expires.
+  string         expires_at  = 9;
+  // ISO 8601 UTC when the reviewer acted (absent if still PENDING).
+  string         reviewed_at = 10;
+}
+
+// ─── Approval RPCs ────────────────────────────────────────────────────────────
+
+// GetApprovalRequest fetches a single approval item by ID.
+message GetApprovalRequest {
+  string id = 1;
+}
+
+// GetApprovalResponse returns a single approval item.
+message GetApprovalResponse {
+  ApprovalItem item = 1;
+}
+
+// ListApprovalsRequest filters the approval queue.
+message ListApprovalsRequest {
+  // Optional: filter by status. Omit to return all statuses.
+  ApprovalStatus status_filter = 1;
+  // Optional: filter by agent.
+  string         agent_id      = 2;
+  int32          page_size     = 3;
+  string         page_token    = 4;
+}
+
+// ListApprovalsResponse returns a page of approval items.
+message ListApprovalsResponse {
+  repeated ApprovalItem items          = 1;
+  string                next_page_token = 2;
+}
+
+// ReviewApprovalRequest submits a reviewer decision for a pending item.
+message ReviewApprovalRequest {
+  string         approval_id   = 1;
+  ApprovalStatus decision      = 2;  // Must be APPROVED or REJECTED.
+  string         reviewer_note = 3;
+}
+
+// ReviewApprovalResponse confirms the review was recorded.
+message ReviewApprovalResponse {
+  ApprovalItem item = 1;
+}
+
+// ─── ApprovalService ─────────────────────────────────────────────────────────
+
+// ApprovalService manages the human-in-the-loop approval queue.
+// Maps to aa-gateway/src/approval.rs and aa-api/src/routes/approvals.rs.
+service ApprovalService {
+  // GetApproval fetches a single pending or resolved approval item.
+  rpc GetApproval(GetApprovalRequest) returns (GetApprovalResponse);
+
+  // ListApprovals returns the approval queue, optionally filtered.
+  rpc ListApprovals(ListApprovalsRequest) returns (ListApprovalsResponse);
+
+  // ReviewApproval records a human reviewer's approve or reject decision.
+  rpc ReviewApproval(ReviewApprovalRequest) returns (ReviewApprovalResponse);
 }
