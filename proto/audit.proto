@@ -2,31 +2,78 @@ syntax = "proto3";
 
 package agent_assembly.v1;
 
-// AuditEvent records a single governance-relevant action by an agent.
-message AuditEvent {
-  // Unique identifier for this audit record.
-  string event_id = 1;
+// ─── Event classification ─────────────────────────────────────────────────────
 
-  // ID of the agent that performed the action.
-  string agent_id = 2;
-
-  // Description of the action attempted.
-  string action = 3;
-
-  // Whether the action was allowed or blocked by policy.
-  bool allowed = 4;
-
-  // ID of the policy that produced the decision.
-  string policy_id = 5;
-
-  // ISO 8601 timestamp of when the event occurred.
-  string timestamp = 6;
-
-  // Arbitrary key-value context captured at decision time.
-  map<string, string> context = 7;
+// AuditEventType classifies what kind of governance event occurred.
+// Maps to aa-core/src/audit.rs AuditEventType enum.
+enum AuditEventType {
+  AUDIT_EVENT_TYPE_UNSPECIFIED       = 0;
+  // An interceptor pre-dispatch hook observed an outgoing action.
+  AUDIT_EVENT_TYPE_ACTION_INTERCEPTED = 1;
+  // The policy engine evaluated an action and produced a decision.
+  AUDIT_EVENT_TYPE_POLICY_EVALUATED  = 2;
+  // An action was held and an approval request was created.
+  AUDIT_EVENT_TYPE_APPROVAL_REQUESTED = 3;
+  // A human reviewer approved a held action.
+  AUDIT_EVENT_TYPE_APPROVAL_GRANTED  = 4;
+  // A human reviewer rejected a held action.
+  AUDIT_EVENT_TYPE_APPROVAL_REJECTED = 5;
+  // An approval request expired without a reviewer decision.
+  AUDIT_EVENT_TYPE_APPROVAL_EXPIRED  = 6;
+  // An agent registered with the gateway.
+  AUDIT_EVENT_TYPE_AGENT_REGISTERED  = 7;
+  // An agent deregistered from the gateway.
+  AUDIT_EVENT_TYPE_AGENT_DEREGISTERED = 8;
+  // An agent was quarantined by the gateway.
+  AUDIT_EVENT_TYPE_AGENT_QUARANTINED = 9;
 }
 
-// RecordEventRequest submits a new audit event.
+// EnforcementOutcome mirrors policy.proto's EnforcementDecision for audit
+// purposes — duplicated here to keep audit.proto self-contained.
+enum EnforcementOutcome {
+  ENFORCEMENT_OUTCOME_UNSPECIFIED      = 0;
+  ENFORCEMENT_OUTCOME_ALLOWED          = 1;
+  ENFORCEMENT_OUTCOME_DENIED           = 2;
+  ENFORCEMENT_OUTCOME_PENDING_APPROVAL = 3;
+}
+
+// ─── Audit event ──────────────────────────────────────────────────────────────
+
+// AuditEvent records a single governance-relevant occurrence.
+// Maps to aa-core/src/audit.rs AuditEvent struct.
+message AuditEvent {
+  // Unique identifier for this audit record.
+  string             event_id    = 1;
+
+  // Classification of what occurred.
+  AuditEventType     event_type  = 2;
+
+  // ID of the agent involved in this event.
+  string             agent_id    = 3;
+
+  // Fully-qualified action name (e.g. "tool.web_search", "file.write").
+  // Empty for lifecycle events (register / deregister / quarantine).
+  string             action      = 4;
+
+  // Enforcement outcome for policy-evaluated events.
+  EnforcementOutcome outcome     = 5;
+
+  // ID of the policy that produced the decision, if applicable.
+  string             policy_id   = 6;
+
+  // ID of the approval item, if the action was held for review.
+  string             approval_id = 7;
+
+  // ISO 8601 UTC timestamp when this event occurred.
+  string             timestamp   = 8;
+
+  // Arbitrary key-value context captured at the time of the event.
+  map<string, string> context    = 9;
+}
+
+// ─── Record ───────────────────────────────────────────────────────────────────
+
+// RecordEventRequest submits a new audit event to the immutable log.
 message RecordEventRequest {
   AuditEvent event = 1;
 }
@@ -36,25 +83,40 @@ message RecordEventResponse {
   string event_id = 1;
 }
 
+// ─── Query ────────────────────────────────────────────────────────────────────
+
 // QueryEventsRequest filters the audit log.
 message QueryEventsRequest {
-  string agent_id = 1;
-  string action_prefix = 2;
-  string since = 3;
-  string until = 4;
-  int32 limit = 5;
+  // Optional: filter by agent ID.
+  string         agent_id          = 1;
+  // Optional: filter by event type.
+  AuditEventType event_type_filter = 2;
+  // Optional: only return events with this outcome.
+  EnforcementOutcome outcome_filter = 3;
+  // Optional: action prefix filter (e.g. "tool." to match all tool calls).
+  string         action_prefix     = 4;
+  // ISO 8601 UTC lower bound (inclusive). Omit for open start.
+  string         since             = 5;
+  // ISO 8601 UTC upper bound (inclusive). Omit for open end.
+  string         until             = 6;
+  int32          page_size         = 7;
+  string         page_token        = 8;
 }
 
-// QueryEventsResponse returns matching audit events.
+// QueryEventsResponse returns a page of matching audit events.
 message QueryEventsResponse {
-  repeated AuditEvent events = 1;
+  repeated AuditEvent events          = 1;
+  string              next_page_token = 2;
 }
 
-// AuditService manages the immutable audit trail.
+// ─── Service ──────────────────────────────────────────────────────────────────
+
+// AuditService manages the immutable governance audit trail.
+// Maps to aa-gateway/src/audit_store.rs and aa-api/src/routes/audit.rs.
 service AuditService {
   // RecordEvent appends a governance decision to the audit log.
   rpc RecordEvent(RecordEventRequest) returns (RecordEventResponse);
 
-  // QueryEvents retrieves audit events matching the given filters.
+  // QueryEvents retrieves a paginated list of audit events matching the filters.
   rpc QueryEvents(QueryEventsRequest) returns (QueryEventsResponse);
 }
