@@ -11,7 +11,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 aa-core = { path = "../aa-core" }
-pyo3 = { version = "0.22", features = ["extension-module"] }
+pyo3 = { version = "0.24", features = ["extension-module"] }
 
 [lints]
 workspace = true
