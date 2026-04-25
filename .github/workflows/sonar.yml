@@ -3,8 +3,18 @@ name: SonarCloud
 on:
   push:
     branches: [master]
+    paths:
+      - "aa-*/**"
+      - "dashboard/**"
+      - "sonar-project.properties"
+      - ".github/workflows/sonar.yml"
   pull_request:
     branches: [master]
+    paths:
+      - "aa-*/**"
+      - "dashboard/**"
+      - "sonar-project.properties"
+      - ".github/workflows/sonar.yml"
 
 jobs:
   sonar:
