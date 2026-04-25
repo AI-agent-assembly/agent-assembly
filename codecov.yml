@@ -1,7 +1,7 @@
 codecov:
   token: $CODECOV_TOKEN
-  branch: main
-  strict_yaml_branch: main
+  branch: master
+  strict_yaml_branch: master
 
 coverage:
   precision: 2
