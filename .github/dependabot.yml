@@ -4,10 +4,9 @@
 #
 #   1. cargo        — Rust workspace crates (all 10 crates share one lockfile
 #                     at the workspace root "/")
-#   2. npm          — dashboard React + TypeScript frontend (package.json lives
-#                     in "dashboard/" — Dependabot must be pointed there
-#                     explicitly; it does NOT discover nested package.json files
-#                     from the workspace root entry above)
+#   2. npm (pnpm)   — dashboard React + TypeScript frontend managed with pnpm;
+#                     Dependabot uses "npm" ecosystem for pnpm projects and
+#                     auto-detects pnpm via pnpm-lock.yaml in "dashboard/"
 #   3. github-actions — Action SHAs pinned in .github/workflows/*.yml
 #                       Dependabot will open PRs to bump the commit SHA and
 #                       update the inline version comment when a new release
@@ -39,17 +38,20 @@ updates:
       prefix: "⬆"
     open-pull-requests-limit: 10
 
-  # ── Dashboard (npm) ───────────────────────────────────────────────────────
-  # React + TypeScript frontend scaffold located in dashboard/.
+  # ── Dashboard (pnpm) ─────────────────────────────────────────────────────
+  # React + TypeScript frontend scaffold located in dashboard/, managed with
+  # pnpm (packageManager: pnpm@10.9.0 declared in dashboard/package.json).
+  # Dependabot uses the "npm" ecosystem value for pnpm projects — it auto-
+  # detects pnpm via the presence of pnpm-lock.yaml in the target directory.
   # Dependabot requires an explicit directory pointing to the folder that
-  # contains package.json; it will NOT pick this up from the root entry above.
+  # contains package.json; it will NOT discover it from the root entry above.
   # Covers: react, react-dom, vite, typescript, @vitejs/plugin-react, @types/*.
   - package-ecosystem: "npm"
     directory: "/dashboard"
     target-branch: "master"
     schedule:
       interval: "daily"
-    labels: ["dependencies", "dashboard", "javascript"]
+    labels: ["dependencies", "dashboard", "pnpm"]
     commit-message:
       prefix: "⬆"
     open-pull-requests-limit: 10
