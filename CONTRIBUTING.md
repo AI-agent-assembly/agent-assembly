@@ -50,7 +50,7 @@ Examples:
 
 ## Pull Requests
 
-- Open a PR against `main`.
+- Open a PR against `master`.
 - Title format: `[<ticket>] <emoji> (<scope>): <summary>`
 - Fill in the PR template — all checklist items must be addressed.
 - CI must be green before review is requested.
