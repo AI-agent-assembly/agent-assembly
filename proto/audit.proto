@@ -1,122 +1,178 @@
 syntax = "proto3";
 
-package agent_assembly.v1;
+package assembly.audit.v1;
 
-// ─── Event classification ─────────────────────────────────────────────────────
+import "common.proto";
 
-// AuditEventType classifies what kind of governance event occurred.
-// Maps to aa-core/src/audit.rs AuditEventType enum.
-enum AuditEventType {
-  AUDIT_EVENT_TYPE_UNSPECIFIED       = 0;
-  // An interceptor pre-dispatch hook observed an outgoing action.
-  AUDIT_EVENT_TYPE_ACTION_INTERCEPTED = 1;
-  // The policy engine evaluated an action and produced a decision.
-  AUDIT_EVENT_TYPE_POLICY_EVALUATED  = 2;
-  // An action was held and an approval request was created.
-  AUDIT_EVENT_TYPE_APPROVAL_REQUESTED = 3;
-  // A human reviewer approved a held action.
-  AUDIT_EVENT_TYPE_APPROVAL_GRANTED  = 4;
-  // A human reviewer rejected a held action.
-  AUDIT_EVENT_TYPE_APPROVAL_REJECTED = 5;
-  // An approval request expired without a reviewer decision.
-  AUDIT_EVENT_TYPE_APPROVAL_EXPIRED  = 6;
-  // An agent registered with the gateway.
-  AUDIT_EVENT_TYPE_AGENT_REGISTERED  = 7;
-  // An agent deregistered from the gateway.
-  AUDIT_EVENT_TYPE_AGENT_DEREGISTERED = 8;
-  // An agent was quarantined by the gateway.
-  AUDIT_EVENT_TYPE_AGENT_QUARANTINED = 9;
+// AuditService handles path ③ (runtime → gateway) — the async audit trail.
+// Non-critical path; runtime buffers events and flushes every few seconds.
+//
+// Consumed by: aa-runtime/src/gateway_client.rs (client side)
+//              aa-gateway/src/audit_store.rs    (server side)
+service AuditService {
+  // ReportEvents is the primary upload path — batched, called every few seconds.
+  rpc ReportEvents(ReportEventsRequest) returns (ReportEventsResponse);
+
+  // StreamEvents is for high-frequency scenarios where per-event latency matters.
+  // The client streams AuditEvent messages; the server acknowledges on completion.
+  rpc StreamEvents(stream AuditEvent) returns (StreamEventsResponse);
 }
 
-// EnforcementOutcome mirrors policy.proto's EnforcementDecision for audit
-// purposes — duplicated here to keep audit.proto self-contained.
-enum EnforcementOutcome {
-  ENFORCEMENT_OUTCOME_UNSPECIFIED      = 0;
-  ENFORCEMENT_OUTCOME_ALLOWED          = 1;
-  ENFORCEMENT_OUTCOME_DENIED           = 2;
-  ENFORCEMENT_OUTCOME_PENDING_APPROVAL = 3;
-}
+// ── Core event ────────────────────────────────────────────────────────────────
 
-// ─── Audit event ──────────────────────────────────────────────────────────────
-
-// AuditEvent records a single governance-relevant occurrence.
+// AuditEvent records a single governance-relevant occurrence with full context.
 // Maps to aa-core/src/audit.rs AuditEvent struct.
 message AuditEvent {
-  // Unique identifier for this audit record.
-  string             event_id    = 1;
+  // Unique identifier for this audit record (UUID v7 for sortability).
+  string                      event_id       = 1;
+  // Composite identity of the agent that produced this event.
+  assembly.common.v1.AgentId  agent_id       = 2;
+  // Wall-clock time when the event occurred, in Unix milliseconds.
+  assembly.common.v1.Timestamp occurred_at   = 3;
+  // High-level action category — drives storage partitioning and alert rules.
+  assembly.common.v1.ActionType action_type  = 4;
+  // Policy engine verdict for this action.
+  assembly.common.v1.Decision  decision      = 5;
+  // Distributed tracing: run-level trace ID.
+  string                      trace_id       = 6;
+  // Distributed tracing: action-level span ID.
+  string                      span_id        = 7;
+  // Distributed tracing: parent span ID (links to the calling action).
+  string                      parent_span_id = 8;
 
-  // Classification of what occurred.
-  AuditEventType     event_type  = 2;
+  // Action-type-specific detail payload. Exactly one field must be set.
+  oneof detail {
+    LLMCallDetail     llm_call  = 10;
+    ToolCallDetail    tool_call = 11;
+    FileOpDetail      file_op   = 12;
+    NetworkCallDetail network   = 13;
+    ProcessExecDetail process   = 14;
+    PolicyViolation   violation = 15;
+    ApprovalEvent     approval  = 16;
+  }
 
-  // ID of the agent involved in this event.
-  string             agent_id    = 3;
-
-  // Fully-qualified action name (e.g. "tool.web_search", "file.write").
-  // Empty for lifecycle events (register / deregister / quarantine).
-  string             action      = 4;
-
-  // Enforcement outcome for policy-evaluated events.
-  EnforcementOutcome outcome     = 5;
-
-  // ID of the policy that produced the decision, if applicable.
-  string             policy_id   = 6;
-
-  // ID of the approval item, if the action was held for review.
-  string             approval_id = 7;
-
-  // ISO 8601 UTC timestamp when this event occurred.
-  string             timestamp   = 8;
-
-  // Arbitrary key-value context captured at the time of the event.
-  map<string, string> context    = 9;
+  // Arbitrary labels attached at event creation for downstream query filtering.
+  map<string, string> labels = 20;
 }
 
-// ─── Record ───────────────────────────────────────────────────────────────────
+// ── Detail messages ───────────────────────────────────────────────────────────
 
-// RecordEventRequest submits a new audit event to the immutable log.
-message RecordEventRequest {
-  AuditEvent event = 1;
+// LLMCallDetail records the outcome of a large-language-model invocation.
+message LLMCallDetail {
+  // Model identifier (e.g. "gpt-4o", "claude-3-5-sonnet", "gemini-1.5-pro").
+  string model             = 1;
+  // Token count in the prompt (pre-execution estimate from the SDK layer).
+  int32  prompt_tokens     = 2;
+  // Token count in the completion (post-execution, from the model response).
+  int32  completion_tokens = 3;
+  // End-to-end call latency in milliseconds.
+  int64  latency_ms        = 4;
+  // Whether the SDK-layer PII scan detected sensitive data in the prompt.
+  bool   pii_detected      = 5;
+  // Whether PII was redacted by the policy engine before the call proceeded.
+  bool   pii_redacted      = 6;
+  // Inference provider name (e.g. "openai", "anthropic", "gemini").
+  string provider          = 7;
 }
 
-// RecordEventResponse acknowledges the recorded event.
-message RecordEventResponse {
-  string event_id = 1;
+// ToolCallDetail records the outcome of a tool or MCP server invocation.
+message ToolCallDetail {
+  // Registered tool name (e.g. "web_search", "run_python").
+  string tool_name     = 1;
+  // Source system: "mcp", "langchain", or "function".
+  string tool_source   = 2;
+  // End-to-end tool call latency in milliseconds.
+  int64  latency_ms    = 3;
+  // Whether the tool call completed without error.
+  bool   succeeded     = 4;
+  // Populated when succeeded = false; contains the error message.
+  string error_message = 5;
 }
 
-// ─── Query ────────────────────────────────────────────────────────────────────
-
-// QueryEventsRequest filters the audit log.
-message QueryEventsRequest {
-  // Optional: filter by agent ID.
-  string         agent_id          = 1;
-  // Optional: filter by event type.
-  AuditEventType event_type_filter = 2;
-  // Optional: only return events with this outcome.
-  EnforcementOutcome outcome_filter = 3;
-  // Optional: action prefix filter (e.g. "tool." to match all tool calls).
-  string         action_prefix     = 4;
-  // ISO 8601 UTC lower bound (inclusive). Omit for open start.
-  string         since             = 5;
-  // ISO 8601 UTC upper bound (inclusive). Omit for open end.
-  string         until             = 6;
-  int32          page_size         = 7;
-  string         page_token        = 8;
+// FileOpDetail records the outcome of a filesystem operation.
+message FileOpDetail {
+  // Operation type: "read", "write", "delete", or "create".
+  string operation = 1;
+  // Absolute path of the file that was accessed.
+  string path      = 2;
+  // Number of bytes read or written (0 for delete/create).
+  int64  bytes     = 3;
+  // Detection source: "sdk_hook" (interceptor) or "ebpf" (kernel-level).
+  string source    = 4;
 }
 
-// QueryEventsResponse returns a page of matching audit events.
-message QueryEventsResponse {
-  repeated AuditEvent events          = 1;
-  string              next_page_token = 2;
+// NetworkCallDetail records the outcome of an outbound network request.
+message NetworkCallDetail {
+  // Target hostname.
+  string host        = 1;
+  // Target port.
+  int32  port        = 2;
+  // Protocol: "https", "grpc", "ws", "tcp".
+  string protocol    = 3;
+  // End-to-end request latency in milliseconds.
+  int64  latency_ms  = 4;
+  // HTTP/gRPC status code (0 if not applicable).
+  int32  status_code = 5;
+  // Whether the request completed successfully.
+  bool   succeeded   = 6;
 }
 
-// ─── Service ──────────────────────────────────────────────────────────────────
+// ProcessExecDetail records the outcome of a subprocess execution.
+message ProcessExecDetail {
+  // Command that was executed.
+  string          command     = 1;
+  // Arguments passed to the command.
+  repeated string args        = 2;
+  // Exit code returned by the process (0 = success by convention).
+  int32           exit_code   = 3;
+  // Elapsed time from process start to exit, in milliseconds.
+  int64           duration_ms = 4;
+  // Whether the process exited with code 0.
+  bool            succeeded   = 5;
+}
 
-// AuditService manages the immutable governance audit trail.
-// Maps to aa-gateway/src/audit_store.rs and aa-api/src/routes/audit.rs.
-service AuditService {
-  // RecordEvent appends a governance decision to the audit log.
-  rpc RecordEvent(RecordEventRequest) returns (RecordEventResponse);
+// PolicyViolation records an action that was blocked or flagged by the policy engine.
+message PolicyViolation {
+  // ID of the policy rule that triggered the violation.
+  string policy_rule    = 1;
+  // Human-readable summary of the blocked action.
+  string blocked_action = 2;
+  // Human-readable reason for the block (copied from CheckActionResponse).
+  string reason         = 3;
+}
 
-  // QueryEvents retrieves a paginated list of audit events matching the filters.
-  rpc QueryEvents(QueryEventsRequest) returns (QueryEventsResponse);
+// ApprovalEvent records the resolution of a human-in-the-loop approval request.
+message ApprovalEvent {
+  // Unique identifier of the approval queue item.
+  string approval_id  = 1;
+  // Account ID of the reviewer who made the decision.
+  string approver_id  = 2;
+  // true = approved; false = rejected.
+  bool   approved     = 3;
+  // Optional reason provided by the reviewer.
+  string reason       = 4;
+  // Elapsed time between approval request creation and reviewer decision, in ms.
+  int64  wait_time_ms = 5;
+}
+
+// ── Batch upload ──────────────────────────────────────────────────────────────
+
+// ReportEventsRequest submits a batch of audit events to the gateway.
+message ReportEventsRequest {
+  // Batch of events to record. Order is preserved in the response.
+  repeated AuditEvent events = 1;
+}
+
+// ReportEventsResponse acknowledges a batch upload, returning one ID per event.
+message ReportEventsResponse {
+  // Event IDs in the same order as the request batch.
+  repeated string event_ids = 1;
+}
+
+// ── Streaming upload ──────────────────────────────────────────────────────────
+
+// StreamEventsResponse is returned after the client closes the stream.
+message StreamEventsResponse {
+  // Total number of events received by the server during the stream.
+  int64 events_received = 1;
 }
