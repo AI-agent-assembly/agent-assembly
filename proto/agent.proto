@@ -2,42 +2,101 @@ syntax = "proto3";
 
 package agent_assembly.v1;
 
-// Agent represents a registered AI agent in the governance system.
-message Agent {
-  // Unique identifier for the agent instance.
-  string id = 1;
+// ─── Identity model ──────────────────────────────────────────────────────────
 
-  // Human-readable name of the agent.
-  string name = 2;
-
-  // Current lifecycle status of the agent.
-  AgentStatus status = 3;
-
-  // ISO 8601 timestamp of when the agent was registered.
-  string registered_at = 4;
-
-  // Arbitrary key-value metadata attached to the agent.
-  map<string, string> labels = 5;
+// AgentRuntime identifies the language runtime hosting the agent.
+// Maps to aa-core/src/identity.rs AgentRuntime enum.
+enum AgentRuntime {
+  AGENT_RUNTIME_UNSPECIFIED = 0;
+  AGENT_RUNTIME_PYTHON      = 1;
+  AGENT_RUNTIME_NODE        = 2;
+  AGENT_RUNTIME_WASM        = 3;
+  AGENT_RUNTIME_NATIVE      = 4;
 }
 
 // AgentStatus enumerates the lifecycle states an agent can be in.
+// Maps to aa-core/src/lifecycle.rs AgentStatus enum.
 enum AgentStatus {
-  AGENT_STATUS_UNSPECIFIED = 0;
-  AGENT_STATUS_ACTIVE = 1;
-  AGENT_STATUS_INACTIVE = 2;
-  AGENT_STATUS_QUARANTINED = 3;
+  AGENT_STATUS_UNSPECIFIED  = 0;
+  AGENT_STATUS_ACTIVE       = 1;
+  AGENT_STATUS_INACTIVE     = 2;
+  AGENT_STATUS_QUARANTINED  = 3;
 }
+
+// Agent represents a registered AI agent in the governance system.
+// Maps to aa-core/src/identity.rs Agent struct.
+message Agent {
+  // Unique identifier assigned by the gateway on registration.
+  string id = 1;
+
+  // Human-readable name supplied by the caller.
+  string name = 2;
+
+  // Language runtime hosting this agent.
+  AgentRuntime runtime = 3;
+
+  // Semver version string of the agent process (e.g. "1.2.3").
+  string version = 4;
+
+  // Current lifecycle status.
+  AgentStatus status = 5;
+
+  // ISO 8601 UTC timestamp of initial registration.
+  string registered_at = 6;
+
+  // ISO 8601 UTC timestamp of the most recent heartbeat.
+  string last_heartbeat_at = 7;
+
+  // Arbitrary key-value labels attached by the registering process.
+  map<string, string> labels = 8;
+}
+
+// ─── Register ────────────────────────────────────────────────────────────────
 
 // RegisterAgentRequest is the input for registering a new agent.
 message RegisterAgentRequest {
-  string name = 1;
-  map<string, string> labels = 2;
+  string                name    = 1;
+  AgentRuntime          runtime = 2;
+  string                version = 3;
+  map<string, string>   labels  = 4;
 }
 
 // RegisterAgentResponse returns the newly created agent record.
 message RegisterAgentResponse {
   Agent agent = 1;
 }
+
+// ─── Heartbeat ───────────────────────────────────────────────────────────────
+
+// HeartbeatRequest is sent periodically by the sidecar to keep the agent active.
+// Maps to aa-core/src/lifecycle.rs Heartbeat.
+message HeartbeatRequest {
+  string agent_id = 1;
+}
+
+// HeartbeatResponse acknowledges the heartbeat and echoes the current status.
+message HeartbeatResponse {
+  AgentStatus status           = 1;
+  string      next_deadline_at = 2;  // ISO 8601: when the next heartbeat is due.
+}
+
+// ─── Deregister ──────────────────────────────────────────────────────────────
+
+// DeregisterAgentRequest is sent when an agent shuts down gracefully.
+// Maps to aa-core/src/lifecycle.rs Deregister.
+message DeregisterAgentRequest {
+  string agent_id = 1;
+  // Optional human-readable reason for the deregistration.
+  string reason   = 2;
+}
+
+// DeregisterAgentResponse confirms the deregistration.
+message DeregisterAgentResponse {
+  bool   success = 1;
+  string agent_id = 2;
+}
+
+// ─── Get / List ───────────────────────────────────────────────────────────────
 
 // GetAgentRequest identifies an agent to retrieve.
 message GetAgentRequest {
@@ -51,22 +110,37 @@ message GetAgentResponse {
 
 // ListAgentsRequest provides optional filters for agent listing.
 message ListAgentsRequest {
-  AgentStatus status_filter = 1;
+  // Optional: only return agents in this status. Omit to return all.
+  AgentStatus  status_filter  = 1;
+  // Optional: only return agents with this runtime.
+  AgentRuntime runtime_filter = 2;
+  int32        page_size      = 3;
+  string       page_token     = 4;
 }
 
-// ListAgentsResponse returns all matching agents.
+// ListAgentsResponse returns a page of matching agents.
 message ListAgentsResponse {
-  repeated Agent agents = 1;
+  repeated Agent agents         = 1;
+  string         next_page_token = 2;
 }
 
-// AgentService manages agent registration and lifecycle.
+// ─── Service ─────────────────────────────────────────────────────────────────
+
+// AgentService manages agent registration, heartbeat, and lifecycle.
+// Consumed by aa-runtime/src/gateway_client.rs.
 service AgentService {
   // RegisterAgent registers a new agent with the governance gateway.
   rpc RegisterAgent(RegisterAgentRequest) returns (RegisterAgentResponse);
 
+  // Heartbeat keeps an active agent from being marked inactive.
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+
+  // DeregisterAgent gracefully removes an agent from the registry.
+  rpc DeregisterAgent(DeregisterAgentRequest) returns (DeregisterAgentResponse);
+
   // GetAgent retrieves a single agent by its ID.
   rpc GetAgent(GetAgentRequest) returns (GetAgentResponse);
 
-  // ListAgents returns all agents, optionally filtered by status.
+  // ListAgents returns a paginated list of agents with optional filters.
   rpc ListAgents(ListAgentsRequest) returns (ListAgentsResponse);
 }
