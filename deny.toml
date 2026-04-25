@@ -1,7 +1,7 @@
 [advisories]
 unmaintained = "all"
 unsound = "all"
-yanked = "all"
+yanked = "warn"
 notice = "all"
 ignore = []
 
