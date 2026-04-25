@@ -1,17 +1,73 @@
+# Dependabot configuration — agent-assembly
+#
+# Keeps three dependency ecosystems up to date automatically:
+#
+#   1. cargo        — Rust workspace crates (all 10 crates share one lockfile
+#                     at the workspace root "/")
+#   2. npm          — dashboard React + TypeScript frontend (package.json lives
+#                     in "dashboard/" — Dependabot must be pointed there
+#                     explicitly; it does NOT discover nested package.json files
+#                     from the workspace root entry above)
+#   3. github-actions — Action SHAs pinned in .github/workflows/*.yml
+#                       Dependabot will open PRs to bump the commit SHA and
+#                       update the inline version comment when a new release
+#                       of a pinned action is available
+#
+# Common settings applied to every entry:
+#   target-branch   — always `master` (the repo's default integration branch)
+#   commit-message  — Gitmoji ⬆ prefix to match the project commit convention
+#   schedule        — daily to catch CVEs and patch releases quickly;
+#                     adjust to "weekly" if PR noise becomes too high
+#
+# Reference:
+#   https://docs.github.com/en/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+
 version: 2
 updates:
+
+  # ── Rust workspace ────────────────────────────────────────────────────────
+  # Covers all 10 crates (aa-core, aa-runtime, aa-ebpf, aa-proxy,
+  # aa-ffi-python, aa-ffi-node, aa-wasm, aa-gateway, aa-api, aa-cli).
+  # The workspace resolver means a single Cargo.lock at "/" tracks them all.
   - package-ecosystem: "cargo"
     directory: "/"
+    target-branch: "master"
     schedule:
       interval: "daily"
     labels: ["dependencies", "rust"]
     commit-message:
       prefix: "⬆"
+    open-pull-requests-limit: 10
 
+  # ── Dashboard (npm) ───────────────────────────────────────────────────────
+  # React + TypeScript frontend scaffold located in dashboard/.
+  # Dependabot requires an explicit directory pointing to the folder that
+  # contains package.json; it will NOT pick this up from the root entry above.
+  # Covers: react, react-dom, vite, typescript, @vitejs/plugin-react, @types/*.
+  - package-ecosystem: "npm"
+    directory: "/dashboard"
+    target-branch: "master"
+    schedule:
+      interval: "daily"
+    labels: ["dependencies", "dashboard", "javascript"]
+    commit-message:
+      prefix: "⬆"
+    open-pull-requests-limit: 10
+
+  # ── GitHub Actions ────────────────────────────────────────────────────────
+  # All actions in .github/workflows/ are pinned to full commit SHAs
+  # (per SonarCloud rule S7637). Dependabot will open PRs to update both
+  # the SHA and the inline version comment (e.g. # v4 → # v5) when a new
+  # release is tagged upstream.
+  # Covers: actions/checkout, dtolnay/rust-toolchain, Swatinem/rust-cache,
+  #         taiki-e/install-action, codecov/codecov-action,
+  #         EmbarkStudios/cargo-deny-action, SonarSource/sonarqube-scan-action.
   - package-ecosystem: "github-actions"
     directory: "/"
+    target-branch: "master"
     schedule:
       interval: "daily"
     labels: ["dependencies", "github-actions"]
     commit-message:
       prefix: "⬆"
+    open-pull-requests-limit: 10
