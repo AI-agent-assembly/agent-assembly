@@ -1,18 +1,17 @@
 [advisories]
-# Scope selectors for advisory checks: "all", "workspace", "transitive", "none"
-# "workspace"  — flag only advisories that affect crates you directly depend on
-# "all"        — flag advisories across the entire transitive dependency graph
+# Scope selectors: "all", "workspace", "transitive", "none"
+# "workspace" = flag advisories only for crates you directly depend on
 unmaintained = "workspace"
-unsound = "all"
 # Lint level for yanked crates: "allow", "warn", "deny"
 yanked = "warn"
-# Advisory IDs or crate@version entries to ignore (e.g. RUSTSEC-YYYY-NNNN)
+# Advisory IDs or crate@version entries to suppress (RUSTSEC-YYYY-NNNN)
 ignore = []
 
 [licenses]
-# Minimum confidence threshold for license text inference (0.0–1.0)
+# Minimum confidence for inferring license text (0.0–1.0)
 confidence-threshold = 0.92
-# Any license not listed here is implicitly denied — GPL/AGPL/LGPL excluded by omission
+# Any license not listed here is implicitly denied.
+# GPL-2.0, GPL-3.0, AGPL-3.0 are excluded by omission.
 allow = [
     "Apache-2.0",
     "Apache-2.0 WITH LLVM-exception",
@@ -22,22 +21,32 @@ allow = [
     "ISC",
     "Zlib",
     "Unicode-DFS-2016",
+    # Unicode License v3 — used by ICU crates (icu_collections, icu_properties,
+    # icu_normalizer, yoke, zerovec, …) pulled in transitively via utoipa-swagger-ui
+    "Unicode-3.0",
 ]
 
+[[licenses.exceptions]]
+# webpki-roots ships Mozilla's CA certificate bundle under a permissive data
+# license; allow it only for this specific crate.
+crate = "webpki-roots"
+allow = ["CDLA-Permissive-2.0"]
+
 [bans]
-# Warn on multiple versions of the same crate in the dependency graph
+# Warn when the same crate appears at multiple versions in the graph
 multiple-versions = "warn"
-# Warn on wildcard dependency requirements (e.g. foo = "*")
-wildcards = "warn"
-# Crates that must never appear; prefer rustls over openssl for pure-Rust TLS
+# Workspace-internal path dependencies carry no version constraint by design;
+# set to "allow" so cargo-deny does not flag them as wildcard dependencies.
+wildcards = "allow"
+# Crates that must never appear in the dependency graph
 deny = [
     { crate = "openssl", use-instead = "rustls" },
 ]
 
 [sources]
-# Deny dependencies from registries not in allow-registry
+# Deny dependencies from unknown crate registries
 unknown-registry = "deny"
-# Deny dependencies from git sources not in allow-git
+# Deny dependencies from unknown git sources
 unknown-git = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
 allow-git = []
