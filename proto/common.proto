@@ -1,0 +1,75 @@
+syntax = "proto3";
+
+package assembly.common.v1;
+
+// ── Identity ──────────────────────────────────────────────────────────────────
+
+// AgentId is a composite identity used in every gRPC message.
+// Using a message (not a flat string) lets the gateway enforce org/team scoping
+// and issue scoped credentials without changing downstream message shapes.
+message AgentId {
+  // Organisation identifier.
+  string org_id   = 1;
+  // Team within the organisation.
+  string team_id  = 2;
+  // The agent's own unique ID (DID-style; assigned at registration).
+  string agent_id = 3;
+}
+
+// ── Time ─────────────────────────────────────────────────────────────────────
+
+// Timestamp uses Unix milliseconds for precision without proto well-known type imports.
+message Timestamp {
+  int64 unix_ms = 1;
+}
+
+// ── Policy decision ───────────────────────────────────────────────────────────
+
+// Decision is the outcome of a policy evaluation. Used by policy.proto and
+// mirrored in audit.proto to keep audit self-contained.
+enum Decision {
+  DECISION_UNSPECIFIED = 0;
+  // Action is permitted immediately.
+  ALLOW                = 1;
+  // Action is blocked; no further recourse.
+  DENY                 = 2;
+  // Action is held — a human reviewer must approve or reject it.
+  PENDING              = 3;
+  // Action is permitted but sensitive fields must be redacted first.
+  REDACT               = 4;
+}
+
+// ── Action classification ─────────────────────────────────────────────────────
+
+// ActionType classifies what kind of operation the agent is attempting.
+// Drives both policy rule matching and audit event categorisation.
+enum ActionType {
+  ACTION_UNSPECIFIED = 0;
+  // Call a large-language model (e.g. GPT-4o, Claude, Gemini).
+  LLM_CALL           = 1;
+  // Invoke a tool or MCP server function.
+  TOOL_CALL          = 2;
+  // Read, write, delete, or create a local file.
+  FILE_OPERATION     = 3;
+  // Make an outbound network request.
+  NETWORK_CALL       = 4;
+  // Execute a subprocess.
+  PROCESS_EXEC       = 5;
+  // Spawn a child agent.
+  AGENT_SPAWN        = 6;
+}
+
+// ── Risk tier ─────────────────────────────────────────────────────────────────
+
+// RiskTier classifies an agent or policy by the risk level it operates at.
+enum RiskTier {
+  RISK_UNSPECIFIED = 0;
+  // Low risk: log-only enforcement; no blocking.
+  LOW              = 1;
+  // Medium risk: block-and-optionally-approve enforcement.
+  MEDIUM           = 2;
+  // High risk: always block; human review mandatory.
+  HIGH             = 3;
+  // Critical risk: immediate kill + incident escalation.
+  CRITICAL         = 4;
+}
