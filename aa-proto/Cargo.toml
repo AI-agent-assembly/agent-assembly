@@ -12,7 +12,6 @@ tonic       = { version = "0.13", features = ["transport"] }
 
 [build-dependencies]
 tonic-build = "0.13"
-protox      = "0.7"
 
 [lints]
 workspace = true
