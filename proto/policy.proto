@@ -1,209 +1,142 @@
 syntax = "proto3";
 
-package agent_assembly.v1;
+package assembly.policy.v1;
 
-// ─── Risk tier ───────────────────────────────────────────────────────────────
+import "common.proto";
 
-// RiskTier classifies policies by the risk level they govern.
-enum RiskTier {
-  RISK_TIER_UNSPECIFIED = 0;
-  RISK_TIER_LOW         = 1;  // Log-only; no blocking.
-  RISK_TIER_MEDIUM      = 2;  // Block and optionally require approval.
-  RISK_TIER_HIGH        = 3;  // Always block; mandatory human review.
-}
-
-// ─── Enforcement decision ────────────────────────────────────────────────────
-
-// EnforcementDecision is the outcome returned by the policy engine for an
-// intercepted action. Maps to aa-core/src/policy.rs EnforcementDecision.
-enum EnforcementDecision {
-  ENFORCEMENT_DECISION_UNSPECIFIED     = 0;
-  // Action is permitted immediately.
-  ENFORCEMENT_DECISION_ALLOW           = 1;
-  // Action is blocked; no further recourse.
-  ENFORCEMENT_DECISION_DENY            = 2;
-  // Action is held pending a human reviewer decision (approval queue).
-  ENFORCEMENT_DECISION_REQUIRE_APPROVAL = 3;
-}
-
-// ─── Policy ──────────────────────────────────────────────────────────────────
-
-// Policy defines a governance rule set applied to one or more agents.
-// Maps to aa-core/src/policy.rs Policy struct.
-message Policy {
-  // Unique identifier assigned by the gateway.
-  string   id         = 1;
-  // Human-readable name.
-  string   name       = 2;
-  // Risk tier this policy enforces.
-  RiskTier tier       = 3;
-  // Serialised rule body (YAML, JSON, or OPA Rego source).
-  string   rules      = 4;
-  // Whether this policy is currently enforced.
-  bool     enabled    = 5;
-  // ISO 8601 UTC creation timestamp.
-  string   created_at = 6;
-  // ISO 8601 UTC last-update timestamp.
-  string   updated_at = 7;
-}
-
-// ─── Evaluate ────────────────────────────────────────────────────────────────
-
-// EvaluatePolicyRequest asks the gateway to evaluate a policy for an
-// intercepted agent action. Sent by aa-runtime via aa-core/src/interceptor.rs.
-message EvaluatePolicyRequest {
-  // ID of the agent attempting the action.
-  string              agent_id = 1;
-  // Fully-qualified action name (e.g. "tool.web_search", "file.write").
-  string              action   = 2;
-  // Arbitrary key-value context captured at interception time.
-  map<string, string> context  = 3;
-}
-
-// EvaluatePolicyResponse returns the enforcement decision for an action.
-message EvaluatePolicyResponse {
-  // The enforcement outcome.
-  EnforcementDecision decision    = 1;
-  // Human-readable explanation of the decision.
-  string              reason      = 2;
-  // ID of the policy that produced this decision.
-  string              policy_id   = 3;
-  // Present only when decision == REQUIRE_APPROVAL; identifies the queued item.
-  string              approval_id = 4;
-}
-
-// ─── Get / List policies ─────────────────────────────────────────────────────
-
-// GetPolicyRequest identifies a policy to retrieve.
-message GetPolicyRequest {
-  string id = 1;
-}
-
-// GetPolicyResponse returns a single policy record.
-message GetPolicyResponse {
-  Policy policy = 1;
-}
-
-// ListPoliciesRequest supports optional tier filtering and pagination.
-message ListPoliciesRequest {
-  // Optional: filter by risk tier. Omit to return all tiers.
-  RiskTier tier_filter = 1;
-  bool     enabled_only = 2;
-  int32    page_size    = 3;
-  string   page_token   = 4;
-}
-
-// ListPoliciesResponse returns a page of policy records.
-message ListPoliciesResponse {
-  repeated Policy policies       = 1;
-  string          next_page_token = 2;
-}
-
-// ─── PolicyService ───────────────────────────────────────────────────────────
-
-// PolicyService handles policy evaluation and retrieval.
-// Consumed by aa-runtime/src/gateway_client.rs and aa-gateway/src/policy_engine.rs.
+// PolicyService handles path ② (runtime → gateway) — the hot path for every
+// agent action. Target latency: < 5 ms p99.
+//
+// Consumed by: aa-runtime/src/gateway_client.rs (client side)
+//              aa-gateway/src/policy_engine.rs   (server side)
 service PolicyService {
-  // EvaluatePolicy checks whether an agent action is permitted under policy.
-  rpc EvaluatePolicy(EvaluatePolicyRequest) returns (EvaluatePolicyResponse);
+  // CheckAction evaluates a single action before the agent dispatches it.
+  // Called on every intercepted action — must be as fast as possible.
+  rpc CheckAction(CheckActionRequest) returns (CheckActionResponse);
 
-  // GetPolicy retrieves a policy definition by its ID.
-  rpc GetPolicy(GetPolicyRequest) returns (GetPolicyResponse);
-
-  // ListPolicies returns a paginated list of policies with optional filters.
-  rpc ListPolicies(ListPoliciesRequest) returns (ListPoliciesResponse);
+  // BatchCheck pre-warms the policy cache for a set of anticipated actions.
+  // Called at agent startup or when entering a new task context.
+  rpc BatchCheck(BatchCheckRequest) returns (BatchCheckResponse);
 }
 
-// ─── Approval model ──────────────────────────────────────────────────────────
+// ── Check ─────────────────────────────────────────────────────────────────────
 
-// ApprovalStatus tracks the lifecycle of a human-in-the-loop approval request.
-// Maps to aa-gateway/src/approval.rs ApprovalStatus.
-enum ApprovalStatus {
-  APPROVAL_STATUS_UNSPECIFIED = 0;
-  // Awaiting a reviewer decision.
-  APPROVAL_STATUS_PENDING     = 1;
-  // Reviewer approved; the held action will be released.
-  APPROVAL_STATUS_APPROVED    = 2;
-  // Reviewer rejected; the held action will be denied.
-  APPROVAL_STATUS_REJECTED    = 3;
-  // No reviewer acted before the deadline; treated as deny.
-  APPROVAL_STATUS_EXPIRED     = 4;
+message CheckActionRequest {
+  // Composite identity of the agent requesting the check.
+  assembly.common.v1.AgentId    agent_id         = 1;
+  // Credential token issued at registration; validated on every call.
+  string                        credential_token = 2;
+  // Run-level trace ID for distributed tracing correlation.
+  string                        trace_id         = 3;
+  // Action-level span ID.
+  string                        span_id          = 4;
+  // High-level action category — determines which policy rules are evaluated.
+  assembly.common.v1.ActionType action_type      = 5;
+  // Detailed context for the specific action type.
+  ActionContext                 context          = 6;
 }
 
-// ApprovalItem represents a single entry in the human-in-the-loop queue.
-// Created automatically when EvaluatePolicy returns REQUIRE_APPROVAL.
-message ApprovalItem {
-  string         id          = 1;
-  // Agent that triggered the held action.
-  string         agent_id    = 2;
-  // Policy that required approval.
-  string         policy_id   = 3;
-  // The action that is pending review.
-  string         action      = 4;
-  // Context snapshot captured at interception time.
-  map<string, string> context = 5;
-  ApprovalStatus status      = 6;
-  // Optional note left by the reviewer on approve / reject.
-  string         reviewer_note = 7;
-  // ISO 8601 UTC when the request was created.
-  string         created_at  = 8;
-  // ISO 8601 UTC deadline; if not reviewed by this time the item expires.
-  string         expires_at  = 9;
-  // ISO 8601 UTC when the reviewer acted (absent if still PENDING).
-  string         reviewed_at = 10;
+// ActionContext carries type-specific details for the action under evaluation.
+// Exactly one field must be set; the populated field must match action_type.
+message ActionContext {
+  oneof action {
+    LLMCallContext     llm_call     = 1;
+    ToolCallContext    tool_call    = 2;
+    FileOpContext      file_op      = 3;
+    NetworkCallContext network_call = 4;
+    ProcessExecContext process_exec = 5;
+  }
 }
 
-// ─── Approval RPCs ────────────────────────────────────────────────────────────
-
-// GetApprovalRequest fetches a single approval item by ID.
-message GetApprovalRequest {
-  string id = 1;
+// LLMCallContext carries details about a call to a large-language model.
+message LLMCallContext {
+  // Model identifier (e.g. "gpt-4o", "claude-3-5-sonnet", "gemini-1.5-pro").
+  string model         = 1;
+  // Estimated prompt token count (pre-execution estimate from the SDK layer).
+  int32  prompt_tokens = 2;
+  // Whether the SDK-layer PII scan flagged sensitive data in the prompt.
+  bool   contains_pii  = 3;
 }
 
-// GetApprovalResponse returns a single approval item.
-message GetApprovalResponse {
-  ApprovalItem item = 1;
+// ToolCallContext carries details about a tool or MCP server invocation.
+message ToolCallContext {
+  // Registered tool name (e.g. "web_search", "run_python").
+  string tool_name   = 1;
+  // Source system ("mcp", "langchain", "function").
+  string tool_source = 2;
+  // JSON-encoded argument map; policy engine can inspect individual fields.
+  bytes  args_json   = 3;
+  // Target URL if the tool makes an HTTP request.
+  string target_url  = 4;
 }
 
-// ListApprovalsRequest filters the approval queue.
-message ListApprovalsRequest {
-  // Optional: filter by status. Omit to return all statuses.
-  ApprovalStatus status_filter = 1;
-  // Optional: filter by agent.
-  string         agent_id      = 2;
-  int32          page_size     = 3;
-  string         page_token    = 4;
+// FileOpContext carries details about a filesystem operation.
+message FileOpContext {
+  // Operation type: "read", "write", "delete", or "create".
+  string operation         = 1;
+  // Absolute path of the file being accessed.
+  string path              = 2;
+  // Whether the eBPF layer flagged this path as sensitive (e.g. /etc, ~/.ssh).
+  bool   is_sensitive_path = 3;
 }
 
-// ListApprovalsResponse returns a page of approval items.
-message ListApprovalsResponse {
-  repeated ApprovalItem items          = 1;
-  string                next_page_token = 2;
+// NetworkCallContext carries details about an outbound network request.
+message NetworkCallContext {
+  // Target hostname.
+  string host         = 1;
+  // Target port.
+  int32  port         = 2;
+  // Protocol: "https", "grpc", "ws", "tcp".
+  string protocol     = 3;
+  // Whether the target host is in the org-level network allowlist.
+  bool   in_allowlist = 4;
 }
 
-// ReviewApprovalRequest submits a reviewer decision for a pending item.
-message ReviewApprovalRequest {
-  string         approval_id   = 1;
-  ApprovalStatus decision      = 2;  // Must be APPROVED or REJECTED.
-  string         reviewer_note = 3;
+// ProcessExecContext carries details about a subprocess execution attempt.
+message ProcessExecContext {
+  // Command to execute.
+  string          command = 1;
+  // Arguments passed to the command.
+  repeated string args    = 2;
 }
 
-// ReviewApprovalResponse confirms the review was recorded.
-message ReviewApprovalResponse {
-  ApprovalItem item = 1;
+// CheckActionResponse is the policy engine's verdict for the submitted action.
+message CheckActionResponse {
+  // The enforcement decision.
+  assembly.common.v1.Decision decision            = 1;
+  // Human-readable explanation of the decision (included in audit log).
+  string                      reason              = 2;
+  // Identifier of the policy rule that triggered this decision.
+  string                      policy_rule         = 3;
+  // Populated only when decision = PENDING; identifies the approval queue item.
+  string                      approval_id         = 4;
+  // Populated only when decision = REDACT; describes which fields to redact.
+  RedactInstructions          redact              = 5;
+  // Gateway decision latency in microseconds — used for p99 SLO monitoring.
+  int64                       decision_latency_us = 6;
 }
 
-// ─── ApprovalService ─────────────────────────────────────────────────────────
+// RedactInstructions lists the fields that must be redacted before the action proceeds.
+message RedactInstructions {
+  repeated RedactRule rules = 1;
+}
 
-// ApprovalService manages the human-in-the-loop approval queue.
-// Maps to aa-gateway/src/approval.rs and aa-api/src/routes/approvals.rs.
-service ApprovalService {
-  // GetApproval fetches a single pending or resolved approval item.
-  rpc GetApproval(GetApprovalRequest) returns (GetApprovalResponse);
+// RedactRule specifies one field redaction to apply.
+message RedactRule {
+  // JSONPath of the field to redact (e.g. "$.args.api_key").
+  string field_path  = 1;
+  // Replacement string (e.g. "[REDACTED]", "[PII]").
+  string replacement = 2;
+}
 
-  // ListApprovals returns the approval queue, optionally filtered.
-  rpc ListApprovals(ListApprovalsRequest) returns (ListApprovalsResponse);
+// ── Batch check ───────────────────────────────────────────────────────────────
 
-  // ReviewApproval records a human reviewer's approve or reject decision.
-  rpc ReviewApproval(ReviewApprovalRequest) returns (ReviewApprovalResponse);
+// BatchCheckRequest pre-warms the policy cache with a set of anticipated actions.
+message BatchCheckRequest {
+  repeated CheckActionRequest requests = 1;
+}
+
+// BatchCheckResponse returns one verdict per submitted request, in order.
+message BatchCheckResponse {
+  repeated CheckActionResponse responses = 1;
 }
