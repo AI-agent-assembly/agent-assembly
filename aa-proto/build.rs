@@ -4,8 +4,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Proto files live at the workspace root, one level above this crate.
     // Use CARGO_MANIFEST_DIR at runtime (not the env!() macro) so that the
     // path is resolved when the build script runs, not when it is compiled.
-    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
-        .expect("CARGO_MANIFEST_DIR is not set by Cargo");
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR is not set by Cargo");
     let proto_root = PathBuf::from(&manifest_dir)
         .parent()
         .expect("aa-proto must be a direct child of the workspace root")
