@@ -1,0 +1,44 @@
+name: SonarCloud
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - "aa-*/**"
+      - "dashboard/**"
+      - "sonar-project.properties"
+      - ".github/workflows/sonar.yml"
+  pull_request:
+    branches: [master]
+    paths:
+      - "aa-*/**"
+      - "dashboard/**"
+      - "sonar-project.properties"
+      - ".github/workflows/sonar.yml"
+
+jobs:
+  sonar:
+    name: SonarCloud analysis
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install protobuf compiler
+        run: sudo apt-get install -y protobuf-compiler
+
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+
+      - name: Generate Clippy report
+        run: cargo clippy --all-targets --all-features --message-format=json 2>&1 | tee clippy-report.json || true
+
+      - name: SonarCloud scan
+        uses: SonarSource/sonarqube-scan-action@2f77a1ec69fb1d595b06f35ab27e97605bdef703 # v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

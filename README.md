@@ -1,0 +1,78 @@
+# agent-assembly
+
+> Governance-native runtime for AI agents — open-source core.
+
+[![CI](https://github.com/AI-agent-assembly/agent-assembly/actions/workflows/ci.yml/badge.svg)](https://github.com/AI-agent-assembly/agent-assembly/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/AI-agent-assembly/agent-assembly/branch/master/graph/badge.svg)](https://codecov.io/gh/AI-agent-assembly/agent-assembly)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+
+## Overview
+
+`agent-assembly` is the core runtime that brings governance to AI agents at scale. It provides a three-layer interception model — eBPF kernel hooks, a sidecar proxy, and an SDK shim — backed by a policy engine and audit trail.
+
+## Crate Map
+
+| Crate | Role |
+|---|---|
+| `aa-core` | Pure logic, `no_std` compatible domain types and traits |
+| `aa-runtime` | Tokio async runtime wrapper and lifecycle management |
+| `aa-ebpf` | eBPF-based kernel-level monitoring hooks |
+| `aa-proxy` | Sidecar traffic interception proxy |
+| `aa-ffi-python` | Python FFI bindings via PyO3 |
+| `aa-ffi-node` | Node.js FFI bindings via napi-rs |
+| `aa-wasm` | WebAssembly target via wasm-bindgen |
+| `aa-gateway` | Control plane — policy enforcement and agent registry |
+| `aa-api` | HTTP presentation layer with OpenAPI spec generation (utoipa) |
+| `aa-cli` | `aasm` command-line tool |
+
+## Project Status
+
+🚧 **Alpha — v0.0.1** — API is not stable. Do not use in production.
+
+## Requirements
+
+- Rust stable (≥ 1.75)
+- [cargo-nextest](https://nexte.st/) for running tests
+- [cargo-deny](https://embarkstudios.github.io/cargo-deny/) for dependency checks
+- [Lefthook](https://github.com/evilmartians/lefthook) for git hooks
+
+## Getting Started
+
+```bash
+# Clone
+git clone https://github.com/AI-agent-assembly/agent-assembly.git
+cd agent-assembly
+
+# Install git hooks
+lefthook install
+
+# Build all crates
+cargo build --workspace
+
+# Run tests
+cargo nextest run --workspace
+```
+
+## Repository Layout
+
+```
+agent-assembly/
+├── aa-core/           # Domain types (no_std)
+├── aa-runtime/        # Async runtime wrapper
+├── aa-ebpf/           # eBPF hooks
+├── aa-proxy/          # Sidecar proxy
+├── aa-ffi-python/     # Python bindings
+├── aa-ffi-node/       # Node bindings
+├── aa-wasm/           # WASM target
+├── aa-gateway/        # Control plane
+├── aa-api/            # HTTP API + OpenAPI
+├── aa-cli/            # CLI tool (aasm)
+├── proto/             # Protobuf definitions
+├── openapi/           # OpenAPI spec
+├── dashboard/         # Community web UI (React + TypeScript)
+└── policy-examples/   # Example governance policies
+```
+
+## License
+
+Licensed under the [Apache License, Version 2.0](LICENSE).

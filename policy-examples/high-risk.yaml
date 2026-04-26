@@ -1,0 +1,47 @@
+apiVersion: agent-assembly/v1
+kind: Policy
+metadata:
+  name: high-risk-full-block
+  description: >
+    Strict policy for high-risk AI agents. All actions are blocked by
+    default. Permitted actions require mandatory review, full audit trail,
+    and automatic quarantine on anomaly detection.
+
+spec:
+  tier: high
+
+  rules:
+    - id: block-all-by-default
+      description: Deny every action not explicitly permitted below.
+      match:
+        actions: ["*"]
+      effect: deny
+      audit: true
+
+    - id: permit-readonly-with-review
+      description: Allow read-only actions only after mandatory review sign-off.
+      match:
+        actions:
+          - "fs:read"
+          - "db:read"
+          - "api:get"
+      effect: require_approval
+      approval:
+        timeout_seconds: 60
+        approvers: ["security-team", "ops-team"]
+        min_approvals: 2
+      audit: true
+
+  anomaly:
+    on_detect: quarantine
+    quarantine_duration_seconds: 3600
+
+  notifications:
+    on_block: true
+    on_allow: true
+    on_anomaly: true
+    channels:
+      - type: slack
+        target: "#ai-governance-alerts"
+      - type: pagerduty
+        severity: critical

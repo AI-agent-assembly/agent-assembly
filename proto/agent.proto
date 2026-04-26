@@ -1,0 +1,147 @@
+syntax = "proto3";
+
+package assembly.agent.v1;
+
+import "common.proto";
+
+// AgentLifecycleService handles paths ① (runtime → gateway) and ④ (gateway → runtime).
+//
+//  ① runtime → gateway: Register, Heartbeat, Deregister  (unary)
+//  ④ gateway → runtime: ControlStream                     (server-streaming)
+//
+// Consumed by: aa-runtime/src/gateway_client.rs (client side)
+//              aa-gateway/src/registry.rs        (server side)
+service AgentLifecycleService {
+  // Register is called once on agent startup to join the governance gateway.
+  rpc Register(RegisterRequest) returns (RegisterResponse);
+
+  // Heartbeat is called periodically so the gateway can detect offline agents.
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+
+  // Deregister is called on clean agent shutdown to remove it from the registry.
+  rpc Deregister(DeregisterRequest) returns (DeregisterResponse);
+
+  // ControlStream is a server-streaming RPC: the runtime opens a persistent
+  // connection and receives gateway-initiated commands (suspend, resume, kill, etc.).
+  rpc ControlStream(ControlStreamRequest) returns (stream ControlCommand);
+}
+
+// ── Register ─────────────────────────────────────────────────────────────────
+
+message RegisterRequest {
+  // Composite agent identity (org + team + agent_id).
+  assembly.common.v1.AgentId     agent_id   = 1;
+  // Human-readable agent name.
+  string                         name       = 2;
+  // Agent framework name (e.g. "langgraph", "crewai", "custom").
+  string                         framework  = 3;
+  // Semver version of the agent process.
+  string                         version    = 4;
+  // Risk tier the agent is registering under.
+  assembly.common.v1.RiskTier    risk_tier  = 5;
+  // Tools the agent declares it intends to use — used for pre-registration policy check.
+  repeated string                tool_names = 6;
+  // Ed25519 public key for request signing verification by the gateway.
+  string                         public_key = 7;
+  // Arbitrary key-value metadata (e.g. team, owner, git_commit, environment).
+  map<string, string>            metadata   = 8;
+}
+
+message RegisterResponse {
+  // Short-lived credential token issued by the gateway; must be carried on all subsequent requests.
+  string credential_token       = 1;
+  // ID of the policy assigned to this agent at registration time.
+  string assigned_policy        = 2;
+  // How often the gateway expects a heartbeat (seconds).
+  int64  heartbeat_interval_sec = 3;
+}
+
+// ── Heartbeat ─────────────────────────────────────────────────────────────────
+
+message HeartbeatRequest {
+  // Composite identity of the agent sending the heartbeat.
+  assembly.common.v1.AgentId agent_id         = 1;
+  // Credential token from RegisterResponse; validated on every heartbeat.
+  string                     credential_token = 2;
+  // Number of concurrent runs executing at heartbeat time.
+  int32                      active_runs      = 3;
+  // Total actions taken since the previous heartbeat.
+  int64                      actions_count    = 4;
+}
+
+message HeartbeatResponse {
+  // If true, the agent's policy has changed — the agent should re-fetch it.
+  bool policy_updated = 1;
+  // If true, the gateway is requesting the agent to pause execution.
+  bool should_suspend = 2;
+}
+
+// ── Deregister ────────────────────────────────────────────────────────────────
+
+message DeregisterRequest {
+  // Composite identity of the agent deregistering.
+  assembly.common.v1.AgentId agent_id         = 1;
+  // Credential token for authentication.
+  string                     credential_token = 2;
+  // Optional human-readable reason for deregistration (e.g. "clean shutdown").
+  string                     reason           = 3;
+}
+
+message DeregisterResponse {
+  // Whether the deregistration was accepted by the gateway.
+  bool   success  = 1;
+  // Echo of the deregistered agent_id for caller confirmation.
+  string agent_id = 2;
+}
+
+// ── Control stream ────────────────────────────────────────────────────────────
+
+// ControlStreamRequest opens a persistent server-streaming channel.
+// The runtime holds this connection open for the lifetime of the agent process.
+message ControlStreamRequest {
+  // Composite identity of the subscribing agent.
+  assembly.common.v1.AgentId agent_id         = 1;
+  // Credential token; gateway validates before accepting the stream.
+  string                     credential_token = 2;
+}
+
+// ControlCommand is a server-initiated message pushed down the control stream.
+message ControlCommand {
+  oneof command {
+    // Request the agent to pause all action dispatching.
+    SuspendCommand      suspend       = 1;
+    // Request the agent to resume normal operation after a suspension.
+    ResumeCommand       resume        = 2;
+    // Notify the agent that its policy has been updated; provides the new version.
+    PolicyUpdateCommand policy_update = 3;
+    // Forced termination — reserved for CRITICAL risk situations only.
+    KillCommand         kill          = 4;
+  }
+}
+
+// SuspendCommand asks the agent to pause action dispatching gracefully.
+message SuspendCommand {
+  // Human-readable reason for the suspension (shown in audit log).
+  string reason = 1;
+}
+
+// ResumeCommand lifts a previously issued SuspendCommand.
+message ResumeCommand {
+  // Optional note from the reviewer who lifted the suspension.
+  string note = 1;
+}
+
+// PolicyUpdateCommand notifies the agent that its assigned policy has changed.
+message PolicyUpdateCommand {
+  // ID of the newly assigned policy.
+  string new_policy_id    = 1;
+  // Serialised policy bytes; agent may cache this for low-latency local checks.
+  bytes  policy_bytes     = 2;
+}
+
+// KillCommand instructs the agent to terminate immediately.
+// Must only be issued at CRITICAL risk tier escalation.
+message KillCommand {
+  // Mandatory reason; written to the immutable audit log.
+  string reason = 1;
+}

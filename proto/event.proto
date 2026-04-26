@@ -1,0 +1,99 @@
+syntax = "proto3";
+
+package assembly.event.v1;
+
+import "common.proto";
+import "audit.proto";
+
+// EnvelopedEvent is the unified message published to the internal event bus
+// (Pub/Sub or Kafka) by the gateway for downstream consumers.
+//
+// Paths ⑤ and ⑥:
+//   ⑤ gateway → notification-service  (alerts, approvals, agent status)
+//   ⑥ gateway → analytics-service     (audit events, budget alerts)
+//
+// No service definition — this is a message-only proto used as an envelope
+// for the event bus. Publishing and subscribing are handled by the broker SDK.
+message EnvelopedEvent {
+  // Unique identifier for this envelope (UUID v7).
+  string                       event_id     = 1;
+  // Semantic event type for broker-side routing and filtering.
+  // Examples: "audit.action", "alert.triggered", "approval.requested".
+  string                       event_type   = 2;
+  // Wall-clock time when this envelope was published, in Unix milliseconds.
+  assembly.common.v1.Timestamp published_at = 3;
+  // Identifier of the service that emitted this envelope (e.g. "aa-gateway").
+  string                       source       = 4;
+
+  // Typed event payload. Exactly one field must be set.
+  oneof payload {
+    // A governance audit event forwarded from the audit trail.
+    assembly.audit.v1.AuditEvent  audit_event      = 10;
+    // A risk alert raised by the policy engine.
+    AlertTriggered                alert            = 11;
+    // A human-in-the-loop approval request awaiting reviewer action.
+    ApprovalRequested             approval_request = 12;
+    // An agent lifecycle status transition.
+    AgentStatusChanged            agent_status     = 13;
+    // A budget or rate-limit threshold has been reached.
+    BudgetThresholdHit            budget_alert     = 14;
+  }
+}
+
+// ── Payload message types ─────────────────────────────────────────────────────
+
+// AlertTriggered is emitted when the policy engine raises a risk alert.
+message AlertTriggered {
+  // ID of the alert rule that was triggered.
+  string                      alert_rule_id = 1;
+  // Human-readable name of the alert rule.
+  string                      alert_name    = 2;
+  // Severity of the alert, mapped to the agent risk tier scale.
+  assembly.common.v1.RiskTier severity      = 3;
+  // Agent that triggered the alert.
+  assembly.common.v1.AgentId  agent_id      = 4;
+  // Human-readable description of why the alert was raised.
+  string                      description   = 5;
+  // Additional key-value context for notification rendering.
+  map<string, string>         context       = 6;
+}
+
+// ApprovalRequested is emitted when an action is held for human review.
+message ApprovalRequested {
+  // Unique identifier of the approval queue item.
+  string                      approval_id         = 1;
+  // Agent whose action is pending review.
+  assembly.common.v1.AgentId  agent_id            = 2;
+  // Human-readable one-line summary of the action awaiting approval.
+  string                      action_summary      = 3;
+  // Full action context serialised as JSON for the reviewer UI.
+  bytes                       action_context_json = 4;
+  // Unix millisecond deadline — approval auto-denied after this timestamp.
+  int64                       expires_at_unix_ms  = 5;
+  // Account IDs of reviewers who should be notified (empty = broadcast).
+  repeated string             notify_user_ids     = 6;
+}
+
+// AgentStatusChanged is emitted on every agent lifecycle transition.
+message AgentStatusChanged {
+  // Agent whose status changed.
+  assembly.common.v1.AgentId agent_id   = 1;
+  // Previous lifecycle status (e.g. "registered", "suspended").
+  string                     old_status = 2;
+  // New lifecycle status (e.g. "active", "suspended", "deregistered").
+  string                     new_status = 3;
+  // Human-readable reason for the transition.
+  string                     reason     = 4;
+}
+
+// BudgetThresholdHit is emitted when an agent's spend crosses a configured limit.
+message BudgetThresholdHit {
+  // Agent whose budget threshold was crossed.
+  assembly.common.v1.AgentId agent_id      = 1;
+  // Cumulative spend in the current billing window (USD).
+  double                     current_spend = 2;
+  // Configured budget ceiling for this agent (USD).
+  double                     budget_limit  = 3;
+  // Percentage of the budget consumed (0-100+).
+  int32                      percent_used  = 4;
+}

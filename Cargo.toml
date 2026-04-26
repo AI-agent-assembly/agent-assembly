@@ -1,0 +1,32 @@
+[workspace]
+members = [
+    "aa-core",
+    "aa-proto",
+    "aa-runtime",
+    "aa-ebpf",
+    "aa-proxy",
+    "aa-ffi-python",
+    "aa-ffi-node",
+    "aa-wasm",
+    "aa-gateway",
+    "aa-api",
+    "aa-cli",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.0.1"
+edition = "2021"
+license = "Apache-2.0"
+license-file = "LICENSE"
+repository = "https://github.com/AI-agent-assembly/agent-assembly"
+homepage = "https://github.com/AI-agent-assembly/agent-assembly"
+authors = ["Agent Assembly Contributors"]
+
+[workspace.lints.clippy]
+all = "warn"
+correctness = "deny"
+suspicious = "deny"
+complexity = "warn"
+perf = "warn"
+style = "warn"

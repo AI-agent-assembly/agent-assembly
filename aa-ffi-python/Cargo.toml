@@ -1,0 +1,17 @@
+[package]
+name = "aa-ffi-python"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Python FFI bindings for Agent Assembly via PyO3"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+aa-core = { path = "../aa-core" }
+pyo3 = { version = "0.24", features = ["extension-module"] }
+
+[lints]
+workspace = true

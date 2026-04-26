@@ -28,3 +28,7 @@ codecov.xml
 
 # Lefthook
 .lefthook/
+
+# Node / dashboard
+node_modules/
+dashboard/dist/

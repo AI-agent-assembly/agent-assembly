@@ -1,0 +1,15 @@
+[package]
+name = "aa-runtime"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Tokio async runtime wrapper and lifecycle management for Agent Assembly"
+
+[dependencies]
+aa-core  = { path = "../aa-core" }
+aa-proto = { path = "../aa-proto" }
+tokio    = { version = "1", features = ["full"] }
+
+[lints]
+workspace = true

@@ -1,0 +1,15 @@
+[package]
+name = "aa-proxy"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Sidecar traffic interception proxy for Agent Assembly"
+
+[dependencies]
+aa-core = { path = "../aa-core" }
+aa-runtime = { path = "../aa-runtime" }
+tokio = { version = "1", features = ["full"] }
+
+[lints]
+workspace = true

@@ -1,0 +1,142 @@
+syntax = "proto3";
+
+package assembly.policy.v1;
+
+import "common.proto";
+
+// PolicyService handles path ② (runtime → gateway) — the hot path for every
+// agent action. Target latency: < 5 ms p99.
+//
+// Consumed by: aa-runtime/src/gateway_client.rs (client side)
+//              aa-gateway/src/policy_engine.rs   (server side)
+service PolicyService {
+  // CheckAction evaluates a single action before the agent dispatches it.
+  // Called on every intercepted action — must be as fast as possible.
+  rpc CheckAction(CheckActionRequest) returns (CheckActionResponse);
+
+  // BatchCheck pre-warms the policy cache for a set of anticipated actions.
+  // Called at agent startup or when entering a new task context.
+  rpc BatchCheck(BatchCheckRequest) returns (BatchCheckResponse);
+}
+
+// ── Check ─────────────────────────────────────────────────────────────────────
+
+message CheckActionRequest {
+  // Composite identity of the agent requesting the check.
+  assembly.common.v1.AgentId    agent_id         = 1;
+  // Credential token issued at registration; validated on every call.
+  string                        credential_token = 2;
+  // Run-level trace ID for distributed tracing correlation.
+  string                        trace_id         = 3;
+  // Action-level span ID.
+  string                        span_id          = 4;
+  // High-level action category — determines which policy rules are evaluated.
+  assembly.common.v1.ActionType action_type      = 5;
+  // Detailed context for the specific action type.
+  ActionContext                 context          = 6;
+}
+
+// ActionContext carries type-specific details for the action under evaluation.
+// Exactly one field must be set; the populated field must match action_type.
+message ActionContext {
+  oneof action {
+    LLMCallContext     llm_call     = 1;
+    ToolCallContext    tool_call    = 2;
+    FileOpContext      file_op      = 3;
+    NetworkCallContext network_call = 4;
+    ProcessExecContext process_exec = 5;
+  }
+}
+
+// LLMCallContext carries details about a call to a large-language model.
+message LLMCallContext {
+  // Model identifier (e.g. "gpt-4o", "claude-3-5-sonnet", "gemini-1.5-pro").
+  string model         = 1;
+  // Estimated prompt token count (pre-execution estimate from the SDK layer).
+  int32  prompt_tokens = 2;
+  // Whether the SDK-layer PII scan flagged sensitive data in the prompt.
+  bool   contains_pii  = 3;
+}
+
+// ToolCallContext carries details about a tool or MCP server invocation.
+message ToolCallContext {
+  // Registered tool name (e.g. "web_search", "run_python").
+  string tool_name   = 1;
+  // Source system ("mcp", "langchain", "function").
+  string tool_source = 2;
+  // JSON-encoded argument map; policy engine can inspect individual fields.
+  bytes  args_json   = 3;
+  // Target URL if the tool makes an HTTP request.
+  string target_url  = 4;
+}
+
+// FileOpContext carries details about a filesystem operation.
+message FileOpContext {
+  // Operation type: "read", "write", "delete", or "create".
+  string operation         = 1;
+  // Absolute path of the file being accessed.
+  string path              = 2;
+  // Whether the eBPF layer flagged this path as sensitive (e.g. /etc, ~/.ssh).
+  bool   is_sensitive_path = 3;
+}
+
+// NetworkCallContext carries details about an outbound network request.
+message NetworkCallContext {
+  // Target hostname.
+  string host         = 1;
+  // Target port.
+  int32  port         = 2;
+  // Protocol: "https", "grpc", "ws", "tcp".
+  string protocol     = 3;
+  // Whether the target host is in the org-level network allowlist.
+  bool   in_allowlist = 4;
+}
+
+// ProcessExecContext carries details about a subprocess execution attempt.
+message ProcessExecContext {
+  // Command to execute.
+  string          command = 1;
+  // Arguments passed to the command.
+  repeated string args    = 2;
+}
+
+// CheckActionResponse is the policy engine's verdict for the submitted action.
+message CheckActionResponse {
+  // The enforcement decision.
+  assembly.common.v1.Decision decision            = 1;
+  // Human-readable explanation of the decision (included in audit log).
+  string                      reason              = 2;
+  // Identifier of the policy rule that triggered this decision.
+  string                      policy_rule         = 3;
+  // Populated only when decision = PENDING; identifies the approval queue item.
+  string                      approval_id         = 4;
+  // Populated only when decision = REDACT; describes which fields to redact.
+  RedactInstructions          redact              = 5;
+  // Gateway decision latency in microseconds — used for p99 SLO monitoring.
+  int64                       decision_latency_us = 6;
+}
+
+// RedactInstructions lists the fields that must be redacted before the action proceeds.
+message RedactInstructions {
+  repeated RedactRule rules = 1;
+}
+
+// RedactRule specifies one field redaction to apply.
+message RedactRule {
+  // JSONPath of the field to redact (e.g. "$.args.api_key").
+  string field_path  = 1;
+  // Replacement string (e.g. "[REDACTED]", "[PII]").
+  string replacement = 2;
+}
+
+// ── Batch check ───────────────────────────────────────────────────────────────
+
+// BatchCheckRequest pre-warms the policy cache with a set of anticipated actions.
+message BatchCheckRequest {
+  repeated CheckActionRequest requests = 1;
+}
+
+// BatchCheckResponse returns one verdict per submitted request, in order.
+message BatchCheckResponse {
+  repeated CheckActionResponse responses = 1;
+}
