@@ -7,17 +7,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .expect("aa-proto must be a direct child of the workspace root")
         .join("proto");
 
+    // File names are relative to proto_root (the include path).
+    // protox resolves imports against include paths, so passing full absolute
+    // paths as file names causes "not in any include path" errors.
     let proto_files = [
-        proto_root.join("common.proto"),
-        proto_root.join("agent.proto"),
-        proto_root.join("policy.proto"),
-        proto_root.join("audit.proto"),
-        proto_root.join("event.proto"),
+        "common.proto",
+        "agent.proto",
+        "policy.proto",
+        "audit.proto",
+        "event.proto",
     ];
 
     // protox compiles the proto files to a FileDescriptorSet entirely in Rust —
     // no system `protoc` binary required.
-    let file_descriptor_set = protox::compile(&proto_files, [&proto_root])?;
+    let file_descriptor_set = protox::compile(proto_files, [&proto_root])?;
 
     tonic_build::configure()
         .build_server(true)
