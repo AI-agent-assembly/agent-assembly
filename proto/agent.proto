@@ -1,146 +1,147 @@
 syntax = "proto3";
 
-package agent_assembly.v1;
+package assembly.agent.v1;
 
-// ─── Identity model ──────────────────────────────────────────────────────────
+import "common.proto";
 
-// AgentRuntime identifies the language runtime hosting the agent.
-// Maps to aa-core/src/identity.rs AgentRuntime enum.
-enum AgentRuntime {
-  AGENT_RUNTIME_UNSPECIFIED = 0;
-  AGENT_RUNTIME_PYTHON      = 1;
-  AGENT_RUNTIME_NODE        = 2;
-  AGENT_RUNTIME_WASM        = 3;
-  AGENT_RUNTIME_NATIVE      = 4;
+// AgentLifecycleService handles paths ① (runtime → gateway) and ④ (gateway → runtime).
+//
+//  ① runtime → gateway: Register, Heartbeat, Deregister  (unary)
+//  ④ gateway → runtime: ControlStream                     (server-streaming)
+//
+// Consumed by: aa-runtime/src/gateway_client.rs (client side)
+//              aa-gateway/src/registry.rs        (server side)
+service AgentLifecycleService {
+  // Register is called once on agent startup to join the governance gateway.
+  rpc Register(RegisterRequest) returns (RegisterResponse);
+
+  // Heartbeat is called periodically so the gateway can detect offline agents.
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+
+  // Deregister is called on clean agent shutdown to remove it from the registry.
+  rpc Deregister(DeregisterRequest) returns (DeregisterResponse);
+
+  // ControlStream is a server-streaming RPC: the runtime opens a persistent
+  // connection and receives gateway-initiated commands (suspend, resume, kill, etc.).
+  rpc ControlStream(ControlStreamRequest) returns (stream ControlCommand);
 }
 
-// AgentStatus enumerates the lifecycle states an agent can be in.
-// Maps to aa-core/src/lifecycle.rs AgentStatus enum.
-enum AgentStatus {
-  AGENT_STATUS_UNSPECIFIED  = 0;
-  AGENT_STATUS_ACTIVE       = 1;
-  AGENT_STATUS_INACTIVE     = 2;
-  AGENT_STATUS_QUARANTINED  = 3;
+// ── Register ─────────────────────────────────────────────────────────────────
+
+message RegisterRequest {
+  // Composite agent identity (org + team + agent_id).
+  assembly.common.v1.AgentId     agent_id   = 1;
+  // Human-readable agent name.
+  string                         name       = 2;
+  // Agent framework name (e.g. "langgraph", "crewai", "custom").
+  string                         framework  = 3;
+  // Semver version of the agent process.
+  string                         version    = 4;
+  // Risk tier the agent is registering under.
+  assembly.common.v1.RiskTier    risk_tier  = 5;
+  // Tools the agent declares it intends to use — used for pre-registration policy check.
+  repeated string                tool_names = 6;
+  // Ed25519 public key for request signing verification by the gateway.
+  string                         public_key = 7;
+  // Arbitrary key-value metadata (e.g. team, owner, git_commit, environment).
+  map<string, string>            metadata   = 8;
 }
 
-// Agent represents a registered AI agent in the governance system.
-// Maps to aa-core/src/identity.rs Agent struct.
-message Agent {
-  // Unique identifier assigned by the gateway on registration.
-  string id = 1;
-
-  // Human-readable name supplied by the caller.
-  string name = 2;
-
-  // Language runtime hosting this agent.
-  AgentRuntime runtime = 3;
-
-  // Semver version string of the agent process (e.g. "1.2.3").
-  string version = 4;
-
-  // Current lifecycle status.
-  AgentStatus status = 5;
-
-  // ISO 8601 UTC timestamp of initial registration.
-  string registered_at = 6;
-
-  // ISO 8601 UTC timestamp of the most recent heartbeat.
-  string last_heartbeat_at = 7;
-
-  // Arbitrary key-value labels attached by the registering process.
-  map<string, string> labels = 8;
+message RegisterResponse {
+  // Short-lived credential token issued by the gateway; must be carried on all subsequent requests.
+  string credential_token       = 1;
+  // ID of the policy assigned to this agent at registration time.
+  string assigned_policy        = 2;
+  // How often the gateway expects a heartbeat (seconds).
+  int64  heartbeat_interval_sec = 3;
 }
 
-// ─── Register ────────────────────────────────────────────────────────────────
+// ── Heartbeat ─────────────────────────────────────────────────────────────────
 
-// RegisterAgentRequest is the input for registering a new agent.
-message RegisterAgentRequest {
-  string                name    = 1;
-  AgentRuntime          runtime = 2;
-  string                version = 3;
-  map<string, string>   labels  = 4;
-}
-
-// RegisterAgentResponse returns the newly created agent record.
-message RegisterAgentResponse {
-  Agent agent = 1;
-}
-
-// ─── Heartbeat ───────────────────────────────────────────────────────────────
-
-// HeartbeatRequest is sent periodically by the sidecar to keep the agent active.
-// Maps to aa-core/src/lifecycle.rs Heartbeat.
 message HeartbeatRequest {
-  string agent_id = 1;
+  // Composite identity of the agent sending the heartbeat.
+  assembly.common.v1.AgentId agent_id         = 1;
+  // Credential token from RegisterResponse; validated on every heartbeat.
+  string                     credential_token = 2;
+  // Number of concurrent runs executing at heartbeat time.
+  int32                      active_runs      = 3;
+  // Total actions taken since the previous heartbeat.
+  int64                      actions_count    = 4;
 }
 
-// HeartbeatResponse acknowledges the heartbeat and echoes the current status.
 message HeartbeatResponse {
-  AgentStatus status           = 1;
-  string      next_deadline_at = 2;  // ISO 8601: when the next heartbeat is due.
+  // If true, the agent's policy has changed — the agent should re-fetch it.
+  bool policy_updated = 1;
+  // If true, the gateway is requesting the agent to pause execution.
+  bool should_suspend = 2;
 }
 
-// ─── Deregister ──────────────────────────────────────────────────────────────
+// ── Deregister ────────────────────────────────────────────────────────────────
 
-// DeregisterAgentRequest is sent when an agent shuts down gracefully.
-// Maps to aa-core/src/lifecycle.rs Deregister.
-message DeregisterAgentRequest {
-  string agent_id = 1;
-  // Optional human-readable reason for the deregistration.
-  string reason   = 2;
+message DeregisterRequest {
+  // Composite identity of the agent deregistering.
+  assembly.common.v1.AgentId agent_id         = 1;
+  // Credential token for authentication.
+  string                     credential_token = 2;
+  // Optional human-readable reason for deregistration (e.g. "clean shutdown").
+  string                     reason           = 3;
 }
 
-// DeregisterAgentResponse confirms the deregistration.
-message DeregisterAgentResponse {
-  bool   success = 1;
+message DeregisterResponse {
+  // Whether the deregistration was accepted by the gateway.
+  bool   success  = 1;
+  // Echo of the deregistered agent_id for caller confirmation.
   string agent_id = 2;
 }
 
-// ─── Get / List ───────────────────────────────────────────────────────────────
+// ── Control stream ────────────────────────────────────────────────────────────
 
-// GetAgentRequest identifies an agent to retrieve.
-message GetAgentRequest {
-  string id = 1;
+// ControlStreamRequest opens a persistent server-streaming channel.
+// The runtime holds this connection open for the lifetime of the agent process.
+message ControlStreamRequest {
+  // Composite identity of the subscribing agent.
+  assembly.common.v1.AgentId agent_id         = 1;
+  // Credential token; gateway validates before accepting the stream.
+  string                     credential_token = 2;
 }
 
-// GetAgentResponse returns a single agent record.
-message GetAgentResponse {
-  Agent agent = 1;
+// ControlCommand is a server-initiated message pushed down the control stream.
+message ControlCommand {
+  oneof command {
+    // Request the agent to pause all action dispatching.
+    SuspendCommand      suspend       = 1;
+    // Request the agent to resume normal operation after a suspension.
+    ResumeCommand       resume        = 2;
+    // Notify the agent that its policy has been updated; provides the new version.
+    PolicyUpdateCommand policy_update = 3;
+    // Forced termination — reserved for CRITICAL risk situations only.
+    KillCommand         kill          = 4;
+  }
 }
 
-// ListAgentsRequest provides optional filters for agent listing.
-message ListAgentsRequest {
-  // Optional: only return agents in this status. Omit to return all.
-  AgentStatus  status_filter  = 1;
-  // Optional: only return agents with this runtime.
-  AgentRuntime runtime_filter = 2;
-  int32        page_size      = 3;
-  string       page_token     = 4;
+// SuspendCommand asks the agent to pause action dispatching gracefully.
+message SuspendCommand {
+  // Human-readable reason for the suspension (shown in audit log).
+  string reason = 1;
 }
 
-// ListAgentsResponse returns a page of matching agents.
-message ListAgentsResponse {
-  repeated Agent agents         = 1;
-  string         next_page_token = 2;
+// ResumeCommand lifts a previously issued SuspendCommand.
+message ResumeCommand {
+  // Optional note from the reviewer who lifted the suspension.
+  string note = 1;
 }
 
-// ─── Service ─────────────────────────────────────────────────────────────────
+// PolicyUpdateCommand notifies the agent that its assigned policy has changed.
+message PolicyUpdateCommand {
+  // ID of the newly assigned policy.
+  string new_policy_id    = 1;
+  // Serialised policy bytes; agent may cache this for low-latency local checks.
+  bytes  policy_bytes     = 2;
+}
 
-// AgentService manages agent registration, heartbeat, and lifecycle.
-// Consumed by aa-runtime/src/gateway_client.rs.
-service AgentService {
-  // RegisterAgent registers a new agent with the governance gateway.
-  rpc RegisterAgent(RegisterAgentRequest) returns (RegisterAgentResponse);
-
-  // Heartbeat keeps an active agent from being marked inactive.
-  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
-
-  // DeregisterAgent gracefully removes an agent from the registry.
-  rpc DeregisterAgent(DeregisterAgentRequest) returns (DeregisterAgentResponse);
-
-  // GetAgent retrieves a single agent by its ID.
-  rpc GetAgent(GetAgentRequest) returns (GetAgentResponse);
-
-  // ListAgents returns a paginated list of agents with optional filters.
-  rpc ListAgents(ListAgentsRequest) returns (ListAgentsResponse);
+// KillCommand instructs the agent to terminate immediately.
+// Must only be issued at CRITICAL risk tier escalation.
+message KillCommand {
+  // Mandatory reason; written to the immutable audit log.
+  string reason = 1;
 }
