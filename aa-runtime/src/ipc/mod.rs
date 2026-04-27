@@ -1,1 +1,8 @@
-//! Unix domain socket IPC server — implemented in AAASM-30.
+//! Unix domain socket IPC server for local SDK-to-runtime communication.
+
+pub mod codec;
+pub mod message;
+pub mod server;
+
+pub use message::{IpcFrame, IpcResponse};
+pub use server::IpcServer;

@@ -103,6 +103,7 @@ version = "0.0.1"
 dependencies = [
  "aa-core",
  "aa-proto",
+ "prost",
  "tokio",
  "tokio-util",
  "tracing",
