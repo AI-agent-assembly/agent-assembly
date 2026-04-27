@@ -157,3 +157,7 @@ agent_id = AgentId(org_id="acme", team_id="platform", id="did:key:z6Mk...")
 | protocol/v1 | protocol/v1 only (first version) |
 | protocol/v2 | protocol/v1, protocol/v2 |
 | protocol/v3 | protocol/v2, protocol/v3 (v1 support may be dropped) |
+
+---
+
+For the blank template to copy when writing a new migration guide, see [`docs/migration/template.md`](migration/template.md).
