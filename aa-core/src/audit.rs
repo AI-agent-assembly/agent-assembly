@@ -277,6 +277,29 @@ impl core::fmt::Display for AuditEntry {
 }
 
 // ---------------------------------------------------------------------------
+// AuditLogError
+// ---------------------------------------------------------------------------
+
+/// Error returned by [`AuditLog::push`] when an appended entry violates
+/// the log's monotonicity or hash-chain invariants.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AuditLogError {
+    /// The entry's `seq` did not equal the log's expected next sequence number.
+    SequenceGap {
+        /// The sequence number the log expected.
+        expected: u64,
+        /// The sequence number the entry carried.
+        got: u64,
+    },
+    /// The entry's `previous_hash` did not match the `entry_hash` of the
+    /// last entry in the log (or the genesis zero-hash for the first entry).
+    HashChainBroken {
+        /// The `seq` of the entry that broke the chain.
+        at_seq: u64,
+    },
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
