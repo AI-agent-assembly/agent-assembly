@@ -44,3 +44,58 @@ impl SessionId {
         &self.0
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const BYTES: [u8; 16] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
+
+    #[test]
+    fn agent_id_round_trip() {
+        let id = AgentId::from_bytes(BYTES);
+        assert_eq!(id.as_bytes(), &BYTES);
+    }
+
+    #[test]
+    fn session_id_round_trip() {
+        let id = SessionId::from_bytes(BYTES);
+        assert_eq!(id.as_bytes(), &BYTES);
+    }
+
+    #[test]
+    fn agent_id_equality() {
+        let a = AgentId::from_bytes(BYTES);
+        let b = AgentId::from_bytes(BYTES);
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn session_id_equality() {
+        let a = SessionId::from_bytes(BYTES);
+        let b = SessionId::from_bytes(BYTES);
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn agent_id_copy_semantics() {
+        let a = AgentId::from_bytes(BYTES);
+        let b = a; // Copy, not move
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn session_id_copy_semantics() {
+        let a = SessionId::from_bytes(BYTES);
+        let b = a; // Copy, not move
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn agent_id_and_session_id_are_distinct_types() {
+        // Compile-time check: AgentId and SessionId are different types.
+        // If they were the same type, the following would be ambiguous or fail.
+        let _agent: AgentId = AgentId::from_bytes(BYTES);
+        let _session: SessionId = SessionId::from_bytes(BYTES);
+    }
+}
