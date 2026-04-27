@@ -23,13 +23,21 @@ use crate::{AgentId, SessionId};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum AuditEventType {
+    /// A tool call was intercepted by the governance layer before execution.
     ToolCallIntercepted = 0,
+    /// An evaluated action violated an active policy rule.
     PolicyViolation = 1,
+    /// A credential or secret present in tool arguments was blocked.
     CredentialLeakBlocked = 2,
+    /// Human approval was requested before the action could proceed.
     ApprovalRequested = 3,
+    /// A pending human approval request was granted.
     ApprovalGranted = 4,
+    /// A pending human approval request was denied.
     ApprovalDenied = 5,
+    /// The session budget is approaching its configured limit.
     BudgetLimitApproached = 6,
+    /// The session budget has been exhausted; further actions are blocked.
     BudgetLimitExceeded = 7,
 }
 
