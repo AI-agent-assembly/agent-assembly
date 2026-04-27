@@ -108,8 +108,41 @@ impl CaStore {
     }
 
     /// Generate a DER-encoded leaf certificate for `domain`, signed by this CA.
-    pub fn sign_cert(&self, _domain: &str) -> Result<CertifiedKey, ProxyError> {
-        todo!()
+    pub fn sign_cert(&self, domain: &str) -> Result<CertifiedKey, ProxyError> {
+        // Reconstruct the CA signing key from stored PEM.
+        let ca_key = KeyPair::from_pem(&self.ca_key_pem)
+            .map_err(|e| ProxyError::CertGen(e.to_string()))?;
+
+        // Rebuild CA params from the same settings used in load_or_create so we
+        // can produce a signing-capable Certificate (rcgen 0.13 requires self_signed
+        // to obtain an issuer Certificate; from_ca_cert_pem requires x509-parser feature).
+        let mut ca_params = CertificateParams::new(vec![])
+            .map_err(|e| ProxyError::CertGen(e.to_string()))?;
+        ca_params.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
+        ca_params.key_usages = vec![KeyUsagePurpose::KeyCertSign, KeyUsagePurpose::CrlSign];
+        ca_params.distinguished_name.push(DnType::CommonName, "Agent Assembly CA");
+        let ca_cert = ca_params.self_signed(&ca_key)
+            .map_err(|e| ProxyError::CertGen(e.to_string()))?;
+
+        // Generate a fresh EC P-256 leaf key and cert for `domain`.
+        let leaf_key = KeyPair::generate_for(&PKCS_ECDSA_P256_SHA256)
+            .map_err(|e| ProxyError::CertGen(e.to_string()))?;
+        let mut leaf_params = CertificateParams::new(vec![domain.to_string()])
+            .map_err(|e| ProxyError::CertGen(e.to_string()))?;
+        let now = OffsetDateTime::now_utc();
+        leaf_params.not_before = now;
+        leaf_params.not_after  = now
+            .checked_add(Duration::days(365))
+            .expect("date arithmetic cannot overflow for 1-year span");
+
+        let leaf_cert = leaf_params
+            .signed_by(&leaf_key, &ca_cert, &ca_key)
+            .map_err(|e| ProxyError::CertGen(e.to_string()))?;
+
+        Ok(CertifiedKey {
+            cert_der: leaf_cert.der().to_vec(),
+            key_der:  leaf_key.serialize_der(),
+        })
     }
 
     /// Install the CA certificate into the macOS System Keychain as a trusted root.
@@ -171,5 +204,33 @@ mod tests {
         let ca1 = CaStore::load_or_create(dir.path()).await.unwrap();
         let ca2 = CaStore::load_or_create(dir.path()).await.unwrap();
         assert_eq!(ca1.ca_cert_pem, ca2.ca_cert_pem, "reload must return identical cert");
+    }
+
+    #[tokio::test]
+    async fn sign_cert_returns_non_empty_der() {
+        let dir = TempDir::new().unwrap();
+        let ca = CaStore::load_or_create(dir.path()).await.unwrap();
+        let ck = ca.sign_cert("api.openai.com").unwrap();
+        assert!(!ck.cert_der.is_empty(), "cert DER must not be empty");
+        assert!(!ck.key_der.is_empty(), "key DER must not be empty");
+    }
+
+    #[tokio::test]
+    async fn sign_cert_different_domains_produce_different_certs() {
+        let dir = TempDir::new().unwrap();
+        let ca = CaStore::load_or_create(dir.path()).await.unwrap();
+        let ck1 = ca.sign_cert("api.openai.com").unwrap();
+        let ck2 = ca.sign_cert("api.anthropic.com").unwrap();
+        assert_ne!(ck1.cert_der, ck2.cert_der, "different domains must produce different certs");
+    }
+
+    #[tokio::test]
+    async fn sign_cert_same_domain_produces_fresh_cert_each_call() {
+        let dir = TempDir::new().unwrap();
+        let ca = CaStore::load_or_create(dir.path()).await.unwrap();
+        let ck1 = ca.sign_cert("api.openai.com").unwrap();
+        let ck2 = ca.sign_cert("api.openai.com").unwrap();
+        // sign_cert generates a fresh key each call; keys must differ
+        assert_ne!(ck1.key_der, ck2.key_der, "each call generates a fresh key pair");
     }
 }
