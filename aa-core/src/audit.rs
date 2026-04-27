@@ -870,4 +870,69 @@ mod tests {
             assert!(entry.verify_integrity());
         }
     }
+
+    // --- AuditLog::verify_chain() ---
+
+    #[test]
+    fn verify_chain_empty_log_returns_true() {
+        assert!(make_log().verify_chain());
+    }
+
+    #[test]
+    fn verify_chain_valid_log_returns_true() {
+        let mut log = make_log();
+        for i in 0..4 {
+            log.next_entry(AuditEventType::ToolCallIntercepted, i * 1_000, alloc::string::String::from("{}"));
+        }
+        assert!(log.verify_chain());
+    }
+
+    #[test]
+    fn verify_chain_false_after_unsafe_seq_tamper() {
+        let mut log = make_log();
+        log.next_entry(AuditEventType::ToolCallIntercepted, 1_000, alloc::string::String::from("{}"));
+        log.next_entry(AuditEventType::PolicyViolation,     2_000, alloc::string::String::from("{}"));
+
+        // Tamper the seq of the first entry.
+        // SAFETY: deliberate tampering to test verify_chain detection.
+        unsafe {
+            let entry = &mut *(log.entries.as_mut_ptr());
+            let ptr = &mut entry.seq as *mut u64;
+            *ptr = 99;
+        }
+        assert!(!log.verify_chain());
+    }
+
+    #[test]
+    fn verify_chain_false_after_unsafe_payload_tamper() {
+        let mut log = make_log();
+        log.next_entry(AuditEventType::ToolCallIntercepted, 1_000, alloc::string::String::from("{}"));
+        log.next_entry(AuditEventType::PolicyViolation,     2_000, alloc::string::String::from("{}"));
+
+        // Tamper the payload of the second entry — breaks its verify_integrity().
+        // SAFETY: deliberate tampering to test verify_chain detection.
+        unsafe {
+            let entry = &mut *(log.entries.as_mut_ptr().add(1));
+            if let Some(b) = entry.payload.as_mut_vec().first_mut() {
+                *b = b'X';
+            }
+        }
+        assert!(!log.verify_chain());
+    }
+
+    #[test]
+    fn verify_chain_false_after_unsafe_previous_hash_tamper() {
+        let mut log = make_log();
+        log.next_entry(AuditEventType::ToolCallIntercepted, 1_000, alloc::string::String::from("{}"));
+        log.next_entry(AuditEventType::PolicyViolation,     2_000, alloc::string::String::from("{}"));
+
+        // Tamper previous_hash of the second entry — breaks chain linkage check.
+        // SAFETY: deliberate tampering to test verify_chain detection.
+        unsafe {
+            let entry = &mut *(log.entries.as_mut_ptr().add(1));
+            let ptr = &mut entry.previous_hash as *mut [u8; 32];
+            (*ptr)[0] = 0xFF;
+        }
+        assert!(!log.verify_chain());
+    }
 }
