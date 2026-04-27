@@ -23,6 +23,31 @@
           "default": []
         }
       }
+    },
+    "tools": {
+      "description": "Per-tool governance rules. Keys are tool names as reported by the agent (e.g. 'web_search', 'code_interpreter'). Tools not listed here inherit the gateway default policy.",
+      "type": "object",
+      "additionalProperties": {
+        "description": "Governance rule for a single tool.",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "allow": {
+            "description": "Whether this tool is permitted to be called. Set to false to block the tool outright.",
+            "type": "boolean"
+          },
+          "limit_per_hour": {
+            "description": "Maximum number of calls to this tool allowed per hour. Calls beyond this limit are denied until the next hour window.",
+            "type": "integer",
+            "minimum": 1
+          },
+          "requires_approval_if": {
+            "description": "Condition expression that triggers a human-in-the-loop approval workflow before the tool call is dispatched. Syntax is TBD and will be defined by the policy engine (AAASM-8). Any non-empty string is accepted at the schema validation level.",
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
     }
   },
   "examples": []
