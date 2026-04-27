@@ -14,6 +14,22 @@ use crate::lifecycle::wait_for_shutdown_signal;
 /// structured concurrency primitives, spawns subsystem tasks, waits for a
 /// shutdown signal, then drains all tasks within the configured timeout.
 pub async fn run(config: RuntimeConfig) {
+    // Install global Prometheus metrics recorder.
+    let prometheus_handle = metrics_exporter_prometheus::PrometheusBuilder::new()
+        .install_recorder()
+        .expect("failed to install Prometheus recorder");
+
+    // Register all 6 required metrics at 0 so /metrics surface is stable from first scrape.
+    metrics::counter!("aa_events_received_total").increment(0);
+    metrics::counter!("aa_events_emitted_total").increment(0);
+    metrics::counter!("aa_policy_violations_total").increment(0);
+    metrics::counter!("aa_policy_evaluations_total").increment(0); // stays 0 until AAASM-69/70
+    metrics::gauge!("aa_active_connections").set(0.0);
+    metrics::gauge!("aa_channel_utilization_ratio").set(0.0);
+
+    // Readiness channel — written true after IpcServer::bind() succeeds.
+    let (ready_tx, ready_rx) = tokio::sync::watch::channel(false);
+
     tracing::info!("aa-runtime starting");
 
     let tracker = TaskTracker::new();
@@ -34,14 +50,24 @@ pub async fn run(config: RuntimeConfig) {
     // Shared metrics — future health/metrics endpoints will receive an Arc clone.
     let pipeline_metrics = std::sync::Arc::new(crate::pipeline::PipelineMetrics::default());
 
+    // Shared active-connections counter exposed to the health/metrics endpoint.
+    let active_connections = std::sync::Arc::new(std::sync::atomic::AtomicI64::new(0));
+
+    // Clone inbound_tx for the health/metrics handler before IpcServer consumes it.
+    let inbound_tx_health = inbound_tx.clone();
+
     // Spawn the IPC server task.
     let ipc_config = crate::ipc::server::IpcServerConfig::from_runtime_config(&config);
     match crate::ipc::server::IpcServer::bind(ipc_config) {
         Ok(ipc_server) => {
+            let _ = ready_tx.send(true);
             let ipc_tracker = tracker.clone();
             let ipc_token = token.clone();
+            let ipc_active_connections = std::sync::Arc::clone(&active_connections);
             tracker.spawn(async move {
-                ipc_server.run(ipc_tracker, ipc_token, inbound_tx).await;
+                ipc_server
+                    .run(ipc_tracker, ipc_token, inbound_tx, ipc_active_connections)
+                    .await;
             });
             tracing::info!("IPC server task spawned");
         }
@@ -60,6 +86,38 @@ pub async fn run(config: RuntimeConfig) {
             crate::pipeline::run(inbound_rx, broadcast_tx, pipeline_config, pm, pipeline_token).await;
         });
         tracing::info!("pipeline task spawned");
+    }
+
+    // Spawn the health/metrics HTTP server task.
+    {
+        let health_state = crate::health::HealthState {
+            start_time: std::time::Instant::now(),
+            pipeline_metrics: std::sync::Arc::clone(&pipeline_metrics),
+            ready_rx,
+            prometheus_handle,
+            active_connections: std::sync::Arc::clone(&active_connections),
+            inbound_tx: inbound_tx_health,
+        };
+        let addr: std::net::SocketAddr = config
+            .metrics_addr
+            .parse()
+            .expect("invalid AA_METRICS_ADDR — must be a valid socket address");
+        let health_token = token.clone();
+        tracker.spawn(async move {
+            match tokio::net::TcpListener::bind(addr).await {
+                Ok(listener) => {
+                    tracing::info!(%addr, "health server bound");
+                    axum::serve(listener, crate::health::router(health_state))
+                        .with_graceful_shutdown(async move { health_token.cancelled().await })
+                        .await
+                        .ok();
+                }
+                Err(e) => {
+                    tracing::error!(error = %e, %addr, "failed to bind health server");
+                }
+            }
+        });
+        tracing::info!(%addr, "health server task spawned");
     }
 
     // Wait for an OS shutdown signal.
