@@ -275,3 +275,74 @@ impl core::fmt::Display for AuditEntry {
         write!(f, " event={}]", self.event_type.as_str())
     }
 }
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Shared test fixtures
+    const AGENT_BYTES: [u8; 16] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
+    const SESSION_BYTES: [u8; 16] = [17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32];
+    const GENESIS_HASH: [u8; 32] = [0u8; 32];
+
+    fn make_entry(seq: u64) -> AuditEntry {
+        AuditEntry::new(
+            seq,
+            1_714_222_134_000_000_000,
+            AuditEventType::ToolCallIntercepted,
+            AgentId::from_bytes(AGENT_BYTES),
+            SessionId::from_bytes(SESSION_BYTES),
+            alloc::string::String::from("{\"tool\":\"bash\",\"args\":{\"cmd\":\"ls\"}}"),
+            GENESIS_HASH,
+        )
+    }
+
+    // --- AuditEventType ---
+
+    #[test]
+    fn event_type_as_str_all_variants() {
+        assert_eq!(AuditEventType::ToolCallIntercepted.as_str(), "ToolCallIntercepted");
+        assert_eq!(AuditEventType::PolicyViolation.as_str(), "PolicyViolation");
+        assert_eq!(AuditEventType::CredentialLeakBlocked.as_str(), "CredentialLeakBlocked");
+        assert_eq!(AuditEventType::ApprovalRequested.as_str(), "ApprovalRequested");
+        assert_eq!(AuditEventType::ApprovalGranted.as_str(), "ApprovalGranted");
+        assert_eq!(AuditEventType::ApprovalDenied.as_str(), "ApprovalDenied");
+        assert_eq!(AuditEventType::BudgetLimitApproached.as_str(), "BudgetLimitApproached");
+        assert_eq!(AuditEventType::BudgetLimitExceeded.as_str(), "BudgetLimitExceeded");
+    }
+
+    #[test]
+    fn event_type_discriminants_are_0_through_7() {
+        assert_eq!(AuditEventType::ToolCallIntercepted as u32, 0);
+        assert_eq!(AuditEventType::PolicyViolation as u32, 1);
+        assert_eq!(AuditEventType::CredentialLeakBlocked as u32, 2);
+        assert_eq!(AuditEventType::ApprovalRequested as u32, 3);
+        assert_eq!(AuditEventType::ApprovalGranted as u32, 4);
+        assert_eq!(AuditEventType::ApprovalDenied as u32, 5);
+        assert_eq!(AuditEventType::BudgetLimitApproached as u32, 6);
+        assert_eq!(AuditEventType::BudgetLimitExceeded as u32, 7);
+    }
+
+    #[test]
+    fn event_type_variants_are_all_distinct() {
+        let variants = [
+            AuditEventType::ToolCallIntercepted,
+            AuditEventType::PolicyViolation,
+            AuditEventType::CredentialLeakBlocked,
+            AuditEventType::ApprovalRequested,
+            AuditEventType::ApprovalGranted,
+            AuditEventType::ApprovalDenied,
+            AuditEventType::BudgetLimitApproached,
+            AuditEventType::BudgetLimitExceeded,
+        ];
+        for i in 0..variants.len() {
+            for j in (i + 1)..variants.len() {
+                assert_ne!(variants[i], variants[j]);
+            }
+        }
+    }
+}
