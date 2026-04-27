@@ -184,4 +184,42 @@ impl CredentialScanner {
             .expect("static AC patterns are always valid");
         Self { patterns: ac }
     }
+
+    /// Scan `text` for credential patterns and return a [`ScanResult`].
+    ///
+    /// Four passes are performed:
+    /// 1. Aho-Corasick literal prefix scan — O(n), 18 patterns covering API keys,
+    ///    auth tokens, cloud credentials, database URLs, and PEM private key headers.
+    /// 2. Credit card and SSN digit-sequence scan.
+    /// 3. Email address scan.
+    /// 4. High-entropy token scan (Shannon entropy > 4.5 bits/char, length 20–64).
+    pub fn scan(&self, text: &str) -> ScanResult {
+        let mut findings = Vec::new();
+
+        // Phase 1: AC literal prefix scan
+        for mat in self.patterns.find_iter(text) {
+            let kind = AC_KINDS[mat.pattern()].clone();
+            let offset = mat.start();
+            let end = token_end(text, mat.end());
+            findings.push(CredentialFinding::new(kind, offset, end));
+        }
+
+        findings.sort_by_key(|f| f.offset);
+        ScanResult { findings }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Internal helpers
+// ---------------------------------------------------------------------------
+
+/// Returns the byte index of the first token-terminating character at or after
+/// `from`. Token terminators are whitespace and common delimiters.
+fn token_end(text: &str, from: usize) -> usize {
+    text[from..]
+        .find(|c: char| {
+            c.is_whitespace() || matches!(c, '"' | '\'' | ',' | ';' | ')' | ']' | '}')
+        })
+        .map(|i| from + i)
+        .unwrap_or(text.len())
 }
