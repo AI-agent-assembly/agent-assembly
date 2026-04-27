@@ -20,4 +20,8 @@ pub enum ProxyError {
     /// A configuration error (missing or invalid env var).
     #[error("Configuration error: {0}")]
     Config(String),
+
+    /// A macOS Keychain operation failed (security CLI returned non-zero).
+    #[error("Keychain error: {0}")]
+    Keychain(String),
 }
