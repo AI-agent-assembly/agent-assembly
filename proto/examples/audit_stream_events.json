@@ -1,0 +1,33 @@
+{
+  "_service": "assembly.audit.v1.AuditService",
+  "_method": "StreamEvents",
+  "_direction": "client-streaming — runtime → gateway (path ③, high-frequency scenario)",
+  "_note": "Client sends a stream of AuditEvent messages; server acknowledges with StreamEventsResponse.",
+  "stream_messages": [
+    {
+      "eventId": "01HZAB1234567890000CCC",
+      "agentId": {
+        "orgId": "acme-corp",
+        "teamId": "platform-team",
+        "agentId": "did:key:z6Mkm5rByiqq5UNbvPFPfXtGJwdg2kD1T"
+      },
+      "occurredAt": { "unixMs": 1745740820000 },
+      "actionType": "TOOL_CALL",
+      "decision": "ALLOW",
+      "traceId": "01HZAB9999999999XXXXXX",
+      "spanId": "01HZAB9999999999000001",
+      "parentSpanId": "",
+      "toolCall": {
+        "toolName": "code_exec",
+        "toolSource": "function",
+        "latencyMs": 412,
+        "succeeded": true,
+        "errorMessage": ""
+      },
+      "labels": { "run_id": "run_01HZAB9999" }
+    }
+  ],
+  "response": {
+    "acceptedCount": 1
+  }
+}

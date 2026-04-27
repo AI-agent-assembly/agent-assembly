@@ -1,0 +1,64 @@
+{
+  "_service": "assembly.audit.v1.AuditService",
+  "_method": "ReportEvents",
+  "_direction": "unary (batched) — runtime → gateway (path ③)",
+  "_note": "Runtime flushes a batch of events every few seconds.",
+  "request": {
+    "events": [
+      {
+        "eventId": "01HZAB1234567890000AAA",
+        "agentId": {
+          "orgId": "acme-corp",
+          "teamId": "platform-team",
+          "agentId": "did:key:z6Mkm5rByiqq5UNbvPFPfXtGJwdg2kD1T"
+        },
+        "occurredAt": { "unixMs": 1745740812000 },
+        "actionType": "LLM_CALL",
+        "decision": "ALLOW",
+        "traceId": "01HZAB1234567890ABCDEF",
+        "spanId": "01HZAB1234567890000001",
+        "parentSpanId": "",
+        "llmCall": {
+          "model": "claude-sonnet-4-6",
+          "promptTokens": 1200,
+          "completionTokens": 340,
+          "latencyMs": 1823,
+          "piiDetected": false,
+          "piiRedacted": false,
+          "provider": "anthropic"
+        },
+        "labels": {
+          "run_id": "run_01HZAB",
+          "step": "summarise"
+        }
+      },
+      {
+        "eventId": "01HZAB1234567890000BBB",
+        "agentId": {
+          "orgId": "acme-corp",
+          "teamId": "platform-team",
+          "agentId": "did:key:z6Mkm5rByiqq5UNbvPFPfXtGJwdg2kD1T"
+        },
+        "occurredAt": { "unixMs": 1745740814500 },
+        "actionType": "TOOL_CALL",
+        "decision": "DENY",
+        "traceId": "01HZAB1234567890ABCDEF",
+        "spanId": "01HZAB1234567890000002",
+        "parentSpanId": "01HZAB1234567890000001",
+        "violation": {
+          "policyRule": "rule:no-file-write-prod",
+          "blockedAction": "file_write /etc/hosts",
+          "reason": "Write to /etc is blocked at HIGH risk tier"
+        },
+        "labels": {
+          "run_id": "run_01HZAB",
+          "step": "tool-call"
+        }
+      }
+    ]
+  },
+  "response": {
+    "acceptedCount": 2,
+    "rejectedCount": 0
+  }
+}
