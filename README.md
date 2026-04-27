@@ -73,6 +73,13 @@ agent-assembly/
 └── policy-examples/   # Example governance policies
 ```
 
+## Documentation
+
+| Document | Description |
+|---|---|
+| [docs/compatibility.md](docs/compatibility.md) | Version compatibility matrix — which `aa-runtime` versions work with which SDK versions |
+| [docs/versioning.md](docs/versioning.md) | Protocol versioning policy — semver rules, breaking change classification, deprecation lifecycle |
+
 ## License
 
 Licensed under the [Apache License, Version 2.0](LICENSE).
