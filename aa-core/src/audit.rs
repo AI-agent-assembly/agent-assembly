@@ -89,6 +89,67 @@ pub struct AuditEntry {
 
 impl AuditEntry {
     // -----------------------------------------------------------------------
+    // Constructor
+    // -----------------------------------------------------------------------
+
+    /// Create a new [`AuditEntry`], computing `entry_hash` over all fields.
+    ///
+    /// ## Parameters
+    ///
+    /// - `seq` — monotonic counter within the session; genesis entry is `0`.
+    /// - `timestamp_ns` — nanoseconds since the Unix epoch (caller-supplied;
+    ///   use `Timestamp::from(SystemTime::now()).as_nanos()` in `std` environments).
+    /// - `event_type` — category of the governance event.
+    /// - `agent_id` — identifier of the agent that produced the event.
+    /// - `session_id` — identifier of the specific agent run.
+    /// - `payload` — pre-serialized UTF-8 string (JSON in practice).
+    /// - `previous_hash` — `entry_hash` of the preceding entry;
+    ///   `[0u8; 32]` for the genesis entry.
+    ///
+    /// ## Canonical hash input (84 fixed bytes + variable payload)
+    ///
+    /// ```text
+    /// SHA-256(
+    ///     seq.to_be_bytes()                  //  8 bytes
+    ///     || timestamp_ns.to_be_bytes()      //  8 bytes
+    ///     || (event_type as u32).to_be_bytes() // 4 bytes
+    ///     || agent_id.as_bytes()             // 16 bytes
+    ///     || session_id.as_bytes()           // 16 bytes
+    ///     || previous_hash                   // 32 bytes
+    ///     || payload.as_bytes()              // variable
+    /// )
+    /// ```
+    pub fn new(
+        seq: u64,
+        timestamp_ns: u64,
+        event_type: AuditEventType,
+        agent_id: AgentId,
+        session_id: SessionId,
+        payload: String,
+        previous_hash: [u8; 32],
+    ) -> Self {
+        let entry_hash = Self::compute_hash(
+            seq,
+            timestamp_ns,
+            &event_type,
+            &agent_id,
+            &session_id,
+            &previous_hash,
+            &payload,
+        );
+        Self {
+            seq,
+            timestamp_ns,
+            event_type,
+            agent_id,
+            session_id,
+            payload,
+            previous_hash,
+            entry_hash,
+        }
+    }
+
+    // -----------------------------------------------------------------------
     // Getters
     // -----------------------------------------------------------------------
 
