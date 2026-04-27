@@ -1,11 +1,33 @@
 #ifndef AA_FFI_GO_H
 #define AA_FFI_GO_H
 
+#include <stddef.h>
+#include <stdint.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
+typedef int32_t aa_status;
+
+enum {
+  AA_STATUS_OK = 0,
+  AA_STATUS_NULL_POINTER = 1,
+  AA_STATUS_INVALID_UTF8 = 2,
+  AA_STATUS_NOT_CONNECTED = 3,
+  AA_STATUS_MUTEX_POISONED = 4,
+};
+
 typedef struct aa_client_handle aa_client_handle;
+
+typedef struct aa_bytes {
+  uint8_t* ptr;
+  size_t len;
+} aa_bytes;
+
+typedef struct aa_string {
+  char* ptr;
+} aa_string;
 
 #ifdef __cplusplus
 }
