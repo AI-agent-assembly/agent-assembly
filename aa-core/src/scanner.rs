@@ -679,4 +679,81 @@ mod tests {
         let e = shannon_entropy("Thequickbrownfoxjumpsoverthelazydog");
         assert!(e > 3.0 && e < 5.0);
     }
+
+    // --- ScanResult::redact() and is_clean() ---
+
+    #[test]
+    fn redact_replaces_github_pat() {
+        let scanner = CredentialScanner::new();
+        let text = "key: ghp_abc123XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX end";
+        let result = scanner.scan(text);
+        let redacted = result.redact(text);
+        assert!(!redacted.contains("ghp_"));
+        assert!(redacted.contains("[REDACTED:GitHubPat]"));
+    }
+
+    #[test]
+    fn redact_is_deterministic() {
+        let scanner = CredentialScanner::new();
+        let text = "key: ghp_abc123XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX";
+        let result = scanner.scan(text);
+        assert_eq!(result.redact(text), result.redact(text));
+    }
+
+    #[test]
+    fn redact_clean_text_unchanged() {
+        let scanner = CredentialScanner::new();
+        let text = "This is a normal sentence with no secrets.";
+        let result = scanner.scan(text);
+        assert!(result.is_clean());
+        assert_eq!(result.redact(text), text);
+    }
+
+    #[test]
+    fn redact_multiple_findings_in_one_pass() {
+        let scanner = CredentialScanner::new();
+        let text = "a=ghp_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX b=postgres://u:p@host/db";
+        let result = scanner.scan(text);
+        let redacted = result.redact(text);
+        assert!(!redacted.contains("ghp_"));
+        assert!(!redacted.contains("postgres://"));
+        assert!(redacted.contains("[REDACTED:GitHubPat]"));
+        assert!(redacted.contains("[REDACTED:PostgresUrl]"));
+    }
+
+    #[test]
+    fn is_clean_true_for_benign_text() {
+        let scanner = CredentialScanner::new();
+        assert!(scanner.scan("Hello, world! No secrets here.").is_clean());
+    }
+
+    // --- False-positive corpus ---
+
+    #[test]
+    fn false_positive_corpus_has_no_hard_credential_hits() {
+        let scanner = CredentialScanner::new();
+        let corpus = [
+            "The quick brown fox jumps over the lazy dog.",
+            "fn main() { println!(\"Hello, world!\"); }",
+            "SELECT * FROM users WHERE id = 42;",
+            "cargo build --release --features std",
+            "version = \"1.0.0\" edition = \"2021\"",
+            "2026-04-27T15:34:15.377+0800",
+            "error[E0382]: borrow of moved value: `x`",
+        ];
+        for text in &corpus {
+            let result = scanner.scan(text);
+            let hard: Vec<_> = result
+                .findings
+                .iter()
+                .filter(|f| f.kind != CredentialKind::GenericHighEntropy)
+                .collect();
+            assert!(
+                hard.is_empty(),
+                "false positive in: {:?} → {:?}",
+                text,
+                hard
+            );
+        }
+    }
 }
