@@ -29,6 +29,42 @@ impl PolicyRules {
     }
 }
 
+/// Errors that can occur when loading the policy file.
+#[derive(Debug)]
+pub enum PolicyLoadError {
+    /// I/O error reading the file (other than file-not-found).
+    Io(std::io::Error),
+    /// The file exists but could not be parsed as valid YAML policy.
+    Parse(serde_yaml::Error),
+}
+
+impl std::fmt::Display for PolicyLoadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Io(e) => write!(f, "policy file I/O error: {e}"),
+            Self::Parse(e) => write!(f, "policy file parse error: {e}"),
+        }
+    }
+}
+
+impl std::error::Error for PolicyLoadError {}
+
+/// Load policy rules from a YAML file at `path`.
+///
+/// - If the file does not exist, logs a warning and returns empty `PolicyRules` (no enforcement).
+/// - If the file exists but cannot be parsed, returns `Err(PolicyLoadError::Parse)`.
+/// - Any other I/O error returns `Err(PolicyLoadError::Io)`.
+pub fn load_policy(path: &std::path::Path) -> Result<PolicyRules, PolicyLoadError> {
+    match std::fs::read_to_string(path) {
+        Ok(contents) => serde_yaml::from_str(&contents).map_err(PolicyLoadError::Parse),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            tracing::warn!(path = %path.display(), "policy file not found — starting without enforcement");
+            Ok(PolicyRules::default())
+        }
+        Err(e) => Err(PolicyLoadError::Io(e)),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -59,5 +95,37 @@ mod tests {
         };
         assert_eq!(rule.name, "block-exfil");
         assert_eq!(rule.blocked_actions.len(), 2);
+    }
+
+    #[test]
+    fn load_policy_returns_empty_when_file_absent() {
+        let result = load_policy(std::path::Path::new("/nonexistent/path/policy.yaml"));
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_empty());
+    }
+
+    #[test]
+    fn load_policy_parses_valid_yaml() {
+        use std::io::Write;
+        let mut tmp = tempfile::NamedTempFile::new().expect("tempfile");
+        writeln!(tmp, "rules:").unwrap();
+        writeln!(tmp, "  - name: block-exfil").unwrap();
+        writeln!(tmp, "    blocked_actions:").unwrap();
+        writeln!(tmp, "      - send_email").unwrap();
+        tmp.flush().unwrap();
+        let result = load_policy(tmp.path()).expect("should parse");
+        assert_eq!(result.rules.len(), 1);
+        assert_eq!(result.rules[0].name, "block-exfil");
+        assert_eq!(result.rules[0].blocked_actions, vec!["send_email"]);
+    }
+
+    #[test]
+    fn load_policy_errors_on_malformed_yaml() {
+        use std::io::Write;
+        let mut tmp = tempfile::NamedTempFile::new().expect("tempfile");
+        writeln!(tmp, "rules: [invalid: yaml: {{garbage").unwrap();
+        tmp.flush().unwrap();
+        let result = load_policy(tmp.path());
+        assert!(matches!(result, Err(PolicyLoadError::Parse(_))));
     }
 }
