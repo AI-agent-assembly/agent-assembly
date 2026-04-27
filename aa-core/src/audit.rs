@@ -363,6 +363,30 @@ impl AuditLog {
     pub fn session_id(&self) -> SessionId {
         self.session_id
     }
+
+    /// Append a pre-built [`AuditEntry`] to the log, validating both invariants.
+    ///
+    /// ## Errors
+    ///
+    /// - [`AuditLogError::SequenceGap`] if `entry.seq() != self.next_seq`.
+    /// - [`AuditLogError::HashChainBroken`] if `entry.previous_hash() != &self.last_hash`.
+    ///
+    /// On error the log is not modified.
+    pub fn push(&mut self, entry: AuditEntry) -> Result<(), AuditLogError> {
+        if entry.seq() != self.next_seq {
+            return Err(AuditLogError::SequenceGap {
+                expected: self.next_seq,
+                got: entry.seq(),
+            });
+        }
+        if entry.previous_hash() != &self.last_hash {
+            return Err(AuditLogError::HashChainBroken { at_seq: entry.seq() });
+        }
+        self.last_hash = *entry.entry_hash();
+        self.next_seq += 1;
+        self.entries.push(entry);
+        Ok(())
+    }
 }
 
 // ---------------------------------------------------------------------------
