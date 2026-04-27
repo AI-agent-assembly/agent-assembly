@@ -224,6 +224,7 @@ mod tests {
             pipeline_batch_size: 50,
             pipeline_flush_interval_ms: 200,
             pipeline_broadcast_capacity: 512,
+            metrics_addr: "0.0.0.0:8080".to_string(),
         };
 
         let pipeline_config = PipelineConfig::from_runtime_config(&runtime_config);

@@ -50,6 +50,11 @@ pub struct RuntimeConfig {
     /// Read from `AA_PIPELINE_BROADCAST_CAPACITY`. Defaults to `1_024`.
     /// Zero falls back to the default.
     pub pipeline_broadcast_capacity: usize,
+
+    /// Bind address for the health/metrics HTTP server.
+    ///
+    /// Read from `AA_METRICS_ADDR`. Defaults to `"0.0.0.0:8080"`.
+    pub metrics_addr: String,
 }
 
 impl RuntimeConfig {
@@ -71,6 +76,7 @@ impl RuntimeConfig {
     /// | `AA_PIPELINE_BATCH_SIZE` | `usize` | `100` |
     /// | `AA_PIPELINE_FLUSH_INTERVAL_MS` | `u64` | `100` |
     /// | `AA_PIPELINE_BROADCAST_CAPACITY` | `usize` | `1_024` |
+    /// | `AA_METRICS_ADDR` | `String` | `"0.0.0.0:8080"` |
     pub fn from_env() -> Result<Self, String> {
         let agent_id = std::env::var("AA_AGENT_ID").map_err(|_| "AA_AGENT_ID is required but not set".to_string())?;
 
@@ -122,6 +128,9 @@ impl RuntimeConfig {
             .filter(|&n| n > 0)
             .unwrap_or(1_024);
 
+        let metrics_addr = std::env::var("AA_METRICS_ADDR")
+            .unwrap_or_else(|_| "0.0.0.0:8080".to_string());
+
         Ok(Self {
             agent_id,
             worker_threads,
@@ -131,6 +140,7 @@ impl RuntimeConfig {
             pipeline_batch_size,
             pipeline_flush_interval_ms,
             pipeline_broadcast_capacity,
+            metrics_addr,
         })
     }
 }
@@ -205,6 +215,7 @@ mod tests {
         std::env::remove_var("AA_PIPELINE_BATCH_SIZE");
         std::env::remove_var("AA_PIPELINE_FLUSH_INTERVAL_MS");
         std::env::remove_var("AA_PIPELINE_BROADCAST_CAPACITY");
+        std::env::remove_var("AA_METRICS_ADDR");
 
         let config = RuntimeConfig::from_env().unwrap();
 
@@ -215,6 +226,7 @@ mod tests {
         assert_eq!(config.pipeline_batch_size, 100);
         assert_eq!(config.pipeline_flush_interval_ms, 100);
         assert_eq!(config.pipeline_broadcast_capacity, 1_024);
+        assert_eq!(config.metrics_addr, "0.0.0.0:8080");
 
         std::env::remove_var("AA_AGENT_ID");
     }
@@ -411,5 +423,32 @@ mod tests {
         std::env::remove_var("AA_PIPELINE_BATCH_SIZE");
         std::env::remove_var("AA_PIPELINE_FLUSH_INTERVAL_MS");
         std::env::remove_var("AA_PIPELINE_BROADCAST_CAPACITY");
+    }
+
+    #[test]
+    fn metrics_addr_reads_from_env() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        std::env::set_var("AA_AGENT_ID", "agent-metrics");
+        std::env::set_var("AA_METRICS_ADDR", "127.0.0.1:9090");
+
+        let config = RuntimeConfig::from_env().unwrap();
+
+        assert_eq!(config.metrics_addr, "127.0.0.1:9090");
+
+        std::env::remove_var("AA_AGENT_ID");
+        std::env::remove_var("AA_METRICS_ADDR");
+    }
+
+    #[test]
+    fn metrics_addr_defaults_when_unset() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        std::env::set_var("AA_AGENT_ID", "agent-metrics-default");
+        std::env::remove_var("AA_METRICS_ADDR");
+
+        let config = RuntimeConfig::from_env().unwrap();
+
+        assert_eq!(config.metrics_addr, "0.0.0.0:8080");
+
+        std::env::remove_var("AA_AGENT_ID");
     }
 }
