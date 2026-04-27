@@ -14,6 +14,19 @@ use crate::lifecycle::wait_for_shutdown_signal;
 /// structured concurrency primitives, spawns subsystem tasks, waits for a
 /// shutdown signal, then drains all tasks within the configured timeout.
 pub async fn run(config: RuntimeConfig) {
+    // Install global Prometheus metrics recorder.
+    let _prometheus_handle = metrics_exporter_prometheus::PrometheusBuilder::new()
+        .install_recorder()
+        .expect("failed to install Prometheus recorder");
+
+    // Register all 6 required metrics at 0 so /metrics surface is stable from first scrape.
+    metrics::counter!("aa_events_received_total").increment(0);
+    metrics::counter!("aa_events_emitted_total").increment(0);
+    metrics::counter!("aa_policy_violations_total").increment(0);
+    metrics::counter!("aa_policy_evaluations_total").increment(0); // stays 0 until AAASM-69/70
+    metrics::gauge!("aa_active_connections").set(0.0);
+    metrics::gauge!("aa_channel_utilization_ratio").set(0.0);
+
     tracing::info!("aa-runtime starting");
 
     let tracker = TaskTracker::new();
@@ -35,9 +48,7 @@ pub async fn run(config: RuntimeConfig) {
     let pipeline_metrics = std::sync::Arc::new(crate::pipeline::PipelineMetrics::default());
 
     // Shared active-connections counter exposed to the health/metrics endpoint.
-    let active_connections = std::sync::Arc::new(
-        std::sync::atomic::AtomicI64::new(0),
-    );
+    let active_connections = std::sync::Arc::new(std::sync::atomic::AtomicI64::new(0));
 
     // Spawn the IPC server task.
     let ipc_config = crate::ipc::server::IpcServerConfig::from_runtime_config(&config);
@@ -47,7 +58,9 @@ pub async fn run(config: RuntimeConfig) {
             let ipc_token = token.clone();
             let ipc_active_connections = std::sync::Arc::clone(&active_connections);
             tracker.spawn(async move {
-                ipc_server.run(ipc_tracker, ipc_token, inbound_tx, ipc_active_connections).await;
+                ipc_server
+                    .run(ipc_tracker, ipc_token, inbound_tx, ipc_active_connections)
+                    .await;
             });
             tracing::info!("IPC server task spawned");
         }
