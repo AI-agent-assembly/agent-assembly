@@ -18,9 +18,9 @@ cfg_if::cfg_if! {
     }
 }
 
-pub mod time;
-pub mod identity;
 pub mod agent;
+pub mod identity;
+pub mod time;
 
 pub use identity::{AgentId, SessionId};
 
