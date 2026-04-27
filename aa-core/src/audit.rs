@@ -345,4 +345,39 @@ mod tests {
             }
         }
     }
+
+    // --- AuditEntry::new() and getters ---
+
+    #[test]
+    fn new_produces_nonzero_entry_hash() {
+        let entry = make_entry(0);
+        assert_ne!(entry.entry_hash(), &[0u8; 32]);
+    }
+
+    #[test]
+    fn getters_return_correct_values() {
+        let payload = alloc::string::String::from("{\"k\":\"v\"}");
+        let entry = AuditEntry::new(
+            42,
+            999_000_000,
+            AuditEventType::PolicyViolation,
+            AgentId::from_bytes(AGENT_BYTES),
+            SessionId::from_bytes(SESSION_BYTES),
+            payload.clone(),
+            GENESIS_HASH,
+        );
+        assert_eq!(entry.seq(), 42);
+        assert_eq!(entry.timestamp_ns(), 999_000_000);
+        assert_eq!(entry.event_type(), AuditEventType::PolicyViolation);
+        assert_eq!(entry.agent_id(), AgentId::from_bytes(AGENT_BYTES));
+        assert_eq!(entry.session_id(), SessionId::from_bytes(SESSION_BYTES));
+        assert_eq!(entry.payload(), "{\"k\":\"v\"}");
+        assert_eq!(entry.previous_hash(), &GENESIS_HASH);
+    }
+
+    #[test]
+    fn genesis_entry_uses_zero_previous_hash() {
+        let entry = make_entry(0);
+        assert_eq!(entry.previous_hash(), &[0u8; 32]);
+    }
 }
