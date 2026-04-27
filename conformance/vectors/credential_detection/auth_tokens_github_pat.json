@@ -2,8 +2,7 @@
   "description": "GitHub Personal Access Token — ghp_ prefix",
   "input_text": "tok=ghp_AbCdEfGh",
   "expected_findings": [
-    { "kind": "GenericHighEntropy", "offset": 0 },
-    { "kind": "GitHubPat", "offset": 9 }
+    { "kind": "GitHubPat", "offset": 4 }
   ],
-  "expected_redacted": "GH_TOKEN=[REDACTED:GitHubPat]"
+  "expected_redacted": "tok=[REDACTED:GitHubPat]"
 }
