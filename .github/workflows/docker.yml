@@ -46,7 +46,7 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
           tags: |
-            ghcr.io/ai-agent-assembly/aa-runtime:${{ github.ref_name }}
+            ghcr.io/ai-agent-assembly/aa-runtime:${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || github.sha }}
             ghcr.io/ai-agent-assembly/aa-runtime:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
