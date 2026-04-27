@@ -58,9 +58,7 @@ async fn ready_handler(axum::extract::State(state): axum::extract::State<HealthS
     }
 }
 
-async fn metrics_handler(
-    axum::extract::State(state): axum::extract::State<HealthState>,
-) -> String {
+async fn metrics_handler(axum::extract::State(state): axum::extract::State<HealthState>) -> String {
     // Update live gauges just before rendering.
     let active = state.active_connections.load(Ordering::Relaxed);
     metrics::gauge!("aa_active_connections").set(active as f64);
@@ -197,10 +195,7 @@ mod tests {
         };
 
         let app = router(state);
-        let req = Request::builder()
-            .uri("/metrics")
-            .body(Body::empty())
-            .unwrap();
+        let req = Request::builder().uri("/metrics").body(Body::empty()).unwrap();
 
         let response = app.oneshot(req).await.unwrap();
         assert_eq!(response.status(), StatusCode::OK);
@@ -241,10 +236,7 @@ mod tests {
         // Use metrics::set_global_recorder only if not already set.
         // For simplicity: just verify the handler doesn't panic and returns a string.
         let app = router(state);
-        let req = Request::builder()
-            .uri("/metrics")
-            .body(Body::empty())
-            .unwrap();
+        let req = Request::builder().uri("/metrics").body(Body::empty()).unwrap();
 
         let response = app.oneshot(req).await.unwrap();
         assert_eq!(response.status(), StatusCode::OK);
@@ -253,7 +245,10 @@ mod tests {
         let text = std::str::from_utf8(&body).unwrap().to_string();
         // The handler returned a valid string, verifying it doesn't panic.
         // Verify it is a string (not a panic indicator).
-        assert!(!text.contains("thread"), "metrics response should not contain panic trace");
+        assert!(
+            !text.contains("thread"),
+            "metrics response should not contain panic trace"
+        );
     }
 
     #[tokio::test]

@@ -128,8 +128,7 @@ impl RuntimeConfig {
             .filter(|&n| n > 0)
             .unwrap_or(1_024);
 
-        let metrics_addr = std::env::var("AA_METRICS_ADDR")
-            .unwrap_or_else(|_| "0.0.0.0:8080".to_string());
+        let metrics_addr = std::env::var("AA_METRICS_ADDR").unwrap_or_else(|_| "0.0.0.0:8080".to_string());
 
         Ok(Self {
             agent_id,

@@ -5,8 +5,8 @@
 
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::Arc;
 
 use tokio::net::UnixListener;
 use tokio::sync::{mpsc, Semaphore};
@@ -155,6 +155,7 @@ impl IpcServer {
 }
 
 /// Spawn reader and writer tasks for a single accepted connection.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn spawn_connection(
     tracker: &TaskTracker,
     stream: tokio::net::UnixStream,
@@ -479,7 +480,10 @@ mod tests {
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
 
-        assert_eq!(observed, CONN_COUNT as i64, "counter should equal number of accepted connections");
+        assert_eq!(
+            observed, CONN_COUNT as i64,
+            "counter should equal number of accepted connections"
+        );
 
         token.cancel();
         drop(clients);
@@ -501,7 +505,11 @@ mod tests {
             }
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
-        assert_eq!(counter.load(Ordering::Relaxed), 1, "counter should be 1 after one connection");
+        assert_eq!(
+            counter.load(Ordering::Relaxed),
+            1,
+            "counter should be 1 after one connection"
+        );
 
         // Drop the client to trigger disconnect.
         drop(client);

@@ -98,7 +98,8 @@ pub async fn run(config: RuntimeConfig) {
             active_connections: std::sync::Arc::clone(&active_connections),
             inbound_tx: inbound_tx_health,
         };
-        let addr: std::net::SocketAddr = config.metrics_addr
+        let addr: std::net::SocketAddr = config
+            .metrics_addr
             .parse()
             .expect("invalid AA_METRICS_ADDR — must be a valid socket address");
         let health_token = token.clone();
