@@ -7,9 +7,12 @@ repository.workspace = true
 description = "Tokio async runtime wrapper and lifecycle management for Agent Assembly"
 
 [dependencies]
-aa-core  = { path = "../aa-core" }
-aa-proto = { path = "../aa-proto" }
-tokio    = { version = "1", features = ["full"] }
+aa-core              = { path = "../aa-core" }
+aa-proto             = { path = "../aa-proto" }
+tokio                = { version = "1", features = ["full"] }
+tokio-util           = { version = "0.7", features = ["rt"] }
+tracing              = "0.1"
+tracing-subscriber   = { version = "0.3", features = ["json", "env-filter"] }
 
 [lints]
 workspace = true
