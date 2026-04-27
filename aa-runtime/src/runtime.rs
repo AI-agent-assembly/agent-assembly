@@ -21,8 +21,22 @@ pub async fn run(config: RuntimeConfig) {
 
     tracing::info!("structured concurrency primitives initialised");
 
-    // Subsystem tasks (ipc, pipeline, health) are spawned here in later tickets.
-    // Each receives a cloned `token` and a `tracker.token()` guard.
+    // Spawn the IPC server task.
+    let (inbound_tx, _inbound_rx) = tokio::sync::mpsc::channel::<crate::ipc::IpcFrame>(256);
+    let ipc_config = crate::ipc::server::IpcServerConfig::from_runtime_config(&config);
+    match crate::ipc::server::IpcServer::bind(ipc_config) {
+        Ok(ipc_server) => {
+            let ipc_tracker = tracker.clone();
+            let ipc_token = token.clone();
+            tracker.spawn(async move {
+                ipc_server.run(ipc_tracker, ipc_token, inbound_tx).await;
+            });
+            tracing::info!("IPC server task spawned");
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "failed to bind IPC socket — continuing without IPC");
+        }
+    }
 
     // Wait for an OS shutdown signal.
     wait_for_shutdown_signal().await;
