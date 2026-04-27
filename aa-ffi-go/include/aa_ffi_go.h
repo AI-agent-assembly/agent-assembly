@@ -36,6 +36,7 @@ aa_status aa_query_policy(
     const char* query_json,
     char** out_response
 );
+aa_status aa_disconnect(aa_client_handle* client);
 
 #ifdef __cplusplus
 }

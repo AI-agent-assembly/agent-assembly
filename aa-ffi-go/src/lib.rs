@@ -156,3 +156,34 @@ pub unsafe extern "C" fn aa_query_policy(
 
     AA_STATUS_OK
 }
+
+/// # Safety
+///
+/// `client` must be a pointer previously returned by `aa_connect`.
+#[no_mangle]
+pub unsafe extern "C" fn aa_disconnect(client: *mut aa_client_handle) -> AaStatus {
+    if client.is_null() {
+        return AA_STATUS_NULL_POINTER;
+    }
+
+    // SAFETY: `client` null-check above ensures pointer validity precondition.
+    let client_ref = unsafe { &*client };
+    let mut state = match client_ref.state.lock() {
+        Ok(guard) => guard,
+        Err(_) => return AA_STATUS_MUTEX_POISONED,
+    };
+
+    if !state.connected {
+        return AA_STATUS_NOT_CONNECTED;
+    }
+
+    state.connected = false;
+    drop(state);
+
+    // SAFETY: `client` originated from `Box::into_raw` in `aa_connect`.
+    unsafe {
+        drop(Box::from_raw(client));
+    }
+
+    AA_STATUS_OK
+}
