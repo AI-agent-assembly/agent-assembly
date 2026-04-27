@@ -109,18 +109,13 @@ impl CaStore {
 
     /// Generate a DER-encoded leaf certificate for `domain`, signed by this CA.
     pub fn sign_cert(&self, domain: &str) -> Result<CertifiedKey, ProxyError> {
-        // Reconstruct the CA signing key from stored PEM.
+        // Load the CA key and reconstruct the CA cert from the persisted PEM.
+        // Using from_ca_cert_pem ensures the issued leaf cert's AKID matches
+        // the SKID of the actual trusted CA cert in the system keychain.
         let ca_key = KeyPair::from_pem(&self.ca_key_pem)
             .map_err(|e| ProxyError::CertGen(e.to_string()))?;
-
-        // Rebuild CA params from the same settings used in load_or_create so we
-        // can produce a signing-capable Certificate (rcgen 0.13 requires self_signed
-        // to obtain an issuer Certificate; from_ca_cert_pem requires x509-parser feature).
-        let mut ca_params = CertificateParams::new(vec![])
+        let ca_params = CertificateParams::from_ca_cert_pem(&self.ca_cert_pem)
             .map_err(|e| ProxyError::CertGen(e.to_string()))?;
-        ca_params.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
-        ca_params.key_usages = vec![KeyUsagePurpose::KeyCertSign, KeyUsagePurpose::CrlSign];
-        ca_params.distinguished_name.push(DnType::CommonName, "Agent Assembly CA");
         let ca_cert = ca_params.self_signed(&ca_key)
             .map_err(|e| ProxyError::CertGen(e.to_string()))?;
 
