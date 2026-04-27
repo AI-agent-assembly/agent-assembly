@@ -25,3 +25,14 @@ impl Timestamp {
         self.0
     }
 }
+
+#[cfg(feature = "std")]
+impl From<std::time::SystemTime> for Timestamp {
+    fn from(t: std::time::SystemTime) -> Self {
+        let nanos = t
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system time before Unix epoch")
+            .as_nanos() as u64;
+        Self(nanos)
+    }
+}
