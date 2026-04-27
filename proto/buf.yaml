@@ -1,0 +1,17 @@
+# buf.yaml — buf lint and breaking-change configuration for proto/
+# https://buf.build/docs/configuration/v2/buf-yaml
+version: v2
+modules:
+  - path: .
+lint:
+  use:
+    - STANDARD
+  # ControlStream returns a stream of ControlCommand (not ControlStreamResponse) by design.
+  # StreamEvents uses AuditEvent directly as the streaming request type by design.
+  # Both are intentional domain-first naming choices; suppress the naming rules for them.
+  except:
+    - RPC_RESPONSE_STANDARD_NAME
+    - RPC_REQUEST_STANDARD_NAME
+breaking:
+  use:
+    - FILE
