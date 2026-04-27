@@ -29,6 +29,46 @@ pub enum PolicyError {
     EvaluationFailed,
 }
 
+/// The decision recorded in a `PolicyRule`.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum PolicyDecision {
+    Allow,
+    Deny,
+    RequireApproval,
+}
+
+/// A single rule inside a `PolicyDocument`.
+///
+/// Gated on `alloc` because `action_pattern` is a `String`.
+#[cfg(feature = "alloc")]
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct PolicyRule {
+    /// Glob-style pattern matched against the action name or path.
+    pub action_pattern: alloc::string::String,
+    /// Decision to apply when the pattern matches.
+    pub decision: PolicyDecision,
+}
+
+/// Minimal policy document stub.
+///
+/// Full schema deferred to AAASM-105/AAASM-69. Sufficient for test evaluators
+/// to implement `load_policy` and `validate_policy` without a real parser.
+///
+/// Gated on `alloc` because `name` and `rules` require heap allocation.
+#[cfg(feature = "alloc")]
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct PolicyDocument {
+    /// Schema version number.
+    pub version: u32,
+    /// Human-readable policy name.
+    pub name: alloc::string::String,
+    /// Ordered list of rules evaluated top-to-bottom.
+    pub rules: alloc::vec::Vec<PolicyRule>,
+}
+
 /// An agent action subject to governance evaluation.
 ///
 /// Gated on `alloc` because all variants carry `String` fields.
