@@ -133,7 +133,15 @@ fn register_request_matches_golden() {
         .into_iter()
         .collect(),
     };
-    assert_eq!(msg.encode_to_vec(), load_golden_bin("register_request"));
+    // RegisterRequest contains a HashMap metadata field whose serialisation order
+    // is non-deterministic. Use a round-trip check instead of a golden comparison.
+    let bytes = msg.encode_to_vec();
+    assert!(!bytes.is_empty());
+    let decoded = RegisterRequest::decode(bytes.as_slice()).expect("decode must succeed");
+    assert_eq!(decoded.name, msg.name);
+    assert_eq!(decoded.framework, msg.framework);
+    assert_eq!(decoded.tool_names, msg.tool_names);
+    assert_eq!(decoded.metadata, msg.metadata);
 }
 
 #[test]
