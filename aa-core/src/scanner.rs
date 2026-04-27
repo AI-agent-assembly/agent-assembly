@@ -154,3 +154,34 @@ impl CredentialFinding {
 pub struct ScanResult {
     pub findings: Vec<CredentialFinding>,
 }
+
+/// Pre-compiled multi-pattern credential scanner.
+///
+/// Construct once with [`CredentialScanner::new`] and call [`CredentialScanner::scan`]
+/// repeatedly. Pattern compilation happens at construction time; each scan call is
+/// O(n) in the length of the input text.
+pub struct CredentialScanner {
+    patterns: AhoCorasick,
+}
+
+impl Default for CredentialScanner {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl CredentialScanner {
+    /// Build the scanner, compiling all patterns into an Aho-Corasick automaton.
+    ///
+    /// # Panics
+    ///
+    /// Panics only if the hard-coded AC patterns are somehow invalid — this
+    /// cannot happen in practice.
+    pub fn new() -> Self {
+        let ac = AhoCorasick::builder()
+            .match_kind(aho_corasick::MatchKind::LeftmostFirst)
+            .build(AC_PATTERNS)
+            .expect("static AC patterns are always valid");
+        Self { patterns: ac }
+    }
+}
