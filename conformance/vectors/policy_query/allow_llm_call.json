@@ -1,0 +1,21 @@
+{
+  "description": "LLM_CALL action — ALLOW: model is permitted, no PII detected, within budget",
+  "request": {
+    "agent_id": { "org_id": "acme", "team_id": "ml", "agent_id": "agent-001" },
+    "credential_token": "tok-abc",
+    "trace_id": "trace-001",
+    "span_id": "span-001",
+    "action_type": "LLM_CALL",
+    "context": {
+      "llm_call": { "model": "claude-3-5-sonnet", "prompt_tokens": 512, "contains_pii": false }
+    }
+  },
+  "response": {
+    "decision": "ALLOW",
+    "reason": "LLM call permitted — model is in allowlist and no PII detected",
+    "policy_rule": "rule:allow-llm-v1",
+    "approval_id": "",
+    "redact": null,
+    "decision_latency_us": 280
+  }
+}

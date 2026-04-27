@@ -1,0 +1,14 @@
+{
+  "description": "DeregisterRequest — agent sends clean-shutdown deregistration with reason string",
+  "message_type": "assembly.agent.v1.DeregisterRequest",
+  "golden_bin": "deregister_request.bin",
+  "fields": {
+    "agent_id": {
+      "org_id": "acme-corp",
+      "team_id": "platform",
+      "agent_id": "did:key:z6Mkm5rByiqq5UNbvPFPfXtGJwdg2kD1T"
+    },
+    "credential_token": "tok-abc123",
+    "reason": "clean shutdown"
+  }
+}

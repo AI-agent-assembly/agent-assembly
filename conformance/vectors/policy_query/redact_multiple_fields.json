@@ -1,0 +1,37 @@
+{
+  "description": "TOOL_CALL — REDACT with multiple rules: both an API key and a database URL detected, two RedactRule entries returned",
+  "request": {
+    "agent_id": { "org_id": "acme", "team_id": "data", "agent_id": "agent-010" },
+    "credential_token": "tok-multi",
+    "trace_id": "trace-010",
+    "span_id": "span-010",
+    "action_type": "TOOL_CALL",
+    "context": {
+      "tool_call": {
+        "tool_name": "db_query",
+        "tool_source": "function",
+        "args_json_utf8": "{\"api_key\":\"ghp_XXXX\",\"db_url\":\"postgres://user:pass@host/db\",\"query\":\"SELECT 1\"}",
+        "target_url": ""
+      }
+    }
+  },
+  "response": {
+    "decision": "REDACT",
+    "reason": "GitHub PAT and Postgres URL detected in args_json — both fields must be redacted",
+    "policy_rule": "rule:redact-credentials-v1",
+    "approval_id": "",
+    "redact": {
+      "rules": [
+        {
+          "field_path": "$.args.api_key",
+          "replacement": "[REDACTED:GitHubPat]"
+        },
+        {
+          "field_path": "$.args.db_url",
+          "replacement": "[REDACTED:PostgresUrl]"
+        }
+      ]
+    },
+    "decision_latency_us": 635
+  }
+}

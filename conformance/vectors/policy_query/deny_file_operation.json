@@ -1,0 +1,25 @@
+{
+  "description": "FILE_OPERATION write — DENY: path is sensitive (/etc/passwd), policy blocks sensitive writes",
+  "request": {
+    "agent_id": { "org_id": "acme", "team_id": "platform", "agent_id": "agent-004" },
+    "credential_token": "tok-file",
+    "trace_id": "trace-004",
+    "span_id": "span-004",
+    "action_type": "FILE_OPERATION",
+    "context": {
+      "file_op": {
+        "operation": "write",
+        "path": "/etc/passwd",
+        "is_sensitive_path": true
+      }
+    }
+  },
+  "response": {
+    "decision": "DENY",
+    "reason": "Write to sensitive path '/etc/passwd' is blocked by policy",
+    "policy_rule": "rule:deny-sensitive-writes-v1",
+    "approval_id": "",
+    "redact": null,
+    "decision_latency_us": 145
+  }
+}

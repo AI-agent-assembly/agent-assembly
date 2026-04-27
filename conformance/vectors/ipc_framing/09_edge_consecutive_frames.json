@@ -1,0 +1,17 @@
+{
+  "description": "Two consecutive framed messages in one buffer — decoder must extract each independently",
+  "case_type": "consecutive_frames",
+  "frames": [
+    {
+      "input_hex": "0a0161",
+      "framed_hex": "030a0161",
+      "note": "AgentId { org_id: 'a' }"
+    },
+    {
+      "input_hex": "0a0162",
+      "framed_hex": "030a0162",
+      "note": "AgentId { org_id: 'b' }"
+    }
+  ],
+  "concatenated_framed_hex": "030a0161030a0162"
+}

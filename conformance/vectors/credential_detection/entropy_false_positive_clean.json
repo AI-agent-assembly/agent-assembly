@@ -1,0 +1,6 @@
+{
+  "description": "Clean prose text with no credentials — no findings expected",
+  "input_text": "The quick brown fox jumps over the lazy dog. This is a normal log message with no secrets.",
+  "expected_findings": [],
+  "expected_redacted": "The quick brown fox jumps over the lazy dog. This is a normal log message with no secrets."
+}

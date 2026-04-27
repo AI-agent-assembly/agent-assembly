@@ -1,0 +1,8 @@
+{
+  "description": "HeartbeatResponse — policy updated, gateway requests agent to suspend",
+  "message_type": "HeartbeatResponse",
+  "fields": {
+    "policy_updated": true,
+    "should_suspend": true
+  }
+}

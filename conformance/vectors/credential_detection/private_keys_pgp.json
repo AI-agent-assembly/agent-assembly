@@ -1,0 +1,8 @@
+{
+  "description": "PGP private key block header — BEGIN PGP PRIVATE KEY BLOCK",
+  "input_text": "KEY=-----BEGIN PGP PRIVATE KEY BLOCK-----\n\nlQOYBGRkZGQBCACx\n-----END PGP PRIVATE KEY BLOCK-----",
+  "expected_findings": [
+    { "kind": "PgpPrivateKey", "offset": 4 }
+  ],
+  "expected_redacted": "KEY=[REDACTED:PgpPrivateKey]\n\nlQOYBGRkZGQBCACx\n-----END PGP PRIVATE KEY BLOCK-----"
+}

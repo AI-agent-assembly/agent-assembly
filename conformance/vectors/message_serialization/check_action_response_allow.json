@@ -1,0 +1,13 @@
+{
+  "description": "CheckActionResponse with ALLOW decision — most common fast-path response",
+  "message_type": "assembly.policy.v1.CheckActionResponse",
+  "golden_bin": "check_action_response_allow.bin",
+  "fields": {
+    "decision": "ALLOW",
+    "reason": "Tool 'web_search' is allowed by policy rule",
+    "policy_rule": "rule:allow-declared-tools-v1",
+    "approval_id": "",
+    "redact": null,
+    "decision_latency_us": 312
+  }
+}

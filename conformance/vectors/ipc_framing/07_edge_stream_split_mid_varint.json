@@ -1,0 +1,10 @@
+{
+  "description": "Stream split: 4-byte framed message delivered as two chunks — split between varint byte and body (simulates partial read at frame boundary)",
+  "case_type": "stream_split",
+  "full_framed_hex": "030a0161",
+  "chunks": [
+    { "offset": 0, "length": 1, "note": "varint byte only" },
+    { "offset": 1, "length": 3, "note": "full body" }
+  ],
+  "expected_decoded_hex": "0a0161"
+}

@@ -1,0 +1,10 @@
+{
+  "description": "Stream split: 19-byte framed message split mid-body — decoder must buffer and wait for remaining bytes before yielding the message",
+  "case_type": "stream_split",
+  "full_framed_hex": "110a0461636d6512036f70731a047a364d6b",
+  "chunks": [
+    { "offset": 0, "length": 9,  "note": "varint + first 8 body bytes" },
+    { "offset": 9, "length": 9,  "note": "remaining 9 body bytes" }
+  ],
+  "expected_decoded_hex": "0a0461636d6512036f70731a047a364d6b"
+}

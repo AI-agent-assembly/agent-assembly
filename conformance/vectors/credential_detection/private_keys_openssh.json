@@ -1,0 +1,8 @@
+{
+  "description": "OpenSSH private key PEM header — BEGIN OPENSSH PRIVATE KEY",
+  "input_text": "KEY=-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAA\n-----END OPENSSH PRIVATE KEY-----",
+  "expected_findings": [
+    { "kind": "OpensshPrivateKey", "offset": 4 }
+  ],
+  "expected_redacted": "KEY=[REDACTED:OpensshPrivateKey]\nb3BlbnNzaC1rZXktdjEAAAAA\n-----END OPENSSH PRIVATE KEY-----"
+}

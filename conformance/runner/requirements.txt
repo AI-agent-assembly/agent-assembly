@@ -1,0 +1,14 @@
+# Python conformance runner dependencies.
+#
+# This runner validates that a Python SDK implementation produces the same
+# credential-detection results as the reference Rust implementation for every
+# vector in conformance/vectors/credential_detection/.
+#
+# Usage:
+#   pip install -r conformance/runner/requirements.txt
+#   python conformance/runner/runner.py
+
+# Standard JSON loading — no additional dependency needed (stdlib json).
+
+# Optional: coloured output for pass/fail reporting.
+colorama>=0.4.6

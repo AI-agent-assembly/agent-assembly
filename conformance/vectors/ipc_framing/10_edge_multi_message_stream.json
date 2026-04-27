@@ -1,0 +1,22 @@
+{
+  "description": "Three framed messages concatenated in a stream — decoder must yield all three in order",
+  "case_type": "multi_message_stream",
+  "frames": [
+    {
+      "input_hex": "0a0461636d65",
+      "framed_hex": "060a0461636d65",
+      "note": "AgentId { org_id: 'acme' }"
+    },
+    {
+      "input_hex": "",
+      "framed_hex": "00",
+      "note": "empty message"
+    },
+    {
+      "input_hex": "0a0161",
+      "framed_hex": "030a0161",
+      "note": "AgentId { org_id: 'a' }"
+    }
+  ],
+  "concatenated_framed_hex": "060a0461636d6500030a0161"
+}

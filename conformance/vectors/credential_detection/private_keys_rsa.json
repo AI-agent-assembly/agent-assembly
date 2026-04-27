@@ -1,0 +1,9 @@
+{
+  "description": "RSA private key PEM header — BEGIN RSA PRIVATE KEY",
+  "input_text": "KEY=-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA2a2rwplBQLzHPZe5TNJCR7S7\n-----END RSA PRIVATE KEY-----",
+  "expected_findings": [
+    { "kind": "RsaPrivateKey", "offset": 4 },
+    { "kind": "GenericHighEntropy", "offset": 36 }
+  ],
+  "expected_redacted": "KEY=[REDACTED:RsaPrivateKey]\n[REDACTED:GenericHighEntropy]\n-----END RSA PRIVATE KEY-----"
+}

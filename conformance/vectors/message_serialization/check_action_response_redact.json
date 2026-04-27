@@ -1,0 +1,20 @@
+{
+  "description": "CheckActionResponse with REDACT decision — contains nested RedactInstructions with one rule",
+  "message_type": "assembly.policy.v1.CheckActionResponse",
+  "golden_bin": "check_action_response_redact.bin",
+  "fields": {
+    "decision": "REDACT",
+    "reason": "Credential detected in args_json",
+    "policy_rule": "rule:redact-credentials-v1",
+    "approval_id": "",
+    "redact": {
+      "rules": [
+        {
+          "field_path": "$.args.api_key",
+          "replacement": "[REDACTED]"
+        }
+      ]
+    },
+    "decision_latency_us": 520
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "description": "AWS Access Key ID — AKIA prefix followed by 16 uppercase alphanumeric characters",
+  "input_text": "AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE",
+  "expected_findings": [
+    { "kind": "AwsAccessKey", "offset": 18 }
+  ],
+  "expected_redacted": "AWS_ACCESS_KEY_ID=[REDACTED:AwsAccessKey]"
+}

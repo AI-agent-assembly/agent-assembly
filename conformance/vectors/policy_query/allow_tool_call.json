@@ -1,0 +1,26 @@
+{
+  "description": "TOOL_CALL action — ALLOW: tool is in declared list and target URL is in network allowlist",
+  "request": {
+    "agent_id": { "org_id": "acme", "team_id": "platform", "agent_id": "agent-002" },
+    "credential_token": "tok-xyz",
+    "trace_id": "trace-002",
+    "span_id": "span-002",
+    "action_type": "TOOL_CALL",
+    "context": {
+      "tool_call": {
+        "tool_name": "web_search",
+        "tool_source": "mcp",
+        "args_json_utf8": "{\"query\":\"rust async\"}",
+        "target_url": "https://api.openai.com"
+      }
+    }
+  },
+  "response": {
+    "decision": "ALLOW",
+    "reason": "Tool 'web_search' is declared and target URL is in allowlist",
+    "policy_rule": "rule:allow-declared-tools-v1",
+    "approval_id": "",
+    "redact": null,
+    "decision_latency_us": 312
+  }
+}

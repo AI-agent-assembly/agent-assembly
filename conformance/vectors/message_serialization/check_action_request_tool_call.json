@@ -1,0 +1,24 @@
+{
+  "description": "CheckActionRequest with TOOL_CALL action type — standard hot-path message",
+  "message_type": "assembly.policy.v1.CheckActionRequest",
+  "golden_bin": "check_action_request_tool_call.bin",
+  "fields": {
+    "agent_id": {
+      "org_id": "acme-corp",
+      "team_id": "platform",
+      "agent_id": "did:key:z6Mkm5rByiqq5UNbvPFPfXtGJwdg2kD1T"
+    },
+    "credential_token": "tok-abc123",
+    "trace_id": "01HZAB1234567890ABCDEF",
+    "span_id": "01HZAB0000000000000001",
+    "action_type": "TOOL_CALL",
+    "context": {
+      "tool_call": {
+        "tool_name": "web_search",
+        "tool_source": "mcp",
+        "args_json_utf8": "{\"query\":\"test\"}",
+        "target_url": "https://search.example.com"
+      }
+    }
+  }
+}

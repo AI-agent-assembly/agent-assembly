@@ -1,0 +1,26 @@
+{
+  "description": "TOOL_CALL — PENDING: estimated cost exceeds approval threshold (requires_approval_if: estimated_cost_usd > 0.10)",
+  "request": {
+    "agent_id": { "org_id": "acme", "team_id": "ml", "agent_id": "agent-007" },
+    "credential_token": "tok-cost",
+    "trace_id": "trace-007",
+    "span_id": "span-007",
+    "action_type": "TOOL_CALL",
+    "context": {
+      "tool_call": {
+        "tool_name": "code_interpreter",
+        "tool_source": "mcp",
+        "args_json_utf8": "{\"estimated_cost_usd\": 0.45}",
+        "target_url": ""
+      }
+    }
+  },
+  "response": {
+    "decision": "PENDING",
+    "reason": "Estimated cost $0.45 exceeds approval threshold $0.10",
+    "policy_rule": "rule:approval-high-cost-v1",
+    "approval_id": "appr-01HZ9XABCDEF1234567890",
+    "redact": null,
+    "decision_latency_us": 410
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "description": "AgentId with org_id='a' — single string field, 3-byte proto, varint(3)=0x03 prefix",
+  "message_type": "assembly.common.v1.AgentId",
+  "input_hex": "0a0161",
+  "expected_framed_hex": "030a0161"
+}

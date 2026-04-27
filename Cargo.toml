@@ -11,6 +11,7 @@ members = [
     "aa-gateway",
     "aa-api",
     "aa-cli",
+    "conformance",
 ]
 resolver = "2"
 

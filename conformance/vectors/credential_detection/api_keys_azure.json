@@ -1,0 +1,8 @@
+{
+  "description": "Azure storage connection string — identified by DefaultEndpointsProtocol= prefix",
+  "input_text": "AZURE_CONN=DefaultEndpointsProtocol=https;AccountName=myaccount;AccountKey=XXXX",
+  "expected_findings": [
+    { "kind": "AzureConnectionString", "offset": 11 }
+  ],
+  "expected_redacted": "AZURE_CONN=[REDACTED:AzureConnectionString];AccountName=myaccount;AccountKey=XXXX"
+}

@@ -66,3 +66,11 @@ When bumping a component version:
 4. Commit the change in the same PR as the version bump.
 
 See [versioning.md](versioning.md) for the full versioning and deprecation policy.
+
+---
+
+## Workspace changes (non-version bumps)
+
+| PR / Ticket | Change | Compatibility impact |
+|---|---|---|
+| AAASM-107 | Added `conformance` workspace crate (test infrastructure, not shipped) | None — internal tooling only |

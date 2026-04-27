@@ -1,0 +1,10 @@
+{
+  "description": "RegisterResponse — gateway issues credential token, assigns policy, sets heartbeat interval",
+  "message_type": "assembly.agent.v1.RegisterResponse",
+  "golden_bin": "register_response.bin",
+  "fields": {
+    "credential_token": "eyJhbGciOiJFZERTQSJ9.tok.sig",
+    "assigned_policy": "policy:acme-standard-v2",
+    "heartbeat_interval_sec": 30
+  }
+}

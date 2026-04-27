@@ -1,0 +1,8 @@
+{
+  "description": "GitHub App installation token — ghs_ prefix",
+  "input_text": "tok=ghs_AbCdEfGh",
+  "expected_findings": [
+    { "kind": "GitHubAppToken", "offset": 4 }
+  ],
+  "expected_redacted": "tok=[REDACTED:GitHubAppToken]"
+}

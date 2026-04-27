@@ -1,0 +1,9 @@
+{
+  "description": "EC private key PEM header — BEGIN EC PRIVATE KEY",
+  "input_text": "KEY=-----BEGIN EC PRIVATE KEY-----\nMHQCAQEEIOaRgVBExLFbHznv7gHsepSPpLUFKr\n-----END EC PRIVATE KEY-----",
+  "expected_findings": [
+    { "kind": "EcPrivateKey", "offset": 4 },
+    { "kind": "GenericHighEntropy", "offset": 35 }
+  ],
+  "expected_redacted": "KEY=[REDACTED:EcPrivateKey]\n[REDACTED:GenericHighEntropy]\n-----END EC PRIVATE KEY-----"
+}

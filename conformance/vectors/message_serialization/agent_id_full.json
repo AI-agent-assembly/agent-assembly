@@ -1,0 +1,10 @@
+{
+  "description": "AgentId with all three fields populated",
+  "message_type": "assembly.common.v1.AgentId",
+  "golden_bin": "agent_id_full.bin",
+  "fields": {
+    "org_id": "acme-corp",
+    "team_id": "platform",
+    "agent_id": "did:key:z6Mkm5rByiqq5UNbvPFPfXtGJwdg2kD1T"
+  }
+}

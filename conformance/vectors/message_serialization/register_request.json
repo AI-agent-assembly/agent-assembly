@@ -1,0 +1,22 @@
+{
+  "description": "RegisterRequest — agent startup registration with full metadata, tool list, and public key",
+  "message_type": "assembly.agent.v1.RegisterRequest",
+  "golden_bin": "register_request.bin",
+  "fields": {
+    "agent_id": {
+      "org_id": "acme-corp",
+      "team_id": "platform",
+      "agent_id": "did:key:z6Mkm5rByiqq5UNbvPFPfXtGJwdg2kD1T"
+    },
+    "name": "acme-platform-agent-v1",
+    "framework": "langgraph",
+    "version": "1.2.3",
+    "risk_tier": "MEDIUM",
+    "tool_names": ["web_search", "code_interpreter"],
+    "public_key": "ed25519:z6MkkMh5nVgAeTf9ZLaD3ABCDE",
+    "metadata": {
+      "env": "production",
+      "team": "platform"
+    }
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "description": "Slack OAuth token — xoxa- prefix",
+  "input_text": "tok=xoxa-AbCdEf",
+  "expected_findings": [
+    { "kind": "SlackOAuthToken", "offset": 4 }
+  ],
+  "expected_redacted": "tok=[REDACTED:SlackOAuthToken]"
+}

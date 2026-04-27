@@ -1,0 +1,10 @@
+{
+  "description": "AgentId with only org_id set — team_id and agent_id are default empty strings (proto3 omits default values)",
+  "message_type": "assembly.common.v1.AgentId",
+  "golden_bin": "agent_id_minimal.bin",
+  "fields": {
+    "org_id": "acme",
+    "team_id": "",
+    "agent_id": ""
+  }
+}
