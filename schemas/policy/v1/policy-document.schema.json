@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema",
+  "$id": "https://agent-assembly.github.io/schemas/policy/v1/policy-document.schema.json",
+  "title": "PolicyDocument",
+  "description": "Schema for the AI Agent Assembly PolicyDocument v1. Defines the governance rules applied to an agent by aa-gateway. The requires_approval_if expression language is not specified in v1 of this schema — expression syntax is deferred to the policy engine implementation (AAASM-8).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [],
+  "properties": {},
+  "examples": []
+}
