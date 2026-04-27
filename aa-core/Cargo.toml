@@ -8,13 +8,16 @@ description = "Pure domain logic for Agent Assembly — no_std compatible"
 
 [dependencies]
 cfg-if = "1"
-serde  = { version = "1", default-features = false, features = ["derive"], optional = true }
+serde  = { version = "1", default-features = false, features = ["derive", "alloc"], optional = true }
 
 [features]
 default = ["std"]
-std     = []
+std     = ["alloc"]
 alloc   = []
 serde   = ["dep:serde"]
+
+[dev-dependencies]
+serde_json = "1"
 
 [lints]
 workspace = true
