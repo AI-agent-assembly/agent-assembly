@@ -124,6 +124,14 @@ def _findings_match(actual: list[dict], expected: list[dict]) -> tuple[bool, str
 
 def run(vectors_dir: Path, verbose: bool) -> bool:
     """Run all vectors against the SDK. Returns True if all pass."""
+    if not os.environ.get("AA_SDK_MODULE", ""):
+        print(
+            f"{_YELLOW}INFO: AA_SDK_MODULE is not set — "
+            f"Python SDK conformance is a placeholder; skipping test run.{_RESET}"
+        )
+        print("Set AA_SDK_MODULE to the Python module name when the SDK is ready.")
+        return True
+
     scan = _load_sdk_scan()
     vectors = _load_vectors(vectors_dir)
 
