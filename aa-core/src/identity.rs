@@ -3,6 +3,7 @@
 /// The inner `[u8; 16]` is private. Use [`AgentId::from_bytes`] to construct
 /// and [`AgentId::as_bytes`] to inspect.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct AgentId([u8; 16]);
 
 impl AgentId {
@@ -27,6 +28,7 @@ impl AgentId {
 /// The inner `[u8; 16]` is private. Use [`SessionId::from_bytes`] to construct
 /// and [`SessionId::as_bytes`] to inspect.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SessionId([u8; 16]);
 
 impl SessionId {
