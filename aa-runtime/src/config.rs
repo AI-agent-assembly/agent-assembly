@@ -28,21 +28,25 @@ pub struct RuntimeConfig {
     pub ipc_max_connections: usize,
 
     /// Depth of the mpsc channel that feeds the event pipeline.
+    ///
     /// Read from `AA_PIPELINE_INPUT_BUFFER`. Defaults to `10_000`.
     /// Zero falls back to the default.
     pub pipeline_input_buffer: usize,
 
     /// Maximum events in a batch before an early flush is triggered.
+    ///
     /// Read from `AA_PIPELINE_BATCH_SIZE`. Defaults to `100`.
     /// Zero falls back to the default.
     pub pipeline_batch_size: usize,
 
     /// Interval in milliseconds between scheduled batch flushes.
+    ///
     /// Read from `AA_PIPELINE_FLUSH_INTERVAL_MS`. Defaults to `100`.
     /// Zero falls back to the default.
     pub pipeline_flush_interval_ms: u64,
 
     /// Capacity of the broadcast ring buffer for fan-out subscribers.
+    ///
     /// Read from `AA_PIPELINE_BROADCAST_CAPACITY`. Defaults to `1_024`.
     /// Zero falls back to the default.
     pub pipeline_broadcast_capacity: usize,
@@ -207,6 +211,10 @@ mod tests {
         assert_eq!(config.worker_threads, 0);
         assert_eq!(config.shutdown_timeout_secs, 30);
         assert_eq!(config.ipc_max_connections, 64);
+        assert_eq!(config.pipeline_input_buffer, 10_000);
+        assert_eq!(config.pipeline_batch_size, 100);
+        assert_eq!(config.pipeline_flush_interval_ms, 100);
+        assert_eq!(config.pipeline_broadcast_capacity, 1_024);
 
         std::env::remove_var("AA_AGENT_ID");
     }
@@ -259,6 +267,7 @@ mod tests {
 
     #[test]
     fn rejects_zero_ipc_max_connections() {
+        let _guard = ENV_LOCK.lock().unwrap();
         std::env::set_var("AA_AGENT_ID", "agent-zero");
         std::env::set_var("AA_IPC_MAX_CONNECTIONS", "0");
 
@@ -272,6 +281,7 @@ mod tests {
 
     #[test]
     fn rejects_agent_id_with_path_separator() {
+        let _guard = ENV_LOCK.lock().unwrap();
         std::env::set_var("AA_AGENT_ID", "../../etc/passwd");
 
         let result = RuntimeConfig::from_env();
@@ -306,7 +316,7 @@ mod tests {
     fn reads_pipeline_input_buffer_from_env() {
         let _guard = ENV_LOCK.lock().unwrap();
         std::env::set_var("AA_AGENT_ID", "agent-pib");
-        std::env::set_var("AA_PIPELINE_INPUT_BUFFER", "5000");
+        std::env::set_var("AA_PIPELINE_INPUT_BUFFER", "5000"); // arbitrary non-default, non-zero value
 
         let config = RuntimeConfig::from_env().unwrap();
 
@@ -320,7 +330,7 @@ mod tests {
     fn reads_pipeline_batch_size_from_env() {
         let _guard = ENV_LOCK.lock().unwrap();
         std::env::set_var("AA_AGENT_ID", "agent-pbs");
-        std::env::set_var("AA_PIPELINE_BATCH_SIZE", "50");
+        std::env::set_var("AA_PIPELINE_BATCH_SIZE", "50"); // arbitrary non-default, non-zero value
 
         let config = RuntimeConfig::from_env().unwrap();
 
@@ -334,7 +344,7 @@ mod tests {
     fn reads_pipeline_flush_interval_ms_from_env() {
         let _guard = ENV_LOCK.lock().unwrap();
         std::env::set_var("AA_AGENT_ID", "agent-pfi");
-        std::env::set_var("AA_PIPELINE_FLUSH_INTERVAL_MS", "200");
+        std::env::set_var("AA_PIPELINE_FLUSH_INTERVAL_MS", "200"); // arbitrary non-default, non-zero value
 
         let config = RuntimeConfig::from_env().unwrap();
 
@@ -348,7 +358,7 @@ mod tests {
     fn reads_pipeline_broadcast_capacity_from_env() {
         let _guard = ENV_LOCK.lock().unwrap();
         std::env::set_var("AA_AGENT_ID", "agent-pbc");
-        std::env::set_var("AA_PIPELINE_BROADCAST_CAPACITY", "2048");
+        std::env::set_var("AA_PIPELINE_BROADCAST_CAPACITY", "2048"); // arbitrary non-default, non-zero value
 
         let config = RuntimeConfig::from_env().unwrap();
 
