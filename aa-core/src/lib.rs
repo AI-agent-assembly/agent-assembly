@@ -18,7 +18,4 @@ cfg_if::cfg_if! {
     }
 }
 
-#[cfg(feature = "serde")]
-use serde::{Deserialize, Serialize};
-
 pub mod time;
