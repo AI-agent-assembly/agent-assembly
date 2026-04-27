@@ -36,3 +36,21 @@ impl From<std::time::SystemTime> for Timestamp {
         Self(nanos)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn round_trips_nanos() {
+        let ts = Timestamp::from_nanos(1_000_000_000);
+        assert_eq!(ts.as_nanos(), 1_000_000_000);
+    }
+
+    #[cfg(feature = "std")]
+    #[test]
+    fn from_system_time_at_epoch_is_zero() {
+        let ts = Timestamp::from(std::time::SystemTime::UNIX_EPOCH);
+        assert_eq!(ts.as_nanos(), 0);
+    }
+}
