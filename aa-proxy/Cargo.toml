@@ -18,7 +18,9 @@ aa-core = { path = "../aa-core" }
 aa-runtime = { path = "../aa-runtime" }
 tokio      = { version = "1", features = ["full"] }
 hyper      = { version = "1", features = ["server", "http1"] }
-hyper-util = { version = "0.1", features = ["tokio", "server"] }
+hyper-util   = { version = "0.1", features = ["tokio", "server"] }
+rustls       = { version = "0.23", features = ["ring"] }
+tokio-rustls = "0.26"
 
 [lints]
 workspace = true
