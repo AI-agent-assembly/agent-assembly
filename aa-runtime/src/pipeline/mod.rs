@@ -133,10 +133,17 @@ fn is_policy_violation(event: &EnrichedEvent, policy: &PolicyRules) -> bool {
     let action_str = ActionType::try_from(event.inner.action_type)
         .map(|a| a.as_str_name())
         .unwrap_or("");
-    policy
-        .rules
-        .iter()
-        .any(|rule| rule.blocked_actions.iter().any(|ba| ba == action_str))
+    for rule in &policy.rules {
+        if rule.blocked_actions.iter().any(|ba| ba == action_str) {
+            tracing::warn!(
+                rule = %rule.name,
+                action = %action_str,
+                "policy rule matched — event bypassing batch"
+            );
+            return true;
+        }
+    }
+    false
 }
 
 /// Broadcast all events in `batch` and record metrics.
