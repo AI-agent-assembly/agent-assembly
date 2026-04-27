@@ -158,3 +158,26 @@ jobs:
             --target "$TARGET" \
             --no-default-features \
             --features alloc
+
+  buf-lint:
+    name: Proto lint & breaking check (buf)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # full history needed for buf breaking --against
+      - uses: bufbuild/buf-setup-action@v1.50.0
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Lint proto files
+        run: buf lint
+        working-directory: proto
+      - name: Create local base branch for buf breaking check
+        if: github.event_name == 'pull_request'
+        run: git fetch origin ${{ github.base_ref }}:${{ github.base_ref }}
+      - name: Check breaking changes against base branch
+        if: github.event_name == 'pull_request'
+        run: |
+          buf breaking \
+            --against "../.git#branch=${{ github.base_ref }},subdir=proto"
+        working-directory: proto

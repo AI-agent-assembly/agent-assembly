@@ -1,0 +1,31 @@
+{
+  "_service": "assembly.policy.v1.PolicyService",
+  "_method": "CheckAction",
+  "_direction": "unary — runtime → gateway (path ②, HOT PATH < 5ms p99)",
+  "request": {
+    "agentId": {
+      "orgId": "acme-corp",
+      "teamId": "platform-team",
+      "agentId": "did:key:z6Mkm5rByiqq5UNbvPFPfXtGJwdg2kD1T"
+    },
+    "credentialToken": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJkaWQ6a2V5OnomNk1rbTVyIn0.sig",
+    "traceId": "01HZAB1234567890ABCDEF",
+    "spanId": "01HZAB1234567890000001",
+    "actionType": "TOOL_CALL",
+    "context": {
+      "toolCall": {
+        "toolName": "web_search",
+        "toolSource": "mcp",
+        "argsJson": "eyJxdWVyeSI6InRlc3QifQ==",
+        "targetUrl": "https://search.internal.acme.com"
+      }
+    }
+  },
+  "response": {
+    "decision": "ALLOW",
+    "reason": "Tool 'web_search' is in agent's declared tool list and target URL is in allowlist",
+    "policyRule": "rule:allow-declared-tools-v1",
+    "approvalId": "",
+    "decisionLatencyUs": 312
+  }
+}

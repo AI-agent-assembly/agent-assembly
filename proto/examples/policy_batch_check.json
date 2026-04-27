@@ -1,0 +1,62 @@
+{
+  "_service": "assembly.policy.v1.PolicyService",
+  "_method": "BatchCheck",
+  "_direction": "unary — runtime → gateway (path ②, cache pre-warm)",
+  "request": {
+    "requests": [
+      {
+        "agentId": {
+          "orgId": "acme-corp",
+          "teamId": "platform-team",
+          "agentId": "did:key:z6Mkm5rByiqq5UNbvPFPfXtGJwdg2kD1T"
+        },
+        "credentialToken": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJkaWQ6a2V5OnomNk1rbTVyIn0.sig",
+        "traceId": "01HZAB1234567890ABCDEF",
+        "spanId": "01HZAB1234567890000002",
+        "actionType": "LLM_CALL",
+        "context": {
+          "llmCall": {
+            "model": "claude-3-5-sonnet",
+            "promptTokens": 1200,
+            "containsPii": false
+          }
+        }
+      },
+      {
+        "agentId": {
+          "orgId": "acme-corp",
+          "teamId": "platform-team",
+          "agentId": "did:key:z6Mkm5rByiqq5UNbvPFPfXtGJwdg2kD1T"
+        },
+        "credentialToken": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJkaWQ6a2V5OnomNk1rbTVyIn0.sig",
+        "traceId": "01HZAB1234567890ABCDEF",
+        "spanId": "01HZAB1234567890000003",
+        "actionType": "NETWORK_CALL",
+        "context": {
+          "networkCall": {
+            "host": "api.openai.com",
+            "port": 443,
+            "protocol": "https",
+            "inAllowlist": true
+          }
+        }
+      }
+    ]
+  },
+  "response": {
+    "responses": [
+      {
+        "decision": "ALLOW",
+        "reason": "Model 'claude-3-5-sonnet' is on the approved model list",
+        "policyRule": "rule:approved-models-v1",
+        "decisionLatencyUs": 198
+      },
+      {
+        "decision": "ALLOW",
+        "reason": "Host 'api.openai.com:443' is in network allowlist",
+        "policyRule": "rule:network-allowlist-v1",
+        "decisionLatencyUs": 105
+      }
+    ]
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "_service": "assembly.agent.v1.AgentLifecycleService",
+  "_method": "ControlStream",
+  "_direction": "server-streaming — gateway → runtime (path ④)",
+  "_note": "Runtime holds an open stream. Gateway pushes ControlCommand messages as events occur.",
+  "request": {
+    "agentId": {
+      "orgId": "acme-corp",
+      "teamId": "platform-team",
+      "agentId": "did:key:z6Mkm5rByiqq5UNbvPFPfXtGJwdg2kD1T"
+    },
+    "credentialToken": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJkaWQ6a2V5OnomNk1rbTVyIn0.sig"
+  },
+  "stream_messages": [
+    {
+      "_event": "policy update pushed to agent",
+      "policyUpdate": {
+        "newPolicyId": "high-risk-lockdown-v3",
+        "effectiveAtUnixMs": 1745740800000
+      }
+    },
+    {
+      "_event": "gateway requests agent to pause",
+      "suspend": {
+        "reason": "Budget threshold exceeded — awaiting human approval"
+      }
+    },
+    {
+      "_event": "gateway resumes agent after approval",
+      "resume": {
+        "approvalId": "appr_01HZ9GQPK5VFNMZR"
+      }
+    }
+  ]
+}
