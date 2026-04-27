@@ -13,3 +13,19 @@ pub enum FileMode {
     Append,
     Delete,
 }
+
+/// An agent action subject to governance evaluation.
+///
+/// Gated on `alloc` because all variants carry `String` fields.
+#[cfg(feature = "alloc")]
+#[derive(Debug, Clone, PartialEq)]
+pub enum GovernanceAction {
+    /// Invocation of a named tool with pre-serialized JSON arguments.
+    ToolCall { name: alloc::string::String, args: ArgsJson },
+    /// Read or write access to a file path.
+    FileAccess { path: alloc::string::String, mode: FileMode },
+    /// Outbound network request.
+    NetworkRequest { url: alloc::string::String, method: alloc::string::String },
+    /// Spawning an external process.
+    ProcessExec { command: alloc::string::String },
+}
