@@ -38,6 +38,7 @@ aa_status aa_query_policy(
 );
 aa_status aa_disconnect(aa_client_handle* client);
 void aa_free_string(char* value);
+void aa_free_bytes(uint8_t* bytes, size_t len);
 
 #ifdef __cplusplus
 }

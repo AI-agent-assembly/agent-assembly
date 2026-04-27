@@ -202,3 +202,18 @@ pub unsafe extern "C" fn aa_free_string(value: *mut c_char) {
         drop(CString::from_raw(value));
     }
 }
+
+/// # Safety
+///
+/// `bytes` and `len` must come from an allocation owned by this crate.
+#[no_mangle]
+pub unsafe extern "C" fn aa_free_bytes(bytes: *mut u8, len: usize) {
+    if bytes.is_null() {
+        return;
+    }
+
+    // SAFETY: Caller guarantees pointer/length originate from this crate.
+    unsafe {
+        drop(Vec::from_raw_parts(bytes, len, len));
+    }
+}
