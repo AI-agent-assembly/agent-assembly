@@ -619,4 +619,64 @@ mod tests {
         let result = scanner.scan("word: hello");
         assert!(!result.findings.iter().any(|f| f.kind == CredentialKind::GenericHighEntropy));
     }
+
+    // --- luhn_valid helper ---
+
+    #[test]
+    fn luhn_valid_visa_test_number() {
+        assert!(luhn_valid("4532015112830366"));
+    }
+
+    #[test]
+    fn luhn_valid_mastercard_test_number() {
+        assert!(luhn_valid("5425233430109903"));
+    }
+
+    #[test]
+    fn luhn_valid_amex_test_number() {
+        assert!(luhn_valid("371449635398431"));
+    }
+
+    #[test]
+    fn luhn_valid_discover_test_number() {
+        assert!(luhn_valid("6011111111111117"));
+    }
+
+    #[test]
+    fn luhn_invalid_altered_digit() {
+        assert!(!luhn_valid("4532015112830367"));
+    }
+
+    #[test]
+    fn luhn_rejects_too_short() {
+        assert!(!luhn_valid("123456789012"));
+    }
+
+    #[test]
+    fn luhn_rejects_too_long() {
+        assert!(!luhn_valid("45320151128303661234"));
+    }
+
+    // --- shannon_entropy helper ---
+
+    #[test]
+    fn entropy_zero_for_empty() {
+        assert_eq!(shannon_entropy(""), 0.0);
+    }
+
+    #[test]
+    fn entropy_low_for_repeated_char() {
+        assert!(shannon_entropy("aaaaaaaaaaaaaaaaaaaaaa") < 1.0);
+    }
+
+    #[test]
+    fn entropy_high_for_random_base64() {
+        assert!(shannon_entropy("xK9mP2nQvR7sT4wY1aB6dF3hJ8lN0") > 4.0);
+    }
+
+    #[test]
+    fn entropy_moderate_for_english_text() {
+        let e = shannon_entropy("Thequickbrownfoxjumpsoverthelazydog");
+        assert!(e > 3.0 && e < 5.0);
+    }
 }
