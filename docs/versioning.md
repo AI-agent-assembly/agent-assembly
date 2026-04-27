@@ -49,3 +49,32 @@ These changes require a MAJOR version bump and a migration guide:
 | Add a required field | MAJOR | Existing messages missing the field become invalid |
 | Change a JSON Schema `type` constraint | MAJOR | Existing valid documents become invalid |
 | Narrow a JSON Schema constraint (e.g. add `minLength`) | MAJOR | Previously valid values may now fail validation |
+
+---
+
+## Deprecation Lifecycle
+
+Before a breaking change is introduced, the affected field, method, or value must go through a formal deprecation period:
+
+```
+Deprecated in vX.Y  →  Removed no earlier than v(X+2).0
+```
+
+### Steps
+
+1. **Deprecate** — Mark the item as deprecated in the proto or JSON Schema with a `deprecated` annotation and a description explaining what to use instead. Bump MINOR version.
+2. **Announce** — Add an entry to `CHANGELOG.md` under `Deprecated`. Notify SDK maintainers.
+3. **Support period** — The deprecated item remains fully functional for at least **two MAJOR versions** after the deprecating release.
+4. **Remove** — Remove the item in a future MAJOR release (no earlier than `v(X+2).0`). Add a migration guide. Update `CHANGELOG.md` under `Removed`.
+
+### Runtime Backward Compatibility
+
+**Runtime N must support SDKs speaking protocol N-1.**
+
+This means an `aa-runtime` at protocol `v2.x` must continue to accept connections from SDKs still using protocol `v1.x`. SDKs have a two-major-version window to migrate before a runtime drops support for the older protocol.
+
+| Runtime Protocol | Must Support |
+|---|---|
+| protocol/v1 | protocol/v1 only (first version) |
+| protocol/v2 | protocol/v1, protocol/v2 |
+| protocol/v3 | protocol/v2, protocol/v3 (v1 support may be dropped) |
