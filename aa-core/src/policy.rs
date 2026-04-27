@@ -261,9 +261,16 @@ mod tests {
     #[test]
     #[cfg(feature = "alloc")]
     fn policy_result_cross_variant_inequality() {
-        assert_ne!(PolicyResult::Allow, PolicyResult::Deny { reason: alloc::string::String::from("x") });
         assert_ne!(
-            PolicyResult::Deny { reason: alloc::string::String::from("x") },
+            PolicyResult::Allow,
+            PolicyResult::Deny {
+                reason: alloc::string::String::from("x")
+            }
+        );
+        assert_ne!(
+            PolicyResult::Deny {
+                reason: alloc::string::String::from("x")
+            },
             PolicyResult::RequiresApproval { timeout_secs: 10 }
         );
     }
