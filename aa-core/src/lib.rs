@@ -19,3 +19,6 @@ cfg_if::cfg_if! {
 }
 
 pub mod time;
+pub mod identity;
+
+pub use identity::{AgentId, SessionId};
