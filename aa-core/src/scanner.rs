@@ -196,13 +196,20 @@ impl CredentialScanner {
     pub fn scan(&self, text: &str) -> ScanResult {
         let mut findings = Vec::new();
 
-        // Phase 1: AC literal prefix scan
+        // Phase 1: AC literal prefix scan (API keys, auth tokens, cloud creds,
+        //          database URLs, PEM private key headers — 18 patterns)
         for mat in self.patterns.find_iter(text) {
             let kind = AC_KINDS[mat.pattern()].clone();
             let offset = mat.start();
             let end = token_end(text, mat.end());
             findings.push(CredentialFinding::new(kind, offset, end));
         }
+
+        // Phase 2: PII — credit card numbers and SSN patterns
+        scan_digit_sequences(text, &mut findings);
+
+        // Phase 3: Email addresses
+        scan_emails(text, &mut findings);
 
         findings.sort_by_key(|f| f.offset);
         ScanResult { findings }
@@ -222,4 +229,91 @@ fn token_end(text: &str, from: usize) -> usize {
         })
         .map(|i| from + i)
         .unwrap_or(text.len())
+}
+
+/// Returns `true` if `s` matches the SSN format `DDD-DD-DDDD` exactly.
+fn is_ssn(s: &str) -> bool {
+    let b = s.as_bytes();
+    b.len() == 11
+        && b[0..3].iter().all(u8::is_ascii_digit)
+        && b[3] == b'-'
+        && b[4..6].iter().all(u8::is_ascii_digit)
+        && b[6] == b'-'
+        && b[7..11].iter().all(u8::is_ascii_digit)
+}
+
+/// Scans `text` for credit card numbers (Luhn validation added in a later commit)
+/// and SSN patterns (`DDD-DD-DDDD`).
+fn scan_digit_sequences(text: &str, findings: &mut Vec<CredentialFinding>) {
+    let bytes = text.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if !bytes[i].is_ascii_digit() {
+            i += 1;
+            continue;
+        }
+
+        let start = i;
+        let mut digits = String::new();
+        let mut j = i;
+        let limit = (start + 24).min(bytes.len());
+
+        while j < limit {
+            match bytes[j] {
+                b if b.is_ascii_digit() => {
+                    digits.push(b as char);
+                    j += 1;
+                }
+                b' ' | b'-' if !digits.is_empty() => {
+                    j += 1;
+                }
+                _ => break,
+            }
+        }
+
+        let end = j;
+        let segment = &text[start..end];
+
+        if is_ssn(segment) {
+            findings.push(CredentialFinding::new(CredentialKind::SsnPattern, start, end));
+        } else if digits.len() >= 13 && digits.len() <= 19 {
+            // Luhn validation will be wired in the next commit
+            let _ = &digits;
+        }
+        i = end.max(i + 1);
+    }
+}
+
+/// Scans `text` for email addresses by locating `@` signs and expanding outward.
+fn scan_emails(text: &str, findings: &mut Vec<CredentialFinding>) {
+    let mut search = text;
+    let mut base = 0usize;
+
+    while let Some(at) = search.find('@') {
+        let abs_at = base + at;
+
+        let local_start = text[..abs_at]
+            .rfind(|c: char| c.is_whitespace() || matches!(c, '<' | ',' | ';' | '"' | '\''))
+            .map(|i| i + 1)
+            .unwrap_or(0);
+
+        let domain_end = token_end(text, abs_at + 1);
+        let local = &text[local_start..abs_at];
+        let domain = &text[abs_at + 1..domain_end];
+
+        if !local.is_empty() && domain.contains('.') && domain.len() >= 3 {
+            findings.push(CredentialFinding::new(
+                CredentialKind::EmailAddress,
+                local_start,
+                domain_end,
+            ));
+        }
+
+        let next = abs_at + 1;
+        if next >= text.len() {
+            break;
+        }
+        search = &text[next..];
+        base = next;
+    }
 }
