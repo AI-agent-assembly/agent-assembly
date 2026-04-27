@@ -93,11 +93,20 @@ pub enum PolicyResult {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum GovernanceAction {
     /// Invocation of a named tool with pre-serialized JSON arguments.
-    ToolCall { name: alloc::string::String, args: ArgsJson },
+    ToolCall {
+        name: alloc::string::String,
+        args: ArgsJson,
+    },
     /// Read or write access to a file path.
-    FileAccess { path: alloc::string::String, mode: FileMode },
+    FileAccess {
+        path: alloc::string::String,
+        mode: FileMode,
+    },
     /// Outbound network request.
-    NetworkRequest { url: alloc::string::String, method: alloc::string::String },
+    NetworkRequest {
+        url: alloc::string::String,
+        method: alloc::string::String,
+    },
     /// Spawning an external process.
     ProcessExec { command: alloc::string::String },
 }
@@ -195,7 +204,9 @@ mod tests {
     #[test]
     #[cfg(feature = "alloc")]
     fn policy_result_deny_reason() {
-        let r = PolicyResult::Deny { reason: alloc::string::String::from("blocked") };
+        let r = PolicyResult::Deny {
+            reason: alloc::string::String::from("blocked"),
+        };
         if let PolicyResult::Deny { reason } = &r {
             assert_eq!(reason, "blocked");
         } else {

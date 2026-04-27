@@ -17,10 +17,7 @@ impl crate::policy::PolicyEvaluator for DenyAllEvaluator {
         }
     }
 
-    fn load_policy(
-        &mut self,
-        _policy: &crate::policy::PolicyDocument,
-    ) -> Result<(), crate::policy::PolicyError> {
+    fn load_policy(&mut self, _policy: &crate::policy::PolicyDocument) -> Result<(), crate::policy::PolicyError> {
         Ok(())
     }
 
@@ -49,10 +46,7 @@ impl crate::policy::PolicyEvaluator for PermitAllEvaluator {
         crate::policy::PolicyResult::Allow
     }
 
-    fn load_policy(
-        &mut self,
-        _policy: &crate::policy::PolicyDocument,
-    ) -> Result<(), crate::policy::PolicyError> {
+    fn load_policy(&mut self, _policy: &crate::policy::PolicyDocument) -> Result<(), crate::policy::PolicyError> {
         Ok(())
     }
 
