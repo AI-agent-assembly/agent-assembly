@@ -1,0 +1,19 @@
+{
+  "_service": "assembly.agent.v1.AgentLifecycleService",
+  "_method": "Heartbeat",
+  "_direction": "unary — runtime → gateway (path ①)",
+  "request": {
+    "agentId": {
+      "orgId": "acme-corp",
+      "teamId": "platform-team",
+      "agentId": "did:key:z6Mkm5rByiqq5UNbvPFPfXtGJwdg2kD1T"
+    },
+    "credentialToken": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJkaWQ6a2V5OnomNk1rbTVyIn0.sig",
+    "activeRuns": 2,
+    "actionsCount": 47
+  },
+  "response": {
+    "policyUpdated": false,
+    "shouldSuspend": false
+  }
+}

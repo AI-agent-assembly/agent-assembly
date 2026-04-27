@@ -1,0 +1,28 @@
+{
+  "_service": "assembly.agent.v1.AgentLifecycleService",
+  "_method": "Register",
+  "_direction": "unary — runtime → gateway (path ①)",
+  "request": {
+    "agentId": {
+      "orgId": "acme-corp",
+      "teamId": "platform-team",
+      "agentId": "did:key:z6Mkm5rByiqq5UNbvPFPfXtGJwdg2kD1T"
+    },
+    "name": "data-pipeline-agent",
+    "framework": "langgraph",
+    "version": "1.2.0",
+    "riskTier": "MEDIUM",
+    "toolNames": ["web_search", "code_exec", "file_read"],
+    "publicKey": "z6Mkm5rByiqq5UNbvPFPfXtGJwdg2kD1T",
+    "metadata": {
+      "git_commit": "abc1234",
+      "owner": "platform-team@acme.com",
+      "environment": "production"
+    }
+  },
+  "response": {
+    "credentialToken": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJkaWQ6a2V5OnomNk1rbTVyIn0.sig",
+    "assignedPolicy": "default-medium-risk-v2",
+    "heartbeatIntervalSec": 30
+  }
+}
