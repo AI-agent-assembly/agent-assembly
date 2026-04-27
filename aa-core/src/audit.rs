@@ -202,6 +202,28 @@ impl AuditEntry {
     }
 
     // -----------------------------------------------------------------------
+    // Integrity
+    // -----------------------------------------------------------------------
+
+    /// Returns `true` if the stored `entry_hash` matches a fresh re-computation
+    /// over the stored fields.
+    ///
+    /// Returns `false` if any field has been altered after construction — including
+    /// via `unsafe` code.
+    pub fn verify_integrity(&self) -> bool {
+        let expected = Self::compute_hash(
+            self.seq,
+            self.timestamp_ns,
+            &self.event_type,
+            &self.agent_id,
+            &self.session_id,
+            &self.previous_hash,
+            &self.payload,
+        );
+        expected == self.entry_hash
+    }
+
+    // -----------------------------------------------------------------------
     // Private helpers
     // -----------------------------------------------------------------------
 
