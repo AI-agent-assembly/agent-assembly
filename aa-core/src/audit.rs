@@ -387,6 +387,40 @@ impl AuditLog {
         self.entries.push(entry);
         Ok(())
     }
+
+    /// Build and append the next [`AuditEntry`] in one atomic step.
+    ///
+    /// `seq` and `previous_hash` are derived automatically from the log's
+    /// current state, eliminating the risk of caller-side sequencing errors.
+    ///
+    /// ## Parameters
+    ///
+    /// - `event_type` — category of the governance event.
+    /// - `timestamp_ns` — nanoseconds since Unix epoch (caller-supplied for
+    ///   `no_std` compatibility).
+    /// - `payload` — pre-serialized UTF-8 string (JSON in practice).
+    ///
+    /// Returns a reference to the newly appended entry.
+    pub fn next_entry(
+        &mut self,
+        event_type: AuditEventType,
+        timestamp_ns: u64,
+        payload: String,
+    ) -> &AuditEntry {
+        let entry = AuditEntry::new(
+            self.next_seq,
+            timestamp_ns,
+            event_type,
+            self.agent_id,
+            self.session_id,
+            payload,
+            self.last_hash,
+        );
+        // next_entry constructs the entry with the correct seq and previous_hash,
+        // so push() cannot fail here.
+        self.push(entry).expect("next_entry invariant: push cannot fail");
+        self.entries.last().expect("entry was just pushed")
+    }
 }
 
 // ---------------------------------------------------------------------------
