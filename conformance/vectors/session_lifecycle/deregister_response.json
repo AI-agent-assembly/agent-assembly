@@ -1,0 +1,8 @@
+{
+  "description": "DeregisterResponse — accepted, echoes deregistered agent_id",
+  "message_type": "DeregisterResponse",
+  "fields": {
+    "success": true,
+    "agent_id": "agent-001"
+  }
+}
