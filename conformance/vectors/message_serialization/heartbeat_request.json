@@ -1,0 +1,15 @@
+{
+  "description": "HeartbeatRequest — agent sends periodic heartbeat with current run and action counts",
+  "message_type": "assembly.agent.v1.HeartbeatRequest",
+  "golden_bin": "heartbeat_request.bin",
+  "fields": {
+    "agent_id": {
+      "org_id": "acme-corp",
+      "team_id": "platform",
+      "agent_id": "did:key:z6Mkm5rByiqq5UNbvPFPfXtGJwdg2kD1T"
+    },
+    "credential_token": "tok-abc123",
+    "active_runs": 3,
+    "actions_count": 17
+  }
+}

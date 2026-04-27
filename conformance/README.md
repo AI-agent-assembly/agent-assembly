@@ -17,7 +17,7 @@ conformance/
 │   └── session_lifecycle.rs    # Agent lifecycle message round-trips
 ├── vectors/
 │   ├── ipc_framing/            # 10 vectors: basic, large-message, edge-cases
-│   ├── message_serialization/  # 7 vectors: one per proto message golden
+│   ├── message_serialization/  # 10 vectors: one per proto message golden
 │   ├── proto/                  # *.bin golden files (prost encode_to_vec output)
 │   ├── policy_query/           # 10 vectors: ALLOW, DENY, PENDING, REDACT decisions
 │   ├── credential_detection/   # 23 vectors: API keys, auth tokens, DB URLs, PII, entropy

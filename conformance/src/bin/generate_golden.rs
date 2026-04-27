@@ -8,7 +8,7 @@
 //! Re-run whenever a proto definition changes to update the golden files.
 
 use aa_proto::assembly::{
-    agent::v1::{RegisterRequest, RegisterResponse},
+    agent::v1::{DeregisterRequest, HeartbeatRequest, RegisterRequest, RegisterResponse},
     common::v1::{AgentId, Decision, RiskTier, Timestamp},
     policy::v1::{
         ActionContext, CheckActionRequest, CheckActionResponse, RedactInstructions, RedactRule, ToolCallContext,
@@ -143,6 +143,37 @@ fn main() {
             credential_token: "eyJhbGciOiJFZERTQSJ9.tok.sig".into(),
             assigned_policy: "policy:acme-standard-v2".into(),
             heartbeat_interval_sec: 30,
+        },
+    );
+
+    // ── HeartbeatRequest ──────────────────────────────────────────────────────
+
+    write(
+        "heartbeat_request",
+        &HeartbeatRequest {
+            agent_id: Some(AgentId {
+                org_id: "acme-corp".into(),
+                team_id: "platform".into(),
+                agent_id: "did:key:z6Mkm5rByiqq5UNbvPFPfXtGJwdg2kD1T".into(),
+            }),
+            credential_token: "tok-abc123".into(),
+            active_runs: 3,
+            actions_count: 17,
+        },
+    );
+
+    // ── DeregisterRequest ─────────────────────────────────────────────────────
+
+    write(
+        "deregister_request",
+        &DeregisterRequest {
+            agent_id: Some(AgentId {
+                org_id: "acme-corp".into(),
+                team_id: "platform".into(),
+                agent_id: "did:key:z6Mkm5rByiqq5UNbvPFPfXtGJwdg2kD1T".into(),
+            }),
+            credential_token: "tok-abc123".into(),
+            reason: "clean shutdown".into(),
         },
     );
 

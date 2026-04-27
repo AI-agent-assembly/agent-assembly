@@ -8,7 +8,7 @@
 //! Re-run the generator if a proto definition changes.
 
 use aa_proto::assembly::{
-    agent::v1::{RegisterRequest, RegisterResponse},
+    agent::v1::{DeregisterRequest, HeartbeatRequest, RegisterRequest, RegisterResponse},
     common::v1::{AgentId, Decision, RiskTier, Timestamp},
     policy::v1::{
         ActionContext, CheckActionRequest, CheckActionResponse, RedactInstructions, RedactRule, ToolCallContext,
@@ -142,6 +142,39 @@ fn register_response_matches_golden() {
         heartbeat_interval_sec: 30,
     };
     assert_eq!(msg.encode_to_vec(), load_golden_bin("register_response"));
+}
+
+// ── HeartbeatRequest ──────────────────────────────────────────────────────────
+
+#[test]
+fn heartbeat_request_matches_golden() {
+    let msg = HeartbeatRequest {
+        agent_id: Some(AgentId {
+            org_id: "acme-corp".into(),
+            team_id: "platform".into(),
+            agent_id: "did:key:z6Mkm5rByiqq5UNbvPFPfXtGJwdg2kD1T".into(),
+        }),
+        credential_token: "tok-abc123".into(),
+        active_runs: 3,
+        actions_count: 17,
+    };
+    assert_eq!(msg.encode_to_vec(), load_golden_bin("heartbeat_request"));
+}
+
+// ── DeregisterRequest ─────────────────────────────────────────────────────────
+
+#[test]
+fn deregister_request_matches_golden() {
+    let msg = DeregisterRequest {
+        agent_id: Some(AgentId {
+            org_id: "acme-corp".into(),
+            team_id: "platform".into(),
+            agent_id: "did:key:z6Mkm5rByiqq5UNbvPFPfXtGJwdg2kD1T".into(),
+        }),
+        credential_token: "tok-abc123".into(),
+        reason: "clean shutdown".into(),
+    };
+    assert_eq!(msg.encode_to_vec(), load_golden_bin("deregister_request"));
 }
 
 // ── Timestamp ─────────────────────────────────────────────────────────────────
