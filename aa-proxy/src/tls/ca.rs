@@ -144,19 +144,24 @@ impl CaStore {
     /// No-op if already installed.
     #[cfg(target_os = "macos")]
     pub fn install(&self) -> Result<(), ProxyError> {
-        todo!()
+        if self.is_installed()? {
+            return Ok(()); // Already trusted — no-op.
+        }
+        super::keychain::add_trusted_cert(&self.ca_dir.join("ca-cert.pem"))
     }
 
     /// Return `true` if this CA is currently trusted by the macOS System Keychain.
     #[cfg(target_os = "macos")]
     pub fn is_installed(&self) -> Result<bool, ProxyError> {
-        todo!()
+        super::keychain::is_cert_trusted("Agent Assembly CA")
     }
 
     /// Remove this CA from the macOS System Keychain and delete `ca_dir` from disk.
     #[cfg(target_os = "macos")]
     pub fn uninstall(&self) -> Result<(), ProxyError> {
-        todo!()
+        super::keychain::remove_trusted_cert(&self.ca_dir.join("ca-cert.pem"))?;
+        std::fs::remove_dir_all(&self.ca_dir)?;
+        Ok(())
     }
 }
 
@@ -227,5 +232,58 @@ mod tests {
         let ck2 = ca.sign_cert("api.openai.com").unwrap();
         // sign_cert generates a fresh key each call; keys must differ
         assert_ne!(ck1.key_der, ck2.key_der, "each call generates a fresh key pair");
+    }
+}
+
+/// Integration tests for macOS Keychain operations.
+///
+/// These tests require:
+/// - macOS (System Keychain)
+/// - Admin privileges (macOS will prompt via GUI)
+///
+/// Run with: `cargo test -p aa-proxy -- --ignored keychain`
+#[cfg(all(test, target_os = "macos"))]
+mod keychain_tests {
+    use super::super::keychain;
+    use super::*;
+    use tempfile::TempDir;
+
+    #[tokio::test]
+    #[ignore = "requires macOS System Keychain write access (admin auth prompt)"]
+    async fn install_makes_ca_trusted() {
+        let dir = TempDir::new().unwrap();
+        let ca = CaStore::load_or_create(dir.path()).await.unwrap();
+        ca.install().unwrap();
+        assert!(ca.is_installed().unwrap(), "CA must be trusted after install");
+        // Cleanup: remove from keychain so test is idempotent.
+        keychain::remove_trusted_cert(&dir.path().join("ca-cert.pem")).unwrap();
+    }
+
+    #[tokio::test]
+    #[ignore = "requires macOS System Keychain write access (admin auth prompt)"]
+    async fn uninstall_removes_ca_and_deletes_dir() {
+        let dir = TempDir::new().unwrap();
+        let dir_path = dir.path().to_path_buf();
+        let ca = CaStore::load_or_create(&dir_path).await.unwrap();
+        ca.install().unwrap();
+        assert!(ca.is_installed().unwrap());
+
+        ca.uninstall().unwrap();
+        assert!(!ca.is_installed().unwrap(), "CA must not be trusted after uninstall");
+        assert!(!dir_path.exists(), "ca_dir must be deleted after uninstall");
+        // TempDir will try to clean up, but the dir is already gone — that's fine.
+        std::mem::forget(dir);
+    }
+
+    #[tokio::test]
+    #[ignore = "requires macOS System Keychain write access (admin auth prompt)"]
+    async fn install_is_idempotent() {
+        let dir = TempDir::new().unwrap();
+        let ca = CaStore::load_or_create(dir.path()).await.unwrap();
+        ca.install().unwrap();
+        ca.install().unwrap(); // Second call must not fail.
+        assert!(ca.is_installed().unwrap());
+        // Cleanup.
+        keychain::remove_trusted_cert(&dir.path().join("ca-cert.pem")).unwrap();
     }
 }
