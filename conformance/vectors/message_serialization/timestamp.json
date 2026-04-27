@@ -1,0 +1,9 @@
+{
+  "description": "Timestamp with known unix_ms value — verifies int64 varint encoding of wall-clock time",
+  "message_type": "assembly.common.v1.Timestamp",
+  "golden_bin": "timestamp.bin",
+  "fields": {
+    "unix_ms": 1745740800000,
+    "note": "2025-04-27T08:00:00Z in Unix milliseconds"
+  }
+}
