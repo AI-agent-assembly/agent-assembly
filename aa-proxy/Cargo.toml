@@ -6,10 +6,28 @@ license.workspace = true
 repository.workspace = true
 description = "Sidecar traffic interception proxy for Agent Assembly"
 
+[lib]
+name = "aa_proxy"
+
+[[bin]]
+name = "aa-proxy"
+path = "src/main.rs"
+
 [dependencies]
 aa-core = { path = "../aa-core" }
 aa-runtime = { path = "../aa-runtime" }
-tokio = { version = "1", features = ["full"] }
+tokio      = { version = "1", features = ["full"] }
+hyper      = { version = "1", features = ["server", "http1"] }
+hyper-util   = { version = "0.1", features = ["tokio", "server"] }
+rustls       = { version = "0.23", features = ["ring"] }
+tokio-rustls = "0.26"
+rcgen        = "0.13"
+lru          = "0.16"
+anyhow       = "1"
+thiserror    = "2"
+bytes               = "1"
+tracing             = "0.1"
+tracing-subscriber  = { version = "0.3", features = ["env-filter"] }
 
 [lints]
 workspace = true
