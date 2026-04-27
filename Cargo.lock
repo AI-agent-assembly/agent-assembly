@@ -76,11 +76,14 @@ version = "0.0.1"
 dependencies = [
  "aa-core",
  "aa-runtime",
+ "anyhow",
+ "bytes",
  "hyper",
  "hyper-util",
  "lru",
  "rcgen",
  "rustls",
+ "thiserror 2.0.18",
  "tokio",
  "tokio-rustls",
 ]
