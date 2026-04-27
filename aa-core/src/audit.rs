@@ -421,6 +421,36 @@ impl AuditLog {
         self.push(entry).expect("next_entry invariant: push cannot fail");
         self.entries.last().expect("entry was just pushed")
     }
+
+    /// Re-validate the entire log in O(n), checking both invariants for every entry.
+    ///
+    /// Returns `true` if:
+    /// - Every entry passes [`AuditEntry::verify_integrity`] (SHA-256 matches stored hash).
+    /// - Every entry's `seq` is exactly one greater than the previous entry's `seq`
+    ///   (first entry must have `seq = 0`).
+    /// - Every entry's `previous_hash` matches the preceding entry's `entry_hash`
+    ///   (first entry must have `previous_hash = [0u8; 32]`).
+    ///
+    /// Returns `true` for an empty log (vacuously valid).
+    pub fn verify_chain(&self) -> bool {
+        let mut expected_seq: u64 = 0;
+        let mut expected_prev_hash: [u8; 32] = [0u8; 32];
+
+        for entry in &self.entries {
+            if !entry.verify_integrity() {
+                return false;
+            }
+            if entry.seq() != expected_seq {
+                return false;
+            }
+            if entry.previous_hash() != &expected_prev_hash {
+                return false;
+            }
+            expected_prev_hash = *entry.entry_hash();
+            expected_seq += 1;
+        }
+        true
+    }
 }
 
 // ---------------------------------------------------------------------------
