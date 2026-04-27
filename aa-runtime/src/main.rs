@@ -1,10 +1,25 @@
 //! `aa-runtime` sidecar binary entry point.
 
+fn init_tracing() {
+    use tracing_subscriber::{fmt, prelude::*, EnvFilter};
+
+    tracing_subscriber::registry()
+        .with(EnvFilter::from_default_env())
+        .with(fmt::layer().json())
+        .init();
+}
+
 fn main() {
+    init_tracing();
+
     let config = aa_runtime::config::RuntimeConfig::from_env();
 
-    // Build the Tokio multi-thread runtime.
-    // When worker_threads == 0, Builder uses one thread per logical CPU (Tokio default).
+    tracing::info!(
+        worker_threads = config.worker_threads,
+        shutdown_timeout_secs = config.shutdown_timeout_secs,
+        "configuration loaded"
+    );
+
     let mut builder = tokio::runtime::Builder::new_multi_thread();
     builder.enable_all();
 
