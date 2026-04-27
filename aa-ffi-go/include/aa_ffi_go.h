@@ -29,6 +29,8 @@ typedef struct aa_string {
   char* ptr;
 } aa_string;
 
+aa_status aa_connect(const char* endpoint, aa_client_handle** out_client);
+
 #ifdef __cplusplus
 }
 #endif
