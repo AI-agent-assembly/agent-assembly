@@ -433,4 +433,87 @@ mod tests {
         }
         assert!(!entry.verify_integrity());
     }
+
+    // --- Hash chain linkage ---
+
+    #[test]
+    fn chained_entries_have_distinct_hashes() {
+        let first = make_entry(0);
+        let second = AuditEntry::new(
+            1,
+            1_714_222_134_000_000_001,
+            AuditEventType::PolicyViolation,
+            AgentId::from_bytes(AGENT_BYTES),
+            SessionId::from_bytes(SESSION_BYTES),
+            alloc::string::String::from("{\"rule\":\"deny\"}"),
+            *first.entry_hash(),
+        );
+        assert_ne!(first.entry_hash(), second.entry_hash());
+        assert_eq!(second.previous_hash(), first.entry_hash());
+        assert!(second.verify_integrity());
+    }
+
+    #[test]
+    fn different_seq_produces_different_hash() {
+        let a = make_entry(0);
+        let b = make_entry(1);
+        assert_ne!(a.entry_hash(), b.entry_hash());
+    }
+
+    #[test]
+    fn different_previous_hash_produces_different_entry_hash() {
+        let prev_a = [0u8; 32];
+        let mut prev_b = [0u8; 32];
+        prev_b[0] = 1;
+
+        let a = AuditEntry::new(
+            0,
+            0,
+            AuditEventType::ToolCallIntercepted,
+            AgentId::from_bytes(AGENT_BYTES),
+            SessionId::from_bytes(SESSION_BYTES),
+            alloc::string::String::from("{}"),
+            prev_a,
+        );
+        let b = AuditEntry::new(
+            0,
+            0,
+            AuditEventType::ToolCallIntercepted,
+            AgentId::from_bytes(AGENT_BYTES),
+            SessionId::from_bytes(SESSION_BYTES),
+            alloc::string::String::from("{}"),
+            prev_b,
+        );
+        assert_ne!(a.entry_hash(), b.entry_hash());
+    }
+
+    // --- Display ---
+
+    #[test]
+    fn display_contains_seq_ts_and_event_name() {
+        let entry = make_entry(7);
+        let s = alloc::format!("{}", entry);
+        assert!(s.starts_with('['));
+        assert!(s.ends_with(']'));
+        assert!(s.contains("seq=7"));
+        assert!(s.contains("ts=1714222134000000000"));
+        assert!(s.contains("event=ToolCallIntercepted"));
+    }
+
+    #[test]
+    fn display_contains_agent_and_session_hex() {
+        let entry = make_entry(0);
+        let s = alloc::format!("{}", entry);
+        // AGENT_BYTES starts with 01 02 03 04
+        assert!(s.contains("agent=01020304"));
+        // SESSION_BYTES starts with 11 12 13 14
+        assert!(s.contains("session=11121314"));
+    }
+
+    #[test]
+    fn display_does_not_contain_payload() {
+        let entry = make_entry(0);
+        let s = alloc::format!("{}", entry);
+        assert!(!s.contains("bash"));
+    }
 }
