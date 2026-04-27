@@ -5,8 +5,8 @@
 
 use std::path::{Path, PathBuf};
 
-use rcgen::{BasicConstraints, CertificateParams, DnType, IsCa, KeyPair, KeyUsagePurpose};
 use rcgen::PKCS_ECDSA_P256_SHA256;
+use rcgen::{BasicConstraints, CertificateParams, DnType, IsCa, KeyPair, KeyUsagePurpose};
 use time::{Duration, OffsetDateTime};
 
 use crate::error::ProxyError;
@@ -40,7 +40,7 @@ impl CaStore {
     /// and persist it before returning.
     pub async fn load_or_create(ca_dir: &Path) -> Result<Self, ProxyError> {
         let cert_path = ca_dir.join("ca-cert.pem");
-        let key_path  = ca_dir.join("ca-key.pem");
+        let key_path = ca_dir.join("ca-key.pem");
 
         // Attempt to load existing CA; fall through to generation only on NotFound.
         match (
@@ -48,7 +48,11 @@ impl CaStore {
             tokio::fs::read_to_string(&key_path).await,
         ) {
             (Ok(ca_cert_pem), Ok(ca_key_pem)) => {
-                return Ok(Self { ca_dir: ca_dir.to_path_buf(), ca_cert_pem, ca_key_pem });
+                return Ok(Self {
+                    ca_dir: ca_dir.to_path_buf(),
+                    ca_cert_pem,
+                    ca_key_pem,
+                });
             }
             (Err(e), _) | (_, Err(e)) if e.kind() == std::io::ErrorKind::NotFound => {
                 // fall through to generate
@@ -57,23 +61,25 @@ impl CaStore {
         }
 
         // Generate a new EC P-256 CA key pair.
-        let ca_key = KeyPair::generate_for(&PKCS_ECDSA_P256_SHA256)
-            .map_err(|e| ProxyError::CertGen(e.to_string()))?;
+        let ca_key = KeyPair::generate_for(&PKCS_ECDSA_P256_SHA256).map_err(|e| ProxyError::CertGen(e.to_string()))?;
 
-        let mut ca_params = CertificateParams::new(vec![])
-            .map_err(|e| ProxyError::CertGen(e.to_string()))?;
+        let mut ca_params = CertificateParams::new(vec![]).map_err(|e| ProxyError::CertGen(e.to_string()))?;
         ca_params.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
         ca_params.key_usages = vec![KeyUsagePurpose::KeyCertSign, KeyUsagePurpose::CrlSign];
-        ca_params.distinguished_name.push(DnType::CommonName, "Agent Assembly CA");
+        ca_params
+            .distinguished_name
+            .push(DnType::CommonName, "Agent Assembly CA");
         let now = OffsetDateTime::now_utc();
         ca_params.not_before = now;
-        ca_params.not_after  = now.checked_add(Duration::days(365 * 10))
+        ca_params.not_after = now
+            .checked_add(Duration::days(365 * 10))
             .expect("date arithmetic cannot overflow for 10-year span");
 
-        let ca_cert     = ca_params.self_signed(&ca_key)
+        let ca_cert = ca_params
+            .self_signed(&ca_key)
             .map_err(|e| ProxyError::CertGen(e.to_string()))?;
         let ca_cert_pem = ca_cert.pem();
-        let ca_key_pem  = ca_key.serialize_pem();
+        let ca_key_pem = ca_key.serialize_pem();
 
         // Persist to disk.
         tokio::fs::create_dir_all(ca_dir).await?;
@@ -84,8 +90,8 @@ impl CaStore {
         // Write the key file with restricted permissions from the start (mode 0o600).
         #[cfg(unix)]
         {
-            use std::os::unix::fs::OpenOptionsExt;
             use std::io::Write;
+            use std::os::unix::fs::OpenOptionsExt;
             let key_path_clone = key_path.clone();
             let key_pem_bytes = ca_key_pem.as_bytes().to_vec();
             tokio::task::spawn_blocking(move || {
@@ -104,7 +110,11 @@ impl CaStore {
             tokio::fs::write(&key_path, &ca_key_pem).await?;
         }
 
-        Ok(Self { ca_dir: ca_dir.to_path_buf(), ca_cert_pem, ca_key_pem })
+        Ok(Self {
+            ca_dir: ca_dir.to_path_buf(),
+            ca_cert_pem,
+            ca_key_pem,
+        })
     }
 
     /// Generate a DER-encoded leaf certificate for `domain`, signed by this CA.
@@ -112,21 +122,21 @@ impl CaStore {
         // Load the CA key and reconstruct the CA cert from the persisted PEM.
         // Using from_ca_cert_pem ensures the issued leaf cert's AKID matches
         // the SKID of the actual trusted CA cert in the system keychain.
-        let ca_key = KeyPair::from_pem(&self.ca_key_pem)
-            .map_err(|e| ProxyError::CertGen(e.to_string()))?;
-        let ca_params = CertificateParams::from_ca_cert_pem(&self.ca_cert_pem)
-            .map_err(|e| ProxyError::CertGen(e.to_string()))?;
-        let ca_cert = ca_params.self_signed(&ca_key)
+        let ca_key = KeyPair::from_pem(&self.ca_key_pem).map_err(|e| ProxyError::CertGen(e.to_string()))?;
+        let ca_params =
+            CertificateParams::from_ca_cert_pem(&self.ca_cert_pem).map_err(|e| ProxyError::CertGen(e.to_string()))?;
+        let ca_cert = ca_params
+            .self_signed(&ca_key)
             .map_err(|e| ProxyError::CertGen(e.to_string()))?;
 
         // Generate a fresh EC P-256 leaf key and cert for `domain`.
-        let leaf_key = KeyPair::generate_for(&PKCS_ECDSA_P256_SHA256)
-            .map_err(|e| ProxyError::CertGen(e.to_string()))?;
-        let mut leaf_params = CertificateParams::new(vec![domain.to_string()])
-            .map_err(|e| ProxyError::CertGen(e.to_string()))?;
+        let leaf_key =
+            KeyPair::generate_for(&PKCS_ECDSA_P256_SHA256).map_err(|e| ProxyError::CertGen(e.to_string()))?;
+        let mut leaf_params =
+            CertificateParams::new(vec![domain.to_string()]).map_err(|e| ProxyError::CertGen(e.to_string()))?;
         let now = OffsetDateTime::now_utc();
         leaf_params.not_before = now;
-        leaf_params.not_after  = now
+        leaf_params.not_after = now
             .checked_add(Duration::days(365))
             .expect("date arithmetic cannot overflow for 1-year span");
 
@@ -136,7 +146,7 @@ impl CaStore {
 
         Ok(CertifiedKey {
             cert_der: leaf_cert.der().to_vec(),
-            key_der:  leaf_key.serialize_der(),
+            key_der: leaf_key.serialize_der(),
         })
     }
 
@@ -192,9 +202,7 @@ mod tests {
         use std::os::unix::fs::PermissionsExt;
         let dir = TempDir::new().unwrap();
         CaStore::load_or_create(dir.path()).await.unwrap();
-        let perms = std::fs::metadata(dir.path().join("ca-key.pem"))
-            .unwrap()
-            .permissions();
+        let perms = std::fs::metadata(dir.path().join("ca-key.pem")).unwrap().permissions();
         assert_eq!(perms.mode() & 0o777, 0o600, "ca-key.pem must be owner-read-write only");
     }
 
@@ -221,7 +229,10 @@ mod tests {
         let ca = CaStore::load_or_create(dir.path()).await.unwrap();
         let ck1 = ca.sign_cert("api.openai.com").unwrap();
         let ck2 = ca.sign_cert("api.anthropic.com").unwrap();
-        assert_ne!(ck1.cert_der, ck2.cert_der, "different domains must produce different certs");
+        assert_ne!(
+            ck1.cert_der, ck2.cert_der,
+            "different domains must produce different certs"
+        );
     }
 
     #[tokio::test]

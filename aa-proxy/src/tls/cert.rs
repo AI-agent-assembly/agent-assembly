@@ -51,7 +51,7 @@ mod tests {
     #[tokio::test]
     async fn get_or_insert_returns_cert_on_cache_miss() {
         let dir = TempDir::new().unwrap();
-        let ca    = CaStore::load_or_create(dir.path()).await.unwrap();
+        let ca = CaStore::load_or_create(dir.path()).await.unwrap();
         let cache = CertCache::new(10);
         let ck = cache.get_or_insert("api.openai.com", &ca).unwrap();
         assert!(!ck.cert_der.is_empty());
@@ -60,7 +60,7 @@ mod tests {
     #[tokio::test]
     async fn get_or_insert_returns_same_arc_on_cache_hit() {
         let dir = TempDir::new().unwrap();
-        let ca    = CaStore::load_or_create(dir.path()).await.unwrap();
+        let ca = CaStore::load_or_create(dir.path()).await.unwrap();
         let cache = CertCache::new(10);
         let ck1 = cache.get_or_insert("api.openai.com", &ca).unwrap();
         let ck2 = cache.get_or_insert("api.openai.com", &ca).unwrap();
@@ -71,7 +71,7 @@ mod tests {
     #[tokio::test]
     async fn get_or_insert_different_domains_get_different_certs() {
         let dir = TempDir::new().unwrap();
-        let ca    = CaStore::load_or_create(dir.path()).await.unwrap();
+        let ca = CaStore::load_or_create(dir.path()).await.unwrap();
         let cache = CertCache::new(10);
         let ck1 = cache.get_or_insert("api.openai.com", &ca).unwrap();
         let ck2 = cache.get_or_insert("api.anthropic.com", &ca).unwrap();

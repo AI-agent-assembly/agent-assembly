@@ -24,8 +24,10 @@ pub(super) fn add_trusted_cert(cert_path: &Path) -> Result<(), ProxyError> {
         .args([
             "add-trusted-cert",
             "-d",
-            "-r", "trustRoot",
-            "-k", "/Library/Keychains/System.keychain",
+            "-r",
+            "trustRoot",
+            "-k",
+            "/Library/Keychains/System.keychain",
             cert_str,
         ])
         .output()
@@ -74,7 +76,8 @@ pub(super) fn is_cert_trusted(subject: &str) -> Result<bool, ProxyError> {
     let output = Command::new("security")
         .args([
             "find-certificate",
-            "-c", subject,
+            "-c",
+            subject,
             "-a",
             "/Library/Keychains/System.keychain",
         ])
