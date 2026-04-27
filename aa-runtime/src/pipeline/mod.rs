@@ -386,10 +386,19 @@ mod tests {
             tx.send(IpcFrame::EventReport(normal_event())).await.unwrap();
         }
 
-        // Give the run loop a moment to receive them
-        tokio::time::sleep(Duration::from_millis(20)).await;
-
-        // Cancel — should flush the pending 5 events
+        // Wait until the run loop has processed all 5 events before cancelling,
+        // so they are guaranteed to be in the pending batch when the flush fires.
+        let deadline = std::time::Instant::now() + Duration::from_millis(200);
+        loop {
+            if metrics.processed() == 5 {
+                break;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "events were not processed within 200ms"
+            );
+            tokio::task::yield_now().await;
+        }
         token.cancel();
 
         // Wait for pipeline to stop
