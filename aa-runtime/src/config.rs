@@ -48,7 +48,7 @@ impl RuntimeConfig {
             .map_err(|_| "AA_AGENT_ID is required but not set".to_string())?;
 
         if agent_id.trim().is_empty() {
-            return Err("AA_AGENT_ID must not be empty".to_string());
+            return Err("AA_AGENT_ID must not be blank or empty".to_string());
         }
 
         let worker_threads = std::env::var("AA_RUNTIME_WORKER_THREADS")
@@ -77,6 +77,14 @@ impl RuntimeConfig {
 
 #[cfg(test)]
 mod tests {
+    //! # Test isolation requirement
+    //!
+    //! These tests mutate process environment variables and must be run sequentially:
+    //! ```text
+    //! cargo test -p aa-runtime -- --test-threads=1
+    //! ```
+    //! Running with the default thread pool causes env var races between tests.
+
     use super::*;
     use std::sync::Mutex;
 
@@ -195,14 +203,17 @@ mod tests {
         std::env::set_var("AA_AGENT_ID", "agent-inv");
         std::env::set_var("AA_RUNTIME_WORKER_THREADS", "not-a-number");
         std::env::set_var("AA_RUNTIME_SHUTDOWN_TIMEOUT_SECS", "abc");
+        std::env::remove_var("AA_IPC_MAX_CONNECTIONS");
 
         let config = RuntimeConfig::from_env().unwrap();
 
         assert_eq!(config.worker_threads, 0);
         assert_eq!(config.shutdown_timeout_secs, 30);
+        assert_eq!(config.ipc_max_connections, 64);
 
         std::env::remove_var("AA_AGENT_ID");
         std::env::remove_var("AA_RUNTIME_WORKER_THREADS");
         std::env::remove_var("AA_RUNTIME_SHUTDOWN_TIMEOUT_SECS");
+        std::env::remove_var("AA_IPC_MAX_CONNECTIONS");
     }
 }

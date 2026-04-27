@@ -19,6 +19,7 @@ fn main() {
         agent_id = %config.agent_id,
         worker_threads = config.worker_threads,
         shutdown_timeout_secs = config.shutdown_timeout_secs,
+        ipc_max_connections = config.ipc_max_connections,
         "configuration loaded"
     );
 
