@@ -18,3 +18,27 @@ impl AgentId {
         &self.0
     }
 }
+
+/// Per-execution session identifier — UUID v4 encoded as raw bytes.
+///
+/// A new [`SessionId`] is generated for each agent execution. It ties together
+/// all governance events within a single run.
+///
+/// The inner `[u8; 16]` is private. Use [`SessionId::from_bytes`] to construct
+/// and [`SessionId::as_bytes`] to inspect.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct SessionId([u8; 16]);
+
+impl SessionId {
+    /// Construct a [`SessionId`] from raw UUID bytes.
+    #[inline]
+    pub const fn from_bytes(bytes: [u8; 16]) -> Self {
+        Self(bytes)
+    }
+
+    /// Return the raw UUID bytes.
+    #[inline]
+    pub const fn as_bytes(&self) -> &[u8; 16] {
+        &self.0
+    }
+}
