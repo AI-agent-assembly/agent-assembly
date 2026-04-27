@@ -7,17 +7,19 @@ repository.workspace = true
 description = "Pure domain logic for Agent Assembly — no_std compatible"
 
 [dependencies]
+aho-corasick = { version = "1", optional = true }
 cfg-if = "1"
 serde  = { version = "1", default-features = false, features = ["derive", "alloc"], optional = true }
 
 [features]
-default = ["std"]
-std     = ["alloc"]
-alloc   = []
+default    = ["std"]
+std        = ["alloc", "dep:aho-corasick"]
+alloc      = []
 serde      = ["dep:serde"]
 test-utils = []
 
 [dev-dependencies]
+criterion  = { version = "0.5", features = ["html_reports"] }
 serde_json = "1"
 
 [lints]
