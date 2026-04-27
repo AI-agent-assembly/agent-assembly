@@ -65,6 +65,18 @@
           "default": []
         }
       }
+    },
+    "budget": {
+      "description": "Spending budget controls for LLM API calls made by the agent.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "daily_limit_usd": {
+          "description": "Maximum USD spend allowed per calendar day across all LLM API calls. Calls that would exceed this limit are denied. Must be greater than 0.",
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      }
     }
   },
   "examples": []
