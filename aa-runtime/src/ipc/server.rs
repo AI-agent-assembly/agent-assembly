@@ -112,6 +112,9 @@ impl IpcServer {
                             let conn_token = token.child_token();
 
                             // Per-connection outbound channel.
+                            // NOTE: resp_tx is not yet wired to a response dispatcher — response routing
+                            // is out of scope for AAASM-30 and will be implemented in a follow-on ticket.
+                            // The writer task will exit immediately when resp_tx is dropped here.
                             let (resp_tx, resp_rx) =
                                 mpsc::channel::<IpcResponse>(inbound_channel_capacity);
 
@@ -145,6 +148,8 @@ pub(super) fn spawn_connection(
     tracker: &TaskTracker,
     stream: tokio::net::UnixStream,
     frame_tx: mpsc::Sender<IpcFrame>,
+    // _resp_tx: not yet used — response routing is out of scope for AAASM-30.
+    // Will be wired to the governance dispatcher in a follow-on ticket.
     _resp_tx: mpsc::Sender<IpcResponse>,
     resp_rx: mpsc::Receiver<IpcResponse>,
     token: CancellationToken,

@@ -50,6 +50,10 @@ impl RuntimeConfig {
             return Err("AA_AGENT_ID must not be blank or empty".to_string());
         }
 
+        if agent_id.contains('/') || agent_id.contains("..") {
+            return Err("AA_AGENT_ID must not contain path separators ('/' or '..')".to_string());
+        }
+
         let worker_threads = std::env::var("AA_RUNTIME_WORKER_THREADS")
             .ok()
             .and_then(|v| v.parse().ok())
@@ -62,7 +66,8 @@ impl RuntimeConfig {
 
         let ipc_max_connections = std::env::var("AA_IPC_MAX_CONNECTIONS")
             .ok()
-            .and_then(|v| v.parse().ok())
+            .and_then(|v| v.parse::<usize>().ok())
+            .filter(|&n| n > 0)
             .unwrap_or(64);
 
         Ok(Self {
@@ -194,6 +199,31 @@ mod tests {
 
         std::env::remove_var("AA_AGENT_ID");
         std::env::remove_var("AA_IPC_MAX_CONNECTIONS");
+    }
+
+    #[test]
+    fn rejects_zero_ipc_max_connections() {
+        std::env::set_var("AA_AGENT_ID", "agent-zero");
+        std::env::set_var("AA_IPC_MAX_CONNECTIONS", "0");
+
+        let config = RuntimeConfig::from_env().unwrap();
+
+        assert_eq!(config.ipc_max_connections, 64, "0 should fall back to default");
+
+        std::env::remove_var("AA_AGENT_ID");
+        std::env::remove_var("AA_IPC_MAX_CONNECTIONS");
+    }
+
+    #[test]
+    fn rejects_agent_id_with_path_separator() {
+        std::env::set_var("AA_AGENT_ID", "../../etc/passwd");
+
+        let result = RuntimeConfig::from_env();
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("path separator"));
+
+        std::env::remove_var("AA_AGENT_ID");
     }
 
     #[test]

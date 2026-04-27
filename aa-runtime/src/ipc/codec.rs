@@ -11,7 +11,7 @@
 //! Outbound tags (runtime → SDK):
 //!   1 = PolicyResponse   (CheckActionResponse)
 //!   2 = ApprovalDecision (ApprovalDecision)
-//!   3 = Ack              (no payload)
+//!   3 = Ack              (zero-length varint + empty body: [0x03][0x00])
 
 use prost::Message;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
