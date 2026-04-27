@@ -217,3 +217,68 @@ pub unsafe extern "C" fn aa_free_bytes(bytes: *mut u8, len: usize) {
         drop(Vec::from_raw_parts(bytes, len, len));
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::ptr;
+
+    #[test]
+    fn status_mapping_connect_send_disconnect() {
+        let endpoint = CString::new("unix:///tmp/aa.sock").expect("valid endpoint");
+
+        let mut client: *mut aa_client_handle = ptr::null_mut();
+        // SAFETY: Passing valid pointers from controlled test context.
+        let connect = unsafe { aa_connect(endpoint.as_ptr(), &mut client) };
+        assert_eq!(connect, AA_STATUS_OK);
+        assert!(!client.is_null());
+
+        let event = CString::new(r#"{"type":"test"}"#).expect("valid event");
+        // SAFETY: Connected handle and valid C string.
+        let send = unsafe { aa_send_event(client, event.as_ptr()) };
+        assert_eq!(send, AA_STATUS_OK);
+
+        // SAFETY: Handle returned by `aa_connect`.
+        let disconnect = unsafe { aa_disconnect(client) };
+        assert_eq!(disconnect, AA_STATUS_OK);
+    }
+
+    #[test]
+    fn status_mapping_null_pointer() {
+        let endpoint = CString::new("unix:///tmp/aa.sock").expect("valid endpoint");
+
+        // SAFETY: Deliberate null pointer to validate status mapping.
+        let status = unsafe { aa_connect(endpoint.as_ptr(), ptr::null_mut()) };
+        assert_eq!(status, AA_STATUS_NULL_POINTER);
+    }
+
+    #[test]
+    fn status_mapping_invalid_utf8() {
+        let bytes = vec![0xFF, 0x00];
+        // SAFETY: Test-only pointer with invalid UTF-8 payload.
+        let invalid = bytes.as_ptr().cast::<c_char>();
+
+        let mut client: *mut aa_client_handle = ptr::null_mut();
+        // SAFETY: Deliberate invalid UTF-8 input for mapping validation.
+        let status = unsafe { aa_connect(invalid, &mut client) };
+        assert_eq!(status, AA_STATUS_INVALID_UTF8);
+        assert!(client.is_null());
+    }
+
+    #[test]
+    fn free_string_and_bytes_callbacks() {
+        let owned = CString::new("owned-string").expect("valid string");
+        let raw = owned.into_raw();
+
+        // SAFETY: Pointer came from CString::into_raw in this test.
+        unsafe { aa_free_string(raw) };
+
+        let mut bytes = vec![1_u8, 2, 3, 4];
+        let len = bytes.len();
+        let raw_bytes = bytes.as_mut_ptr();
+        std::mem::forget(bytes);
+
+        // SAFETY: Pointer and length came from Vec allocation above.
+        unsafe { aa_free_bytes(raw_bytes, len) };
+    }
+}
