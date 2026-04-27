@@ -12,6 +12,8 @@ use crate::tls::{CaStore, CertCache};
 ///
 /// Create via [`ProxyServer::new`], then drive the accept loop with
 /// [`ProxyServer::run`].
+// Fields are read by `run()` once implemented; silence dead_code until then.
+#[allow(dead_code)]
 pub struct ProxyServer {
     config: ProxyConfig,
     ca: CaStore,

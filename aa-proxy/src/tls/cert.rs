@@ -12,6 +12,8 @@ use crate::error::ProxyError;
 use crate::tls::ca::{CaStore, CertifiedKey};
 
 /// Thread-safe LRU cache mapping domain names to their signed [`CertifiedKey`].
+// Field is read by get_or_insert() once implemented; silence dead_code until then.
+#[allow(dead_code)]
 pub struct CertCache {
     inner: Mutex<LruCache<String, Arc<CertifiedKey>>>,
 }

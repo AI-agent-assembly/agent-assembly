@@ -22,6 +22,8 @@ pub struct CertifiedKey {
 /// The CA files on disk are:
 /// - `<ca_dir>/ca.crt` — PEM-encoded CA certificate
 /// - `<ca_dir>/ca.key` — PEM-encoded CA private key
+// Fields are read by sign_cert() once implemented; silence dead_code until then.
+#[allow(dead_code)]
 pub struct CaStore {
     /// PEM bytes of the CA certificate.
     ca_cert_pem: Vec<u8>,
