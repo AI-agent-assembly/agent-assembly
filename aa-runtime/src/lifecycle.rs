@@ -6,10 +6,17 @@
 /// cooperative cancellation on all tracked tasks.
 pub async fn wait_for_shutdown_signal() {
     let sigterm = sigterm();
+    let sigint = tokio::signal::ctrl_c();
 
     tokio::select! {
         _ = sigterm => {
             tracing::info!("received SIGTERM — initiating graceful shutdown");
+        }
+        result = sigint => {
+            match result {
+                Ok(()) => tracing::info!("received SIGINT (Ctrl-C) — initiating graceful shutdown"),
+                Err(e) => tracing::error!("SIGINT handler error: {e}"),
+            }
         }
     }
 }
