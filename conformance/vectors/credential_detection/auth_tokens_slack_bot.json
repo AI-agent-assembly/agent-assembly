@@ -1,0 +1,8 @@
+{
+  "description": "Slack bot token — xoxb- prefix",
+  "input_text": "SLACK_BOT_TOKEN=xoxb-FAKESLACKTOKEN000000000000000000",
+  "expected_findings": [
+    { "kind": "SlackBotToken", "offset": 16 }
+  ],
+  "expected_redacted": "SLACK_BOT_TOKEN=[REDACTED:SlackBotToken]"
+}
