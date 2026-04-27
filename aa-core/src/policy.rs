@@ -7,6 +7,7 @@ pub type ArgsJson = String;
 
 /// File access mode for `GovernanceAction::FileAccess`.
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum FileMode {
     Read,
     Write,
@@ -19,6 +20,7 @@ pub enum FileMode {
 /// Gated on `alloc` because all variants carry `String` fields.
 #[cfg(feature = "alloc")]
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum GovernanceAction {
     /// Invocation of a named tool with pre-serialized JSON arguments.
     ToolCall { name: alloc::string::String, args: ArgsJson },
