@@ -1,0 +1,46 @@
+# balanced.yaml — PolicyDocument example: balanced / standard agent
+#
+# Use case: a general-purpose development assistant.
+# Most tools are allowed with rate limits; high-cost or sensitive operations
+# require human approval. Broad network access, moderate budget, 24/7 schedule.
+
+network:
+  allowlist:
+    - "*.openai.com"
+    - "*.anthropic.com"
+    - api.github.com
+    - "*.amazonaws.com"
+    - pypi.org
+    - registry.npmjs.org
+
+tools:
+  web_search:
+    allow: true
+    limit_per_hour: 20
+  code_interpreter:
+    allow: true
+    limit_per_hour: 10
+    requires_approval_if: "estimated_cost_usd > 0.10"
+  file_read:
+    allow: true
+    limit_per_hour: 50
+  file_write:
+    allow: true
+    requires_approval_if: "path starts_with /etc or path starts_with /usr"
+  shell:
+    allow: false
+
+data:
+  sensitive_patterns:
+    - "sk-[A-Za-z0-9]{32,}"
+    - "ghp_[A-Za-z0-9]{36}"
+    - "AKIA[0-9A-Z]{16}"
+
+budget:
+  daily_limit_usd: 25.00
+
+schedule:
+  active_hours:
+    start: "00:00"
+    end: "23:59"
+    timezone: UTC

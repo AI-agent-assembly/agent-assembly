@@ -181,3 +181,28 @@ jobs:
           buf breaking \
             --against "../.git#branch=${{ github.base_ref }},subdir=proto"
         working-directory: proto
+
+
+  schema-lint:
+    name: Schema lint & validation (ajv)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install ajv-cli
+        run: npm install -g ajv-cli
+      - name: Validate schema is self-consistent (ajv --strict)
+        run: ajv compile --strict -s schemas/policy/v1/policy-document.schema.json
+      - name: Validate example policy documents against schema
+        run: |
+          ajv validate \
+            -s schemas/policy/v1/policy-document.schema.json \
+            -d schemas/examples/strict.yaml
+          ajv validate \
+            -s schemas/policy/v1/policy-document.schema.json \
+            -d schemas/examples/balanced.yaml
+          ajv validate \
+            -s schemas/policy/v1/policy-document.schema.json \
+            -d schemas/examples/audit-only.yaml

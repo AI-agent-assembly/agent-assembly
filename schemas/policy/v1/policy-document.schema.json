@@ -1,0 +1,174 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema",
+  "$id": "https://agent-assembly.github.io/schemas/policy/v1/policy-document.schema.json",
+  "title": "PolicyDocument",
+  "description": "Schema for the AI Agent Assembly PolicyDocument v1. Defines the governance rules applied to an agent by aa-gateway. The requires_approval_if expression language is not specified in v1 of this schema — expression syntax is deferred to the policy engine implementation (AAASM-8).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [],
+  "properties": {
+    "network": {
+      "description": "Network access controls for the agent.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "allowlist": {
+          "description": "List of domain glob patterns the agent is permitted to reach (e.g. '*.openai.com', 'api.github.com'). Requests to domains not matching any pattern are denied.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "description": "A domain glob pattern (e.g. '*.example.com')."
+          },
+          "default": []
+        }
+      }
+    },
+    "tools": {
+      "description": "Per-tool governance rules. Keys are tool names as reported by the agent (e.g. 'web_search', 'code_interpreter'). Tools not listed here inherit the gateway default policy.",
+      "type": "object",
+      "additionalProperties": {
+        "description": "Governance rule for a single tool.",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "allow": {
+            "description": "Whether this tool is permitted to be called. Set to false to block the tool outright.",
+            "type": "boolean"
+          },
+          "limit_per_hour": {
+            "description": "Maximum number of calls to this tool allowed per hour. Calls beyond this limit are denied until the next hour window.",
+            "type": "integer",
+            "minimum": 1
+          },
+          "requires_approval_if": {
+            "description": "Condition expression that triggers a human-in-the-loop approval workflow before the tool call is dispatched. Syntax is TBD and will be defined by the policy engine (AAASM-8). Any non-empty string is accepted at the schema validation level.",
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "data": {
+      "description": "Data sensitivity controls applied to all agent inputs and outputs.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sensitive_patterns": {
+          "description": "List of regular expression patterns used to detect sensitive data (e.g. PII, credentials). Any match in an agent's input or output triggers the configured redaction or denial action.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "description": "A regular expression pattern string."
+          },
+          "default": []
+        }
+      }
+    },
+    "budget": {
+      "description": "Spending budget controls for LLM API calls made by the agent.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "daily_limit_usd": {
+          "description": "Maximum USD spend allowed per calendar day across all LLM API calls. Calls that would exceed this limit are denied. Must be greater than 0.",
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      }
+    },
+    "schedule": {
+      "description": "Time-based access controls that restrict when the agent is permitted to operate.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "active_hours": {
+          "description": "The time window during which the agent is allowed to run. Requests outside this window are denied.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["start", "end", "timezone"],
+          "properties": {
+            "start": {
+              "description": "Start of the active window in HH:MM 24-hour format (e.g. '09:00').",
+              "type": "string",
+              "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+            },
+            "end": {
+              "description": "End of the active window in HH:MM 24-hour format (e.g. '18:00'). Must be after start.",
+              "type": "string",
+              "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+            },
+            "timezone": {
+              "description": "IANA timezone name for the active_hours window (e.g. 'Asia/Taipei', 'America/New_York', 'UTC').",
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "network": {
+        "allowlist": ["api.openai.com", "api.anthropic.com"]
+      },
+      "tools": {
+        "web_search": { "allow": false },
+        "code_interpreter": { "allow": false },
+        "file_read": { "allow": true, "limit_per_hour": 10 }
+      },
+      "data": {
+        "sensitive_patterns": [
+          "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Z|a-z]{2,}\\b",
+          "sk-[A-Za-z0-9]{32,}",
+          "\\b\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4}\\b"
+        ]
+      },
+      "budget": { "daily_limit_usd": 1.00 },
+      "schedule": {
+        "active_hours": { "start": "09:00", "end": "17:00", "timezone": "Asia/Taipei" }
+      }
+    },
+    {
+      "network": {
+        "allowlist": ["*.openai.com", "*.anthropic.com", "api.github.com", "*.amazonaws.com"]
+      },
+      "tools": {
+        "web_search": { "allow": true, "limit_per_hour": 20 },
+        "code_interpreter": { "allow": true, "limit_per_hour": 10, "requires_approval_if": "estimated_cost_usd > 0.10" },
+        "file_write": { "allow": true, "requires_approval_if": "path starts_with /etc" }
+      },
+      "data": {
+        "sensitive_patterns": [
+          "sk-[A-Za-z0-9]{32,}",
+          "ghp_[A-Za-z0-9]{36}"
+        ]
+      },
+      "budget": { "daily_limit_usd": 25.00 },
+      "schedule": {
+        "active_hours": { "start": "00:00", "end": "23:59", "timezone": "UTC" }
+      }
+    },
+    {
+      "network": {
+        "allowlist": ["*"]
+      },
+      "tools": {
+        "web_search": { "allow": true },
+        "code_interpreter": { "allow": true },
+        "file_read": { "allow": true },
+        "file_write": { "allow": true },
+        "shell": { "allow": true }
+      },
+      "data": {
+        "sensitive_patterns": []
+      },
+      "budget": { "daily_limit_usd": 500.00 },
+      "schedule": {
+        "active_hours": { "start": "00:00", "end": "23:59", "timezone": "UTC" }
+      }
+    }
+  ]
+}

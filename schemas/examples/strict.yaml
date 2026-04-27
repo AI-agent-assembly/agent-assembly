@@ -1,0 +1,38 @@
+# strict.yaml — PolicyDocument example: strict / high-risk agent
+#
+# Use case: an agent operating on sensitive data in a regulated environment.
+# Most tools are denied; only read-only file access is permitted.
+# Tight network allowlist, low daily budget, restricted to business hours.
+
+network:
+  allowlist:
+    - api.openai.com
+    - api.anthropic.com
+
+tools:
+  web_search:
+    allow: false
+  code_interpreter:
+    allow: false
+  file_read:
+    allow: true
+    limit_per_hour: 10
+  file_write:
+    allow: false
+  shell:
+    allow: false
+
+data:
+  sensitive_patterns:
+    - "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Z|a-z]{2,}\\b"
+    - "sk-[A-Za-z0-9]{32,}"
+    - "\\b\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4}\\b"
+
+budget:
+  daily_limit_usd: 1.00
+
+schedule:
+  active_hours:
+    start: "09:00"
+    end: "17:00"
+    timezone: Asia/Taipei
