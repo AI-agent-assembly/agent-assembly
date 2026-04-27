@@ -9,8 +9,9 @@ lint:
   except:
     # All 5 proto files share a flat layout in proto/ by design (per AAASM-104 spec).
     # buf STANDARD requires each package to live in a matching subdirectory
-    # (e.g. assembly/agent/v1/) but the intentional layout keeps them flat.
-    - PACKAGE_SAME_DIRECTORY
+    # (e.g. assembly/agent/v1/) and for a directory to contain only one package.
+    # The intentional flat layout keeps all files at the proto/ root.
+    - DIRECTORY_SAME_PACKAGE
     - PACKAGE_DIRECTORY_MATCH
     # Enum values use short, readable names by design (ALLOW/DENY, LLM_CALL, LOW/HIGH, etc.)
     # rather than the fully-prefixed form (DECISION_ALLOW, ACTION_TYPE_LLM_CALL, RISK_TIER_LOW).
