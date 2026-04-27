@@ -37,6 +37,9 @@ pub async fn run(config: RuntimeConfig) {
 
     tracing::info!("structured concurrency primitives initialised");
 
+    // Policy rules are loaded in a later startup step; placeholder until Commit 6.
+    let policy = std::sync::Arc::new(crate::policy::PolicyRules::default());
+
     // Build pipeline config and create the inbound channel at the configured depth.
     let pipeline_config = crate::pipeline::PipelineConfig::from_runtime_config(&config);
     let (inbound_tx, inbound_rx) = tokio::sync::mpsc::channel::<crate::ipc::IpcFrame>(pipeline_config.input_buffer);
@@ -82,8 +85,9 @@ pub async fn run(config: RuntimeConfig) {
     {
         let pipeline_token = token.clone();
         let pm = pipeline_metrics.clone();
+        let pipeline_policy = std::sync::Arc::clone(&policy);
         tracker.spawn(async move {
-            crate::pipeline::run(inbound_rx, broadcast_tx, pipeline_config, pm, pipeline_token).await;
+            crate::pipeline::run(inbound_rx, broadcast_tx, pipeline_config, pm, pipeline_token, pipeline_policy).await;
         });
         tracing::info!("pipeline task spawned");
     }

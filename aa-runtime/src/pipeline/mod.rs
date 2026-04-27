@@ -8,7 +8,9 @@ pub use metrics::PipelineMetrics;
 
 use crate::config::RuntimeConfig;
 use crate::ipc::IpcFrame;
+use crate::policy::PolicyRules;
 use aa_proto::assembly::audit::v1::{audit_event::Detail, AuditEvent};
+use aa_proto::assembly::common::v1::ActionType;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{broadcast, mpsc};
@@ -56,6 +58,7 @@ pub async fn run(
     config: PipelineConfig,
     metrics: Arc<PipelineMetrics>,
     token: CancellationToken,
+    policy: Arc<PolicyRules>,
 ) {
     let mut batch: Vec<EnrichedEvent> = Vec::with_capacity(config.batch_size);
     let mut ticker = tokio::time::interval(config.flush_interval);
@@ -78,7 +81,7 @@ pub async fn run(
                     let enriched = enrich(event, &config.agent_id);
                     metrics.record_processed(1);
                     ::metrics::counter!("aa_events_received_total").increment(1);
-                    if is_policy_violation(&enriched) {
+                    if is_policy_violation(&enriched, &policy) {
                         // Bypass the batch — emit immediately.
                         ::metrics::counter!("aa_policy_violations_total").increment(1);
                         let _ = broadcast_tx.send(enriched);
@@ -117,11 +120,23 @@ fn enrich(event: AuditEvent, agent_id: &str) -> EnrichedEvent {
     }
 }
 
-/// Returns `true` if this event's detail is a `PolicyViolation`.
+/// Returns `true` if this event should bypass batching and be emitted immediately.
 ///
-/// Policy violation events bypass batching and are emitted immediately.
-fn is_policy_violation(event: &EnrichedEvent) -> bool {
-    matches!(event.inner.detail, Some(Detail::Violation(_)))
+/// An event is a violation if either:
+/// - Its detail is a `PolicyViolation` proto message, or
+/// - Any rule in `policy.rules` has a `blocked_actions` entry that matches the
+///   event's `action_type` (compared as the proto enum's string name).
+fn is_policy_violation(event: &EnrichedEvent, policy: &PolicyRules) -> bool {
+    if matches!(event.inner.detail, Some(Detail::Violation(_))) {
+        return true;
+    }
+    let action_str = ActionType::try_from(event.inner.action_type)
+        .map(|a| a.as_str_name())
+        .unwrap_or("");
+    policy
+        .rules
+        .iter()
+        .any(|rule| rule.blocked_actions.iter().any(|ba| ba == action_str))
 }
 
 /// Broadcast all events in `batch` and record metrics.
@@ -141,6 +156,7 @@ fn flush(batch: &mut Vec<EnrichedEvent>, broadcast_tx: &broadcast::Sender<Enrich
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::policy::PolicyRules;
     use aa_proto::assembly::audit::v1::{audit_event::Detail, AuditEvent, PolicyViolation};
 
     fn make_audit_event() -> AuditEvent {
@@ -183,14 +199,14 @@ mod tests {
     fn is_policy_violation_true_for_violation_detail() {
         let event = make_policy_violation_event();
         let enriched = enrich(event, "agent");
-        assert!(is_policy_violation(&enriched));
+        assert!(is_policy_violation(&enriched, &PolicyRules::default()));
     }
 
     #[test]
     fn is_policy_violation_false_for_normal_event() {
         let event = make_audit_event(); // detail = None
         let enriched = enrich(event, "agent");
-        assert!(!is_policy_violation(&enriched));
+        assert!(!is_policy_violation(&enriched, &PolicyRules::default()));
     }
 
     #[test]
@@ -302,7 +318,7 @@ mod tests {
         let metrics = Arc::new(PipelineMetrics::default());
         let token = CancellationToken::new();
 
-        tokio::spawn(run(rx, broadcast_tx, config, metrics.clone(), token.clone()));
+        tokio::spawn(run(rx, broadcast_tx, config, metrics.clone(), token.clone(), Arc::new(PolicyRules::default())));
 
         // Send 3 events — batch threshold reached, should flush before interval
         for _ in 0..3 {
@@ -328,7 +344,7 @@ mod tests {
         let metrics = Arc::new(PipelineMetrics::default());
         let token = CancellationToken::new();
 
-        tokio::spawn(run(rx, broadcast_tx, config, metrics.clone(), token.clone()));
+        tokio::spawn(run(rx, broadcast_tx, config, metrics.clone(), token.clone(), Arc::new(PolicyRules::default())));
 
         // Send 5 events (less than batch_size=100) — should arrive after interval flush
         for _ in 0..5 {
@@ -354,7 +370,7 @@ mod tests {
         let metrics = Arc::new(PipelineMetrics::default());
         let token = CancellationToken::new();
 
-        tokio::spawn(run(rx, broadcast_tx, config, metrics.clone(), token.clone()));
+        tokio::spawn(run(rx, broadcast_tx, config, metrics.clone(), token.clone(), Arc::new(PolicyRules::default())));
 
         // Send a violation — should arrive immediately, bypassing batch
         tx.send(IpcFrame::EventReport(violation_event())).await.unwrap();
@@ -377,7 +393,7 @@ mod tests {
         let metrics = Arc::new(PipelineMetrics::default());
         let token = CancellationToken::new();
 
-        let handle = tokio::spawn(run(rx, broadcast_tx, config, metrics.clone(), token.clone()));
+        let handle = tokio::spawn(run(rx, broadcast_tx, config, metrics.clone(), token.clone(), Arc::new(PolicyRules::default())));
 
         // Send 5 events (batch won't flush yet)
         for _ in 0..5 {
@@ -421,7 +437,7 @@ mod tests {
         let metrics = Arc::new(PipelineMetrics::default());
         let token = CancellationToken::new();
 
-        tokio::spawn(run(rx, broadcast_tx, config, metrics.clone(), token.clone()));
+        tokio::spawn(run(rx, broadcast_tx, config, metrics.clone(), token.clone(), Arc::new(PolicyRules::default())));
 
         // Send non-event frames
         tx.send(IpcFrame::Heartbeat).await.unwrap();
@@ -446,7 +462,7 @@ mod tests {
         let metrics = Arc::new(PipelineMetrics::default());
         let token = CancellationToken::new();
 
-        tokio::spawn(run(rx, broadcast_tx, config, metrics.clone(), token.clone()));
+        tokio::spawn(run(rx, broadcast_tx, config, metrics.clone(), token.clone(), Arc::new(PolicyRules::default())));
 
         // Spawn a receiver that drains the broadcast channel
         tokio::spawn(async move { while broadcast_rx.recv().await.is_ok() {} });
