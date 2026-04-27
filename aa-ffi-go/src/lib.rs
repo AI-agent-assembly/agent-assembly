@@ -24,6 +24,7 @@ pub struct AaString {
 }
 
 #[repr(C)]
+#[allow(non_camel_case_types)]
 pub struct aa_client_handle {
     state: Mutex<ClientState>,
 }
