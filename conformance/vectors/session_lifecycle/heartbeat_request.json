@@ -1,0 +1,10 @@
+{
+  "description": "HeartbeatRequest — agent identity, credential token, active run and action counters",
+  "message_type": "HeartbeatRequest",
+  "fields": {
+    "agent_id": { "org_id": "acme", "team_id": "ml", "agent_id": "agent-001" },
+    "credential_token": "tok-abcdef-123456",
+    "active_runs": 3,
+    "actions_count": 142
+  }
+}

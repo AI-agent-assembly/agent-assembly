@@ -1,0 +1,8 @@
+{
+  "description": "HeartbeatResponse — policy unchanged, agent may continue normal operation",
+  "message_type": "HeartbeatResponse",
+  "fields": {
+    "policy_updated": false,
+    "should_suspend": false
+  }
+}
