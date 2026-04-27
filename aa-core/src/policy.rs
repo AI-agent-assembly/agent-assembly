@@ -100,3 +100,24 @@ pub enum GovernanceAction {
     /// Spawning an external process.
     ProcessExec { command: alloc::string::String },
 }
+
+/// Pluggable policy evaluation backend.
+///
+/// Implementors decide whether a given `GovernanceAction` is permitted for
+/// a given `AgentContext`. The trait is object-safe: `dyn PolicyEvaluator`
+/// is valid because no method has generic parameters or returns `Self`.
+///
+/// Gated on `alloc` because `GovernanceAction` and `PolicyDocument` require it.
+#[cfg(feature = "alloc")]
+pub trait PolicyEvaluator {
+    /// Evaluate whether `action` is permitted for `ctx`.
+    fn evaluate(&self, ctx: &crate::AgentContext, action: &GovernanceAction) -> PolicyResult;
+
+    /// Load a policy document into this evaluator, replacing any prior policy.
+    fn load_policy(&mut self, policy: &PolicyDocument) -> Result<(), PolicyError>;
+
+    /// Validate a policy document without applying it.
+    ///
+    /// Returns all validation errors found, or `Ok(())` if the document is valid.
+    fn validate_policy(&self, policy: &PolicyDocument) -> Result<(), alloc::vec::Vec<PolicyError>>;
+}
