@@ -1,0 +1,24 @@
+{
+  "description": "PROCESS_EXEC — DENY: shell execution is disabled by policy (shell: allow: false)",
+  "request": {
+    "agent_id": { "org_id": "acme", "team_id": "platform", "agent_id": "agent-005" },
+    "credential_token": "tok-proc",
+    "trace_id": "trace-005",
+    "span_id": "span-005",
+    "action_type": "PROCESS_EXEC",
+    "context": {
+      "process_exec": {
+        "command": "bash",
+        "args": ["-c", "rm -rf /tmp/work"]
+      }
+    }
+  },
+  "response": {
+    "decision": "DENY",
+    "reason": "Shell execution is disabled by policy (shell: allow: false)",
+    "policy_rule": "rule:deny-shell-v1",
+    "approval_id": "",
+    "redact": null,
+    "decision_latency_us": 98
+  }
+}

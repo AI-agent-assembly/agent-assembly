@@ -1,0 +1,26 @@
+{
+  "description": "NETWORK_CALL — DENY: target host is not in the network allowlist",
+  "request": {
+    "agent_id": { "org_id": "acme", "team_id": "platform", "agent_id": "agent-006" },
+    "credential_token": "tok-net2",
+    "trace_id": "trace-006",
+    "span_id": "span-006",
+    "action_type": "NETWORK_CALL",
+    "context": {
+      "network_call": {
+        "host": "malicious.example.com",
+        "port": 443,
+        "protocol": "https",
+        "in_allowlist": false
+      }
+    }
+  },
+  "response": {
+    "decision": "DENY",
+    "reason": "Host 'malicious.example.com' is not in the network allowlist",
+    "policy_rule": "rule:network-allowlist-v1",
+    "approval_id": "",
+    "redact": null,
+    "decision_latency_us": 112
+  }
+}
