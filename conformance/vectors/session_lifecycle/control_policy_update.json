@@ -1,0 +1,8 @@
+{
+  "description": "ControlCommand — PolicyUpdateCommand notifying agent of a new policy version",
+  "message_type": "ControlCommand_PolicyUpdate",
+  "fields": {
+    "new_policy_id": "policy:strict-v2",
+    "policy_bytes": ""
+  }
+}

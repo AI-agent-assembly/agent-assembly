@@ -1,0 +1,7 @@
+{
+  "description": "ControlCommand — SuspendCommand with human-readable reason",
+  "message_type": "ControlCommand_Suspend",
+  "fields": {
+    "reason": "policy violation detected — awaiting manual review"
+  }
+}

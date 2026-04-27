@@ -1,0 +1,7 @@
+{
+  "description": "ControlCommand — ResumeCommand lifting a previous suspension",
+  "message_type": "ControlCommand_Resume",
+  "fields": {
+    "note": "manual review complete — agent cleared to resume"
+  }
+}

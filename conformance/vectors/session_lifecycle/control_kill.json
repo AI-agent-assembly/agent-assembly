@@ -1,0 +1,7 @@
+{
+  "description": "ControlCommand — KillCommand for CRITICAL risk tier escalation",
+  "message_type": "ControlCommand_Kill",
+  "fields": {
+    "reason": "CRITICAL risk tier breach — immediate termination required"
+  }
+}
