@@ -28,6 +28,8 @@ pub struct CertifiedKey {
 /// - `<ca_dir>/ca-key.pem`  — PEM-encoded CA private key (chmod 600)
 pub struct CaStore {
     /// Directory where CA files are persisted.
+    // Only read by macOS keychain methods; allow dead_code on other platforms.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     pub(crate) ca_dir: PathBuf,
     /// PEM-encoded CA certificate (used for signing and keychain install).
     pub(crate) ca_cert_pem: String,
