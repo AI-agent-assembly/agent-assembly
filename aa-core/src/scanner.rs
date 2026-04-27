@@ -242,8 +242,31 @@ fn is_ssn(s: &str) -> bool {
         && b[7..11].iter().all(u8::is_ascii_digit)
 }
 
-/// Scans `text` for credit card numbers (Luhn validation added in a later commit)
-/// and SSN patterns (`DDD-DD-DDDD`).
+/// Returns `true` if `digits` (ASCII digit characters only, no separators) passes
+/// the Luhn checksum algorithm used by credit card numbers.
+fn luhn_valid(digits: &str) -> bool {
+    if digits.len() < 13 || digits.len() > 19 {
+        return false;
+    }
+    let mut sum = 0u32;
+    let mut double = false;
+    for ch in digits.chars().rev() {
+        let Some(d) = ch.to_digit(10) else {
+            return false;
+        };
+        let val = if double {
+            let v = d * 2;
+            if v > 9 { v - 9 } else { v }
+        } else {
+            d
+        };
+        sum += val;
+        double = !double;
+    }
+    sum % 10 == 0
+}
+
+/// Scans `text` for credit card numbers (Luhn-validated) and SSN patterns (`DDD-DD-DDDD`).
 fn scan_digit_sequences(text: &str, findings: &mut Vec<CredentialFinding>) {
     let bytes = text.as_bytes();
     let mut i = 0;
@@ -276,9 +299,8 @@ fn scan_digit_sequences(text: &str, findings: &mut Vec<CredentialFinding>) {
 
         if is_ssn(segment) {
             findings.push(CredentialFinding::new(CredentialKind::SsnPattern, start, end));
-        } else if digits.len() >= 13 && digits.len() <= 19 {
-            // Luhn validation will be wired in the next commit
-            let _ = &digits;
+        } else if digits.len() >= 13 && digits.len() <= 19 && luhn_valid(&digits) {
+            findings.push(CredentialFinding::new(CredentialKind::CreditCardLuhn, start, end));
         }
         i = end.max(i + 1);
     }
