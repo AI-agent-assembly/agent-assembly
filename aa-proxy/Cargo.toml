@@ -6,6 +6,13 @@ license.workspace = true
 repository.workspace = true
 description = "Sidecar traffic interception proxy for Agent Assembly"
 
+[lib]
+name = "aa_proxy"
+
+[[bin]]
+name = "aa-proxy"
+path = "src/main.rs"
+
 [dependencies]
 aa-core = { path = "../aa-core" }
 aa-runtime = { path = "../aa-runtime" }
