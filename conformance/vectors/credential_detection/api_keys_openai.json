@@ -1,0 +1,8 @@
+{
+  "description": "OpenAI API key — sk- prefix without sk-ant- (must be classified as OpenAiKey, not AnthropicKey)",
+  "input_text": "OPENAI_API_KEY=sk-proj-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+  "expected_findings": [
+    { "kind": "OpenAiKey", "offset": 15 }
+  ],
+  "expected_redacted": "OPENAI_API_KEY=[REDACTED:OpenAiKey]"
+}

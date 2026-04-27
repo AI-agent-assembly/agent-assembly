@@ -1,0 +1,8 @@
+{
+  "description": "GCP service account JSON — identified by the literal '\"type\": \"service_account\"' substring",
+  "input_text": "{\"type\": \"service_account\", \"project_id\": \"my-project\", \"private_key_id\": \"abc123\"}",
+  "expected_findings": [
+    { "kind": "GcpServiceAccount", "offset": 1 }
+  ],
+  "expected_redacted": "{[REDACTED:GcpServiceAccount], \"project_id\": \"my-project\", \"private_key_id\": \"abc123\"}"
+}
