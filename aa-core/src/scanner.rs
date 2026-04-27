@@ -122,3 +122,35 @@ impl CredentialKind {
         }
     }
 }
+
+/// A single detected credential finding.
+///
+/// `offset` is the byte offset in the original text where the pattern was found.
+/// `matched` is the redacted label, e.g. `[REDACTED:AwsAccessKey]`. The raw
+/// secret is never stored.
+///
+/// The `end` field is intentionally private; it is used by [`ScanResult::redact`]
+/// to splice the original match without exposing raw length arithmetic to callers.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct CredentialFinding {
+    pub kind:    CredentialKind,
+    pub offset:  usize,
+    pub matched: String,
+    #[cfg_attr(feature = "serde", serde(skip))]
+    end: usize,
+}
+
+impl CredentialFinding {
+    fn new(kind: CredentialKind, offset: usize, end: usize) -> Self {
+        let label = format!("[REDACTED:{}]", kind.as_str());
+        Self { kind, offset, matched: label, end }
+    }
+}
+
+/// The result of a [`CredentialScanner::scan`] call.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct ScanResult {
+    pub findings: Vec<CredentialFinding>,
+}
