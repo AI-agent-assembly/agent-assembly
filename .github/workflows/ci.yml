@@ -206,3 +206,14 @@ jobs:
           ajv validate \
             -s schemas/policy/v1/policy-document.schema.json \
             -d schemas/examples/audit-only.yaml
+
+  compat-matrix-check:
+    name: Compatibility matrix update check
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check compatibility matrix is updated when versions change
+        run: bash .ci/check-compatibility-matrix.sh
