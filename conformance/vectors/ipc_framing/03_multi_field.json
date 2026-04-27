@@ -1,0 +1,6 @@
+{
+  "description": "AgentId with org_id='acme', team_id='ops', agent_id='z6Mk' — three string fields, 17-byte proto, varint(17)=0x11 prefix",
+  "message_type": "assembly.common.v1.AgentId",
+  "input_hex": "0a0461636d6512036f70731a047a364d6b",
+  "expected_framed_hex": "110a0461636d6512036f70731a047a364d6b"
+}

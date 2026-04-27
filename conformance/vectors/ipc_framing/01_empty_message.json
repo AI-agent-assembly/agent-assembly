@@ -1,0 +1,6 @@
+{
+  "description": "Empty proto message — varint(0) prefix, zero-byte body",
+  "message_type": "assembly.common.v1.AgentId",
+  "input_hex": "",
+  "expected_framed_hex": "00"
+}
