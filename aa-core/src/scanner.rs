@@ -63,33 +63,55 @@ const AC_KINDS: &[CredentialKind] = &[
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum CredentialKind {
     // API keys
+    /// Anthropic API key (prefix `sk-ant-`).
     AnthropicKey,
+    /// AWS access key ID (prefix `AKIA`).
     AwsAccessKey,
+    /// GCP service account JSON credential (contains `"type": "service_account"`).
     GcpServiceAccount,
+    /// OpenAI API key (prefix `sk-`).
     OpenAiKey,
     // Cloud credentials
+    /// Azure Storage connection string (prefix `DefaultEndpointsProtocol=`).
     AzureConnectionString,
     // Auth tokens
+    /// GitHub App installation token (prefix `ghs_`).
     GitHubAppToken,
+    /// GitHub personal access token (prefix `ghp_`).
     GitHubPat,
+    /// Slack bot token (prefix `xoxb-`).
     SlackBotToken,
+    /// Slack OAuth token (prefix `xoxa-`).
     SlackOAuthToken,
+    /// Slack user token (prefix `xoxp-`).
     SlackUserToken,
     // Database URLs
+    /// MongoDB connection URI (prefix `mongodb://`).
     MongodbUrl,
+    /// MySQL connection URI (prefix `mysql://`).
     MysqlUrl,
+    /// PostgreSQL connection URI (prefix `postgres://`).
     PostgresUrl,
     // Private keys
+    /// PEM-encoded EC private key (`-----BEGIN EC PRIVATE KEY-----`).
     EcPrivateKey,
+    /// PEM-encoded OpenSSH private key (`-----BEGIN OPENSSH PRIVATE KEY-----`).
     OpensshPrivateKey,
+    /// PEM-encoded PGP private key block (`-----BEGIN PGP PRIVATE KEY BLOCK-----`).
     PgpPrivateKey,
+    /// PEM-encoded PKCS#8 private key (`-----BEGIN PRIVATE KEY-----`).
     PrivateKey,
+    /// PEM-encoded RSA private key (`-----BEGIN RSA PRIVATE KEY-----`).
     RsaPrivateKey,
     // PII
+    /// Credit card number validated by the Luhn algorithm (13–19 digits).
     CreditCardLuhn,
+    /// Email address containing `@` and a dot-separated domain.
     EmailAddress,
+    /// US Social Security Number in `DDD-DD-DDDD` format.
     SsnPattern,
     // Generic
+    /// High-entropy token (Shannon entropy > 4.5 bits/char, length 20–64 bytes).
     GenericHighEntropy,
 }
 
@@ -134,8 +156,11 @@ impl CredentialKind {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct CredentialFinding {
+    /// Category of the detected credential.
     pub kind: CredentialKind,
+    /// Byte offset in the original text where the pattern begins.
     pub offset: usize,
+    /// Redacted label replacing the secret, e.g. `[REDACTED:AwsAccessKey]`.
     pub matched: String,
     #[cfg_attr(feature = "serde", serde(skip))]
     end: usize,
@@ -157,6 +182,7 @@ impl CredentialFinding {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ScanResult {
+    /// All credential findings detected in the scanned text, sorted by byte offset.
     pub findings: Vec<CredentialFinding>,
 }
 
