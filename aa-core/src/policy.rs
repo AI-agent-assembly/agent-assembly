@@ -121,3 +121,104 @@ pub trait PolicyEvaluator {
     /// Returns all validation errors found, or `Ok(())` if the document is valid.
     fn validate_policy(&self, policy: &PolicyDocument) -> Result<(), alloc::vec::Vec<PolicyError>>;
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn file_mode_clone_and_eq() {
+        let m = FileMode::Read;
+        assert_eq!(m.clone(), FileMode::Read);
+        assert_ne!(FileMode::Write, FileMode::Delete);
+    }
+
+    #[test]
+    fn file_mode_all_variants() {
+        // Verify all variants are constructible and distinct.
+        assert_ne!(FileMode::Read, FileMode::Write);
+        assert_ne!(FileMode::Append, FileMode::Delete);
+        assert_ne!(FileMode::Write, FileMode::Append);
+    }
+
+    #[test]
+    #[cfg(feature = "alloc")]
+    fn governance_action_tool_call() {
+        let action = GovernanceAction::ToolCall {
+            name: alloc::string::String::from("list_files"),
+            args: alloc::string::String::from("{\"dir\":\"/tmp\"}"),
+        };
+        assert_eq!(action.clone(), action);
+    }
+
+    #[test]
+    #[cfg(feature = "alloc")]
+    fn governance_action_file_access() {
+        let action = GovernanceAction::FileAccess {
+            path: alloc::string::String::from("/etc/passwd"),
+            mode: FileMode::Read,
+        };
+        let cloned = action.clone();
+        assert_eq!(action, cloned);
+    }
+
+    #[test]
+    #[cfg(feature = "alloc")]
+    fn governance_action_network_request() {
+        let action = GovernanceAction::NetworkRequest {
+            url: alloc::string::String::from("https://example.com"),
+            method: alloc::string::String::from("GET"),
+        };
+        assert_eq!(action.clone(), action);
+    }
+
+    #[test]
+    #[cfg(feature = "alloc")]
+    fn governance_action_spawn() {
+        let action = GovernanceAction::ProcessExec {
+            command: alloc::string::String::from("ls -la"),
+        };
+        assert_eq!(action.clone(), action);
+    }
+
+    #[test]
+    #[cfg(feature = "alloc")]
+    fn policy_result_allow() {
+        assert_eq!(PolicyResult::Allow, PolicyResult::Allow);
+        assert_eq!(PolicyResult::Allow.clone(), PolicyResult::Allow);
+    }
+
+    #[test]
+    #[cfg(feature = "alloc")]
+    fn policy_result_deny_reason() {
+        let r = PolicyResult::Deny { reason: alloc::string::String::from("blocked") };
+        if let PolicyResult::Deny { reason } = &r {
+            assert_eq!(reason, "blocked");
+        } else {
+            panic!("expected Deny");
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "alloc")]
+    fn policy_result_requires_approval() {
+        let r = PolicyResult::RequiresApproval { timeout_secs: 30 };
+        if let PolicyResult::RequiresApproval { timeout_secs } = r {
+            assert_eq!(timeout_secs, 30);
+        } else {
+            panic!("expected RequiresApproval");
+        }
+    }
+
+    #[test]
+    fn policy_error_variants() {
+        assert_eq!(PolicyError::InvalidDocument, PolicyError::InvalidDocument);
+        assert_ne!(PolicyError::UnknownAction, PolicyError::EvaluationFailed);
+    }
+
+    #[test]
+    fn policy_decision_variants() {
+        assert_eq!(PolicyDecision::Allow, PolicyDecision::Allow);
+        assert_ne!(PolicyDecision::Deny, PolicyDecision::RequireApproval);
+    }
+}
