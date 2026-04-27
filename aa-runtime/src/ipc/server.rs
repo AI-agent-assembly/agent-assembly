@@ -233,3 +233,198 @@ pub(super) async fn run_writer(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ipc::codec::{TAG_EVENT_REPORT, TAG_HEARTBEAT, TAG_POLICY_QUERY};
+    use crate::ipc::message::IpcFrame;
+    use aa_proto::assembly::audit::v1::AuditEvent;
+    use aa_proto::assembly::policy::v1::CheckActionRequest;
+    use prost::Message;
+    use std::time::Duration;
+    use tokio::net::UnixStream;
+    use tokio::sync::mpsc;
+
+    /// Build a temporary socket path unique per test to avoid collisions.
+    fn temp_socket_path(name: &str) -> std::path::PathBuf {
+        std::path::PathBuf::from(format!("/tmp/aa-runtime-test-{name}.sock"))
+    }
+
+    /// Helper: connect a mock SDK client to the server socket, retrying briefly.
+    async fn connect_client(path: &std::path::Path) -> UnixStream {
+        for _ in 0..20 {
+            if let Ok(stream) = UnixStream::connect(path).await {
+                return stream;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        panic!("could not connect to test IPC server at {}", path.display());
+    }
+
+    /// Start a test IpcServer and return the inbound frame receiver.
+    async fn start_server(socket_path: std::path::PathBuf, token: CancellationToken) -> mpsc::Receiver<IpcFrame> {
+        let config = IpcServerConfig {
+            socket_path,
+            max_connections: 64,
+            inbound_channel_capacity: 16,
+        };
+        let server = IpcServer::bind(config).expect("bind failed");
+        let (tx, rx) = mpsc::channel(16);
+        let tracker = TaskTracker::new();
+        let tracker_clone = tracker.clone();
+        tracker.spawn(async move {
+            server.run(tracker_clone, token, tx).await;
+        });
+        rx
+    }
+
+    /// Write a raw inbound frame (tag + varint len + payload) to the socket.
+    async fn write_raw_frame(stream: &mut tokio::net::unix::OwnedWriteHalf, tag: u8, payload: &[u8]) {
+        use tokio::io::AsyncWriteExt;
+        stream.write_u8(tag).await.unwrap();
+        // Write varint length
+        let mut len = payload.len() as u64;
+        loop {
+            let byte = (len & 0x7F) as u8;
+            len >>= 7;
+            if len == 0 {
+                stream.write_u8(byte).await.unwrap();
+                break;
+            } else {
+                stream.write_u8(byte | 0x80).await.unwrap();
+            }
+        }
+        stream.write_all(payload).await.unwrap();
+        stream.flush().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn heartbeat_frame_arrives_on_inbound_channel() {
+        let socket_path = temp_socket_path("heartbeat");
+        let token = CancellationToken::new();
+        let mut rx = start_server(socket_path.clone(), token.clone()).await;
+
+        let client = connect_client(&socket_path).await;
+        let (_, mut write_half) = client.into_split();
+
+        // Heartbeat has tag only, no payload or length field.
+        use tokio::io::AsyncWriteExt;
+        write_half.write_u8(TAG_HEARTBEAT).await.unwrap();
+        write_half.flush().await.unwrap();
+
+        let frame = tokio::time::timeout(Duration::from_secs(2), rx.recv())
+            .await
+            .expect("timed out waiting for frame")
+            .expect("channel closed");
+
+        assert!(matches!(frame, IpcFrame::Heartbeat));
+        token.cancel();
+    }
+
+    #[tokio::test]
+    async fn policy_query_arrives_decoded_on_inbound_channel() {
+        let socket_path = temp_socket_path("policy-query");
+        let token = CancellationToken::new();
+        let mut rx = start_server(socket_path.clone(), token.clone()).await;
+
+        let client = connect_client(&socket_path).await;
+        let (_, mut write_half) = client.into_split();
+
+        let request = CheckActionRequest {
+            trace_id: "trace-xyz".to_string(),
+            ..Default::default()
+        };
+        let payload = request.encode_to_vec();
+        write_raw_frame(&mut write_half, TAG_POLICY_QUERY, &payload).await;
+
+        let frame = tokio::time::timeout(Duration::from_secs(2), rx.recv())
+            .await
+            .expect("timed out")
+            .expect("channel closed");
+
+        match frame {
+            IpcFrame::PolicyQuery(decoded) => assert_eq!(decoded.trace_id, "trace-xyz"),
+            other => panic!("expected PolicyQuery, got {other:?}"),
+        }
+        token.cancel();
+    }
+
+    #[tokio::test]
+    async fn event_report_arrives_decoded_on_inbound_channel() {
+        let socket_path = temp_socket_path("event-report");
+        let token = CancellationToken::new();
+        let mut rx = start_server(socket_path.clone(), token.clone()).await;
+
+        let client = connect_client(&socket_path).await;
+        let (_, mut write_half) = client.into_split();
+
+        let event = AuditEvent {
+            event_id: "evt-456".to_string(),
+            ..Default::default()
+        };
+        let payload = event.encode_to_vec();
+        write_raw_frame(&mut write_half, TAG_EVENT_REPORT, &payload).await;
+
+        let frame = tokio::time::timeout(Duration::from_secs(2), rx.recv())
+            .await
+            .expect("timed out")
+            .expect("channel closed");
+
+        match frame {
+            IpcFrame::EventReport(decoded) => assert_eq!(decoded.event_id, "evt-456"),
+            other => panic!("expected EventReport, got {other:?}"),
+        }
+        token.cancel();
+    }
+
+    #[tokio::test]
+    async fn concurrent_connections_up_to_limit() {
+        let socket_path = temp_socket_path("concurrent");
+        let token = CancellationToken::new();
+        let _rx = start_server(socket_path.clone(), token.clone()).await;
+
+        const CONN_COUNT: usize = 5;
+        let mut clients = Vec::new();
+        for _ in 0..CONN_COUNT {
+            clients.push(connect_client(&socket_path).await);
+        }
+
+        // All connections should succeed (well below max of 64).
+        assert_eq!(clients.len(), CONN_COUNT);
+        token.cancel();
+    }
+
+    /// Round-trip latency test. Marked #[ignore] — run explicitly only.
+    #[tokio::test]
+    #[ignore]
+    async fn round_trip_latency_under_1ms() {
+        let socket_path = temp_socket_path("latency");
+        let token = CancellationToken::new();
+        let mut rx = start_server(socket_path.clone(), token.clone()).await;
+
+        let client = connect_client(&socket_path).await;
+        let (_, mut write_half) = client.into_split();
+
+        const ITERATIONS: u32 = 1000;
+        let start = std::time::Instant::now();
+
+        for _ in 0..ITERATIONS {
+            use tokio::io::AsyncWriteExt;
+            write_half.write_u8(TAG_HEARTBEAT).await.unwrap();
+            write_half.flush().await.unwrap();
+            tokio::time::timeout(Duration::from_millis(100), rx.recv())
+                .await
+                .expect("timed out")
+                .expect("channel closed");
+        }
+
+        let elapsed = start.elapsed();
+        let avg_us = elapsed.as_micros() / ITERATIONS as u128;
+        println!("Average round-trip: {avg_us} µs");
+
+        assert!(avg_us < 1000, "average round-trip {avg_us} µs exceeded 1ms threshold");
+
+        token.cancel();
+    }
+}
