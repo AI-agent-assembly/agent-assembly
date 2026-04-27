@@ -706,4 +706,100 @@ mod tests {
         let s = alloc::format!("{}", entry);
         assert!(!s.contains("bash"));
     }
+
+    // --- AuditLog helpers ---
+
+    fn make_log() -> AuditLog {
+        AuditLog::new(
+            AgentId::from_bytes(AGENT_BYTES),
+            SessionId::from_bytes(SESSION_BYTES),
+        )
+    }
+
+    fn make_valid_entry(seq: u64, previous_hash: [u8; 32]) -> AuditEntry {
+        AuditEntry::new(
+            seq,
+            1_000_000_000,
+            AuditEventType::ToolCallIntercepted,
+            AgentId::from_bytes(AGENT_BYTES),
+            SessionId::from_bytes(SESSION_BYTES),
+            alloc::string::String::from("{}"),
+            previous_hash,
+        )
+    }
+
+    // --- AuditLog::push() ---
+
+    #[test]
+    fn push_genesis_entry_succeeds() {
+        let mut log = make_log();
+        let entry = make_valid_entry(0, GENESIS_HASH);
+        assert!(log.push(entry).is_ok());
+        assert_eq!(log.len(), 1);
+    }
+
+    #[test]
+    fn push_rejects_seq_gap_skipping_forward() {
+        let mut log = make_log();
+        let entry = make_valid_entry(2, GENESIS_HASH); // expected seq=0
+        let err = log.push(entry).unwrap_err();
+        assert_eq!(err, AuditLogError::SequenceGap { expected: 0, got: 2 });
+        assert!(log.is_empty(), "log must be unmodified on error");
+    }
+
+    #[test]
+    fn push_rejects_seq_going_backward() {
+        let mut log = make_log();
+        let e0 = make_valid_entry(0, GENESIS_HASH);
+        let hash0 = *e0.entry_hash();
+        log.push(e0).unwrap();
+
+        let e_back = make_valid_entry(0, hash0); // duplicate seq=0
+        let err = log.push(e_back).unwrap_err();
+        assert_eq!(err, AuditLogError::SequenceGap { expected: 1, got: 0 });
+        assert_eq!(log.len(), 1, "log must be unmodified on error");
+    }
+
+    #[test]
+    fn push_rejects_broken_hash_chain() {
+        let mut log = make_log();
+        let e0 = make_valid_entry(0, GENESIS_HASH);
+        log.push(e0).unwrap();
+
+        let wrong_prev = [0xAB; 32]; // not equal to e0.entry_hash()
+        let e1 = make_valid_entry(1, wrong_prev);
+        let err = log.push(e1).unwrap_err();
+        assert_eq!(err, AuditLogError::HashChainBroken { at_seq: 1 });
+        assert_eq!(log.len(), 1, "log must be unmodified on error");
+    }
+
+    #[test]
+    fn push_two_valid_entries_succeeds() {
+        let mut log = make_log();
+        let e0 = make_valid_entry(0, GENESIS_HASH);
+        let hash0 = *e0.entry_hash();
+        log.push(e0).unwrap();
+
+        let e1 = make_valid_entry(1, hash0);
+        log.push(e1).unwrap();
+
+        assert_eq!(log.len(), 2);
+        assert_eq!(log.entries()[0].seq(), 0);
+        assert_eq!(log.entries()[1].seq(), 1);
+    }
+
+    #[test]
+    fn audit_log_error_display_sequence_gap() {
+        let err = AuditLogError::SequenceGap { expected: 3, got: 7 };
+        let s = alloc::format!("{}", err);
+        assert!(s.contains("expected seq=3"));
+        assert!(s.contains("got seq=7"));
+    }
+
+    #[test]
+    fn audit_log_error_display_hash_chain_broken() {
+        let err = AuditLogError::HashChainBroken { at_seq: 5 };
+        let s = alloc::format!("{}", err);
+        assert!(s.contains("at_seq=5") || s.contains("at seq=5"));
+    }
 }
