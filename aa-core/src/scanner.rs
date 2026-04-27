@@ -97,28 +97,28 @@ impl CredentialKind {
     /// Returns the string used in the `[REDACTED:<kind>]` label.
     pub fn as_str(&self) -> &'static str {
         match self {
-            Self::AnthropicKey          => "AnthropicKey",
-            Self::AwsAccessKey          => "AwsAccessKey",
+            Self::AnthropicKey => "AnthropicKey",
+            Self::AwsAccessKey => "AwsAccessKey",
             Self::AzureConnectionString => "AzureConnectionString",
-            Self::CreditCardLuhn        => "CreditCardLuhn",
-            Self::EcPrivateKey          => "EcPrivateKey",
-            Self::EmailAddress          => "EmailAddress",
-            Self::GcpServiceAccount     => "GcpServiceAccount",
-            Self::GenericHighEntropy    => "GenericHighEntropy",
-            Self::GitHubAppToken        => "GitHubAppToken",
-            Self::GitHubPat             => "GitHubPat",
-            Self::MongodbUrl            => "MongodbUrl",
-            Self::MysqlUrl              => "MysqlUrl",
-            Self::OpenAiKey             => "OpenAiKey",
-            Self::OpensshPrivateKey     => "OpensshPrivateKey",
-            Self::PgpPrivateKey         => "PgpPrivateKey",
-            Self::PostgresUrl           => "PostgresUrl",
-            Self::PrivateKey            => "PrivateKey",
-            Self::RsaPrivateKey         => "RsaPrivateKey",
-            Self::SlackBotToken         => "SlackBotToken",
-            Self::SlackOAuthToken       => "SlackOAuthToken",
-            Self::SlackUserToken        => "SlackUserToken",
-            Self::SsnPattern            => "SsnPattern",
+            Self::CreditCardLuhn => "CreditCardLuhn",
+            Self::EcPrivateKey => "EcPrivateKey",
+            Self::EmailAddress => "EmailAddress",
+            Self::GcpServiceAccount => "GcpServiceAccount",
+            Self::GenericHighEntropy => "GenericHighEntropy",
+            Self::GitHubAppToken => "GitHubAppToken",
+            Self::GitHubPat => "GitHubPat",
+            Self::MongodbUrl => "MongodbUrl",
+            Self::MysqlUrl => "MysqlUrl",
+            Self::OpenAiKey => "OpenAiKey",
+            Self::OpensshPrivateKey => "OpensshPrivateKey",
+            Self::PgpPrivateKey => "PgpPrivateKey",
+            Self::PostgresUrl => "PostgresUrl",
+            Self::PrivateKey => "PrivateKey",
+            Self::RsaPrivateKey => "RsaPrivateKey",
+            Self::SlackBotToken => "SlackBotToken",
+            Self::SlackOAuthToken => "SlackOAuthToken",
+            Self::SlackUserToken => "SlackUserToken",
+            Self::SsnPattern => "SsnPattern",
         }
     }
 }
@@ -134,8 +134,8 @@ impl CredentialKind {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct CredentialFinding {
-    pub kind:    CredentialKind,
-    pub offset:  usize,
+    pub kind: CredentialKind,
+    pub offset: usize,
     pub matched: String,
     #[cfg_attr(feature = "serde", serde(skip))]
     end: usize,
@@ -144,7 +144,12 @@ pub struct CredentialFinding {
 impl CredentialFinding {
     fn new(kind: CredentialKind, offset: usize, end: usize) -> Self {
         let label = format!("[REDACTED:{}]", kind.as_str());
-        Self { kind, offset, matched: label, end }
+        Self {
+            kind,
+            offset,
+            matched: label,
+            end,
+        }
     }
 }
 
@@ -168,7 +173,7 @@ impl ScanResult {
     /// original match boundary and is used here without being exposed in the public API.
     pub fn redact(&self, text: &str) -> String {
         let mut sorted: Vec<&CredentialFinding> = self.findings.iter().collect();
-        sorted.sort_by(|a, b| b.offset.cmp(&a.offset));
+        sorted.sort_by_key(|b| std::cmp::Reverse(b.offset));
         let mut result = text.to_string();
         for finding in sorted {
             if finding.end <= result.len() && finding.offset <= finding.end {
@@ -251,9 +256,7 @@ impl CredentialScanner {
 /// `from`. Token terminators are whitespace and common delimiters.
 fn token_end(text: &str, from: usize) -> usize {
     text[from..]
-        .find(|c: char| {
-            c.is_whitespace() || matches!(c, '"' | '\'' | ',' | ';' | ')' | ']' | '}')
-        })
+        .find(|c: char| c.is_whitespace() || matches!(c, '"' | '\'' | ',' | ';' | ')' | ']' | '}'))
         .map(|i| from + i)
         .unwrap_or(text.len())
 }
@@ -283,7 +286,11 @@ fn luhn_valid(digits: &str) -> bool {
         };
         let val = if double {
             let v = d * 2;
-            if v > 9 { v - 9 } else { v }
+            if v > 9 {
+                v - 9
+            } else {
+                v
+            }
         } else {
             d
         };
@@ -360,7 +367,7 @@ fn scan_high_entropy(text: &str, findings: &mut Vec<CredentialFinding>) {
         let token_offset = text[offset..].find(token).map(|i| offset + i).unwrap_or(offset);
         let token_end_pos = token_offset + token.len();
         let len = token.len();
-        if len >= 20 && len <= 64 && shannon_entropy(token) > 4.5 {
+        if (20..=64).contains(&len) && shannon_entropy(token) > 4.5 {
             findings.push(CredentialFinding::new(
                 CredentialKind::GenericHighEntropy,
                 token_offset,
@@ -450,7 +457,10 @@ mod tests {
     fn detects_gcp_service_account() {
         let scanner = CredentialScanner::new();
         let result = scanner.scan(r#"{"type": "service_account", "project_id": "my-project"}"#);
-        assert!(result.findings.iter().any(|f| f.kind == CredentialKind::GcpServiceAccount));
+        assert!(result
+            .findings
+            .iter()
+            .any(|f| f.kind == CredentialKind::GcpServiceAccount));
     }
 
     // --- Auth token patterns ---
@@ -487,7 +497,10 @@ mod tests {
     fn detects_slack_oauth_token() {
         let scanner = CredentialScanner::new();
         let result = scanner.scan("oauth=xoxa-123456789012-123456789012-XXXXXXXXXXXX");
-        assert!(result.findings.iter().any(|f| f.kind == CredentialKind::SlackOAuthToken));
+        assert!(result
+            .findings
+            .iter()
+            .any(|f| f.kind == CredentialKind::SlackOAuthToken));
     }
 
     // --- Cloud credential patterns ---
@@ -495,9 +508,11 @@ mod tests {
     #[test]
     fn detects_azure_connection_string() {
         let scanner = CredentialScanner::new();
-        let result =
-            scanner.scan("DefaultEndpointsProtocol=https;AccountName=myaccount;AccountKey=XXXX");
-        assert!(result.findings.iter().any(|f| f.kind == CredentialKind::AzureConnectionString));
+        let result = scanner.scan("DefaultEndpointsProtocol=https;AccountName=myaccount;AccountKey=XXXX");
+        assert!(result
+            .findings
+            .iter()
+            .any(|f| f.kind == CredentialKind::AzureConnectionString));
     }
 
     // --- Database URL patterns ---
@@ -528,42 +543,41 @@ mod tests {
     #[test]
     fn detects_rsa_private_key() {
         let scanner = CredentialScanner::new();
-        let result = scanner
-            .scan("-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAKCAQEA...\n-----END RSA PRIVATE KEY-----");
+        let result =
+            scanner.scan("-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAKCAQEA...\n-----END RSA PRIVATE KEY-----");
         assert!(result.findings.iter().any(|f| f.kind == CredentialKind::RsaPrivateKey));
     }
 
     #[test]
     fn detects_ec_private_key() {
         let scanner = CredentialScanner::new();
-        let result = scanner
-            .scan("-----BEGIN EC PRIVATE KEY-----\nMHQCAQEEI...\n-----END EC PRIVATE KEY-----");
+        let result = scanner.scan("-----BEGIN EC PRIVATE KEY-----\nMHQCAQEEI...\n-----END EC PRIVATE KEY-----");
         assert!(result.findings.iter().any(|f| f.kind == CredentialKind::EcPrivateKey));
     }
 
     #[test]
     fn detects_openssh_private_key() {
         let scanner = CredentialScanner::new();
-        let result = scanner.scan(
-            "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXkAAAA=\n-----END OPENSSH PRIVATE KEY-----",
-        );
-        assert!(result.findings.iter().any(|f| f.kind == CredentialKind::OpensshPrivateKey));
+        let result = scanner
+            .scan("-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXkAAAA=\n-----END OPENSSH PRIVATE KEY-----");
+        assert!(result
+            .findings
+            .iter()
+            .any(|f| f.kind == CredentialKind::OpensshPrivateKey));
     }
 
     #[test]
     fn detects_generic_private_key() {
         let scanner = CredentialScanner::new();
-        let result = scanner
-            .scan("-----BEGIN PRIVATE KEY-----\nMIIEvAIBADANBgk=\n-----END PRIVATE KEY-----");
+        let result = scanner.scan("-----BEGIN PRIVATE KEY-----\nMIIEvAIBADANBgk=\n-----END PRIVATE KEY-----");
         assert!(result.findings.iter().any(|f| f.kind == CredentialKind::PrivateKey));
     }
 
     #[test]
     fn detects_pgp_private_key() {
         let scanner = CredentialScanner::new();
-        let result = scanner.scan(
-            "-----BEGIN PGP PRIVATE KEY BLOCK-----\nlQOYBF...\n-----END PGP PRIVATE KEY BLOCK-----",
-        );
+        let result =
+            scanner.scan("-----BEGIN PGP PRIVATE KEY BLOCK-----\nlQOYBF...\n-----END PGP PRIVATE KEY BLOCK-----");
         assert!(result.findings.iter().any(|f| f.kind == CredentialKind::PgpPrivateKey));
     }
 
@@ -610,14 +624,20 @@ mod tests {
     fn detects_high_entropy_token() {
         let scanner = CredentialScanner::new();
         let result = scanner.scan("secret: xK9mP2nQvR7sT4wY1aB6dF3hJ8lN0eC5");
-        assert!(result.findings.iter().any(|f| f.kind == CredentialKind::GenericHighEntropy));
+        assert!(result
+            .findings
+            .iter()
+            .any(|f| f.kind == CredentialKind::GenericHighEntropy));
     }
 
     #[test]
     fn does_not_flag_short_token_as_high_entropy() {
         let scanner = CredentialScanner::new();
         let result = scanner.scan("word: hello");
-        assert!(!result.findings.iter().any(|f| f.kind == CredentialKind::GenericHighEntropy));
+        assert!(!result
+            .findings
+            .iter()
+            .any(|f| f.kind == CredentialKind::GenericHighEntropy));
     }
 
     // --- luhn_valid helper ---
@@ -748,12 +768,7 @@ mod tests {
                 .iter()
                 .filter(|f| f.kind != CredentialKind::GenericHighEntropy)
                 .collect();
-            assert!(
-                hard.is_empty(),
-                "false positive in: {:?} → {:?}",
-                text,
-                hard
-            );
+            assert!(hard.is_empty(), "false positive in: {:?} → {:?}", text, hard);
         }
     }
 }
