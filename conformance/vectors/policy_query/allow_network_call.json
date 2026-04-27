@@ -1,0 +1,26 @@
+{
+  "description": "NETWORK_CALL action — ALLOW: host is in network allowlist",
+  "request": {
+    "agent_id": { "org_id": "acme", "team_id": "platform", "agent_id": "agent-003" },
+    "credential_token": "tok-net",
+    "trace_id": "trace-003",
+    "span_id": "span-003",
+    "action_type": "NETWORK_CALL",
+    "context": {
+      "network_call": {
+        "host": "api.anthropic.com",
+        "port": 443,
+        "protocol": "https",
+        "in_allowlist": true
+      }
+    }
+  },
+  "response": {
+    "decision": "ALLOW",
+    "reason": "Host 'api.anthropic.com' is in the network allowlist",
+    "policy_rule": "rule:network-allowlist-v1",
+    "approval_id": "",
+    "redact": null,
+    "decision_latency_us": 195
+  }
+}
