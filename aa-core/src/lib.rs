@@ -10,6 +10,7 @@
 //! - `alloc`: enables heap types (`String`, `Vec`, `BTreeMap`) in `no_std` environments
 //! - `serde`: enables `Serialize`/`Deserialize` derives on all core types (added in AAASM-22–25)
 //! - `test-utils`: exposes `PermitAllEvaluator` and `DenyAllEvaluator` for downstream test code
+//! - `std` (also default): enables `CredentialScanner` and all std-dependent types
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
@@ -23,6 +24,8 @@ pub mod agent;
 pub mod evaluators;
 pub mod identity;
 pub mod policy;
+#[cfg(feature = "std")]
+pub mod scanner;
 pub mod time;
 
 pub use identity::{AgentId, SessionId};
@@ -36,3 +39,6 @@ pub use policy::{ArgsJson, GovernanceAction, PolicyDocument, PolicyEvaluator, Po
 
 #[cfg(all(feature = "alloc", feature = "test-utils"))]
 pub use evaluators::{DenyAllEvaluator, PermitAllEvaluator};
+
+#[cfg(feature = "std")]
+pub use scanner::{CredentialFinding, CredentialKind, CredentialScanner, ScanResult};
