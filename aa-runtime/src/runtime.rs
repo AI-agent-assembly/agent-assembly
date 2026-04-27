@@ -21,8 +21,20 @@ pub async fn run(config: RuntimeConfig) {
 
     tracing::info!("structured concurrency primitives initialised");
 
+    // Build pipeline config and create the inbound channel at the configured depth.
+    let pipeline_config = crate::pipeline::PipelineConfig::from_runtime_config(&config);
+    let (inbound_tx, inbound_rx) = tokio::sync::mpsc::channel::<crate::ipc::IpcFrame>(pipeline_config.input_buffer);
+
+    // Create the broadcast channel for fan-out to downstream subscribers.
+    // The leading `_broadcast_rx` keeps the channel alive until real subscribers
+    // are wired in AAASM-32+.
+    let (broadcast_tx, _broadcast_rx) =
+        tokio::sync::broadcast::channel::<crate::pipeline::EnrichedEvent>(pipeline_config.broadcast_capacity);
+
+    // Shared metrics — future health/metrics endpoints will receive an Arc clone.
+    let pipeline_metrics = std::sync::Arc::new(crate::pipeline::PipelineMetrics::default());
+
     // Spawn the IPC server task.
-    let (inbound_tx, _inbound_rx) = tokio::sync::mpsc::channel::<crate::ipc::IpcFrame>(256);
     let ipc_config = crate::ipc::server::IpcServerConfig::from_runtime_config(&config);
     match crate::ipc::server::IpcServer::bind(ipc_config) {
         Ok(ipc_server) => {
@@ -35,7 +47,19 @@ pub async fn run(config: RuntimeConfig) {
         }
         Err(e) => {
             tracing::error!(error = %e, "failed to bind IPC socket — continuing without IPC");
+            // Without an IPC server the inbound_tx is dropped here;
+            // the pipeline will see the channel closed and exit cleanly.
         }
+    }
+
+    // Spawn the event aggregation pipeline task.
+    {
+        let pipeline_token = token.clone();
+        let pm = pipeline_metrics.clone();
+        tracker.spawn(async move {
+            crate::pipeline::run(inbound_rx, broadcast_tx, pipeline_config, pm, pipeline_token).await;
+        });
+        tracing::info!("pipeline task spawned");
     }
 
     // Wait for an OS shutdown signal.
