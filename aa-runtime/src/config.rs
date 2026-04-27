@@ -44,8 +44,7 @@ impl RuntimeConfig {
     /// | `AA_RUNTIME_SHUTDOWN_TIMEOUT_SECS` | `u64` | `30` |
     /// | `AA_IPC_MAX_CONNECTIONS` | `usize` | `64` |
     pub fn from_env() -> Result<Self, String> {
-        let agent_id = std::env::var("AA_AGENT_ID")
-            .map_err(|_| "AA_AGENT_ID is required but not set".to_string())?;
+        let agent_id = std::env::var("AA_AGENT_ID").map_err(|_| "AA_AGENT_ID is required but not set".to_string())?;
 
         if agent_id.trim().is_empty() {
             return Err("AA_AGENT_ID must not be blank or empty".to_string());

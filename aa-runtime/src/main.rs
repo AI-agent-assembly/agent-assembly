@@ -12,8 +12,7 @@ fn init_tracing() {
 fn main() {
     init_tracing();
 
-    let config = aa_runtime::config::RuntimeConfig::from_env()
-        .expect("failed to load runtime configuration");
+    let config = aa_runtime::config::RuntimeConfig::from_env().expect("failed to load runtime configuration");
 
     tracing::info!(
         agent_id = %config.agent_id,

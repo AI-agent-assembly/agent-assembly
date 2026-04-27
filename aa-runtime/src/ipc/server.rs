@@ -73,12 +73,7 @@ impl IpcServer {
     ///
     /// Each accepted connection is handed off to a pair of reader/writer tasks
     /// registered with the provided `TaskTracker`.
-    pub async fn run(
-        self,
-        tracker: TaskTracker,
-        token: CancellationToken,
-        inbound_tx: mpsc::Sender<IpcFrame>,
-    ) {
+    pub async fn run(self, tracker: TaskTracker, token: CancellationToken, inbound_tx: mpsc::Sender<IpcFrame>) {
         let semaphore = Arc::new(Semaphore::new(self.config.max_connections));
         let listener = self.listener;
         let socket_path = self.config.socket_path.clone();
