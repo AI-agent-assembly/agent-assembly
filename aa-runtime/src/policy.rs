@@ -35,7 +35,7 @@ pub enum PolicyLoadError {
     /// I/O error reading the file (other than file-not-found).
     Io(std::io::Error),
     /// The file exists but could not be parsed as valid YAML policy.
-    Parse(serde_yaml::Error),
+    Parse(serde_yml::Error),
 }
 
 impl std::fmt::Display for PolicyLoadError {
@@ -56,7 +56,7 @@ impl std::error::Error for PolicyLoadError {}
 /// - Any other I/O error returns `Err(PolicyLoadError::Io)`.
 pub fn load_policy(path: &std::path::Path) -> Result<PolicyRules, PolicyLoadError> {
     match std::fs::read_to_string(path) {
-        Ok(contents) => serde_yaml::from_str(&contents).map_err(PolicyLoadError::Parse),
+        Ok(contents) => serde_yml::from_str(&contents).map_err(PolicyLoadError::Parse),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             tracing::warn!(path = %path.display(), "policy file not found — starting without enforcement");
             Ok(PolicyRules::default())
