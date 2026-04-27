@@ -192,9 +192,6 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use aa_proto::assembly::audit::v1::AuditEvent;
-    use aa_proto::assembly::event::v1::ApprovalDecision;
-    use aa_proto::assembly::policy::v1::{CheckActionRequest, CheckActionResponse};
     use std::io::Cursor;
 
     // Helper: encode a response to bytes using a Vec writer
