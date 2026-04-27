@@ -5,6 +5,7 @@
 //! coordination, and lifecycle hooks.
 
 pub mod config;
+pub mod health;
 pub mod ipc;
 pub mod lifecycle;
 pub mod pipeline;
