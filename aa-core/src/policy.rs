@@ -1,11 +1,3 @@
-//! Policy types and the [`PolicyEvaluator`] trait for governance decisions.
-//!
-//! A [`GovernanceAction`] describes what an agent wants to do.
-//! A [`PolicyEvaluator`] decides whether that action is permitted,
-//! denied, or requires human approval, and returns a [`PolicyResult`].
-//! Policy rules are expressed as [`PolicyDocument`] objects containing
-//! ordered [`PolicyRule`] entries.
-
 /// Pre-serialized JSON string passed at policy trait boundaries.
 ///
 /// Callers serialize arguments before handing them to an evaluator;
@@ -18,13 +10,9 @@ pub type ArgsJson = alloc::string::String;
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum FileMode {
-    /// Open the file for reading only.
     Read,
-    /// Open the file for writing, truncating any existing content.
     Write,
-    /// Open the file for writing, appending to existing content.
     Append,
-    /// Delete the file from the filesystem.
     Delete,
 }
 
@@ -46,11 +34,8 @@ pub enum PolicyError {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum PolicyDecision {
-    /// The action is permitted without restriction.
     Allow,
-    /// The action is prohibited.
     Deny,
-    /// The action may proceed only after explicit human approval.
     RequireApproval,
 }
 
@@ -95,15 +80,9 @@ pub enum PolicyResult {
     /// The action is permitted.
     Allow,
     /// The action is denied; `reason` explains why.
-    Deny {
-        /// Human-readable description of why the action was denied.
-        reason: alloc::string::String,
-    },
+    Deny { reason: alloc::string::String },
     /// Human approval is required within the given timeout.
-    RequiresApproval {
-        /// Maximum seconds to wait for human approval before the request expires.
-        timeout_secs: u32,
-    },
+    RequiresApproval { timeout_secs: u32 },
 }
 
 /// An agent action subject to governance evaluation.
@@ -115,30 +94,21 @@ pub enum PolicyResult {
 pub enum GovernanceAction {
     /// Invocation of a named tool with pre-serialized JSON arguments.
     ToolCall {
-        /// Registered name of the tool being invoked.
         name: alloc::string::String,
-        /// Pre-serialized JSON arguments passed to the tool.
         args: ArgsJson,
     },
     /// Read or write access to a file path.
     FileAccess {
-        /// Absolute or relative path of the file being accessed.
         path: alloc::string::String,
-        /// Access mode (read, write, append, or delete).
         mode: FileMode,
     },
     /// Outbound network request.
     NetworkRequest {
-        /// Target URL of the outbound request.
         url: alloc::string::String,
-        /// HTTP method (e.g., `"GET"`, `"POST"`).
         method: alloc::string::String,
     },
     /// Spawning an external process.
-    ProcessExec {
-        /// Full shell command string to be executed.
-        command: alloc::string::String,
-    },
+    ProcessExec { command: alloc::string::String },
 }
 
 /// Pluggable policy evaluation backend.

@@ -1,9 +1,3 @@
-//! Test-only [`PolicyEvaluator`](crate::policy::PolicyEvaluator) implementations.
-//!
-//! [`DenyAllEvaluator`] and [`PermitAllEvaluator`] let downstream crates
-//! write unit tests without building a real policy document or parser.
-//! Gated on the `test-utils` feature.
-
 /// Test-only policy evaluator that denies every action unconditionally.
 ///
 /// Use `DenyAllEvaluator` in unit tests that need to assert denial paths

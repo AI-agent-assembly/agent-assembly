@@ -1,9 +1,3 @@
-//! Stable identity types for agents and execution sessions.
-//!
-//! [`AgentId`] identifies a long-lived agent across sessions.
-//! [`SessionId`] identifies a single execution run within that agent.
-//! Both are 16-byte opaque wrappers over UUID v4 raw bytes.
-
 /// Stable identifier for an agent — UUID v4 encoded as raw bytes.
 ///
 /// The inner `[u8; 16]` is private. Use [`AgentId::from_bytes`] to construct

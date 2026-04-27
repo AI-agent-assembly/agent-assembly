@@ -14,7 +14,6 @@
 //! - `alloc` (also default via std): enables `AuditEntry`, `AuditEventType`, and all audit types
 
 #![cfg_attr(not(feature = "std"), no_std)]
-#![warn(missing_docs)]
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "alloc")] {

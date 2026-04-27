@@ -1,8 +1,3 @@
-//! Agent execution context carrying identity, PID, and metadata.
-//!
-//! The primary type is [`AgentContext`], which flows through every governance
-//! event in the system. Requires the `alloc` feature.
-
 #[cfg(feature = "alloc")]
 use alloc::{collections::BTreeMap, string::String};
 
