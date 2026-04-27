@@ -63,3 +63,63 @@ impl crate::policy::PolicyEvaluator for PermitAllEvaluator {
         Ok(())
     }
 }
+
+#[cfg(test)]
+#[cfg(all(feature = "alloc", feature = "test-utils"))]
+mod tests {
+    use super::*;
+    use crate::{
+        identity::{AgentId, SessionId},
+        policy::{GovernanceAction, PolicyEvaluator, PolicyResult},
+        AgentContext,
+    };
+
+    fn make_ctx() -> AgentContext {
+        AgentContext {
+            agent_id: AgentId::from_bytes([0u8; 16]),
+            session_id: SessionId::from_bytes([1u8; 16]),
+            pid: 42,
+            started_at: crate::time::Timestamp::from_nanos(0),
+            metadata: alloc::collections::BTreeMap::new(),
+        }
+    }
+
+    fn make_action() -> GovernanceAction {
+        GovernanceAction::ToolCall {
+            name: alloc::string::String::from("list_files"),
+            args: alloc::string::String::from("{}"),
+        }
+    }
+
+    #[test]
+    fn permit_all_returns_allow_for_every_action() {
+        let ctx = make_ctx();
+        let evaluator = PermitAllEvaluator;
+        assert_eq!(evaluator.evaluate(&ctx, &make_action()), PolicyResult::Allow);
+        assert_eq!(
+            evaluator.evaluate(
+                &ctx,
+                &GovernanceAction::FileAccess {
+                    path: alloc::string::String::from("/tmp"),
+                    mode: crate::policy::FileMode::Read,
+                }
+            ),
+            PolicyResult::Allow
+        );
+    }
+
+    #[test]
+    fn deny_all_returns_deny_for_every_action() {
+        let ctx = make_ctx();
+        let evaluator = DenyAllEvaluator;
+        let result = evaluator.evaluate(&ctx, &make_action());
+        assert!(matches!(result, PolicyResult::Deny { .. }));
+    }
+
+    #[test]
+    fn evaluators_are_object_safe() {
+        // Compile-time check: both types can be used as trait objects.
+        let _: &dyn PolicyEvaluator = &PermitAllEvaluator;
+        let _: &dyn PolicyEvaluator = &DenyAllEvaluator;
+    }
+}
