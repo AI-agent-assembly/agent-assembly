@@ -15,6 +15,20 @@ pub enum FileMode {
     Delete,
 }
 
+/// Errors produced during policy loading or evaluation.
+///
+/// All variants are heap-free so `PolicyError` can be used in bare `no_std`
+/// contexts that have no `alloc`.
+#[derive(Debug, Clone, PartialEq)]
+pub enum PolicyError {
+    /// The supplied `PolicyDocument` is structurally invalid.
+    InvalidDocument,
+    /// The `GovernanceAction` variant is not recognized by this evaluator.
+    UnknownAction,
+    /// The evaluator encountered an internal error during evaluation.
+    EvaluationFailed,
+}
+
 /// An agent action subject to governance evaluation.
 ///
 /// Gated on `alloc` because all variants carry `String` fields.
