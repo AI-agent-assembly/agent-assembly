@@ -277,6 +277,189 @@ impl core::fmt::Display for AuditEntry {
 }
 
 // ---------------------------------------------------------------------------
+// AuditLogError
+// ---------------------------------------------------------------------------
+
+/// Error returned by [`AuditLog::push`] when an appended entry violates
+/// the log's monotonicity or hash-chain invariants.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AuditLogError {
+    /// The entry's `seq` did not equal the log's expected next sequence number.
+    SequenceGap {
+        /// The sequence number the log expected.
+        expected: u64,
+        /// The sequence number the entry carried.
+        got: u64,
+    },
+    /// The entry's `previous_hash` did not match the `entry_hash` of the
+    /// last entry in the log (or the genesis zero-hash for the first entry).
+    HashChainBroken {
+        /// The `seq` of the entry that broke the chain.
+        at_seq: u64,
+    },
+}
+
+impl core::fmt::Display for AuditLogError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::SequenceGap { expected, got } => {
+                write!(f, "audit log sequence gap: expected seq={expected}, got seq={got}")
+            }
+            Self::HashChainBroken { at_seq } => {
+                write!(f, "audit log hash chain broken at seq={at_seq}")
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// AuditLog
+// ---------------------------------------------------------------------------
+
+/// A session-scoped, append-only sequence of [`AuditEntry`] records that
+/// enforces monotonic sequence numbers and hash-chain continuity on every append.
+///
+/// ## Invariants
+///
+/// - Every entry's `seq` equals the previous entry's `seq + 1` (genesis: `seq = 0`).
+/// - Every entry's `previous_hash` equals the preceding entry's `entry_hash`
+///   (genesis entry uses `[0u8; 32]`).
+///
+/// Both invariants are checked by [`AuditLog::push`] at append time.
+/// [`AuditLog::verify_chain`] re-validates them across the entire stored log.
+pub struct AuditLog {
+    agent_id: AgentId,
+    session_id: SessionId,
+    entries: alloc::vec::Vec<AuditEntry>,
+    /// The `seq` value the next appended entry must carry.
+    next_seq: u64,
+    /// The `entry_hash` of the last appended entry; `[0u8; 32]` before any entry.
+    last_hash: [u8; 32],
+}
+
+impl AuditLog {
+    /// Create a new, empty [`AuditLog`] for the given agent and session.
+    ///
+    /// The log starts with `next_seq = 0` and `last_hash = [0u8; 32]` (the
+    /// genesis previous-hash sentinel).
+    pub fn new(agent_id: AgentId, session_id: SessionId) -> Self {
+        Self {
+            agent_id,
+            session_id,
+            entries: alloc::vec::Vec::new(),
+            next_seq: 0,
+            last_hash: [0u8; 32],
+        }
+    }
+
+    /// Read-only view of all entries in append order.
+    pub fn entries(&self) -> &[AuditEntry] {
+        &self.entries
+    }
+
+    /// Number of entries currently stored in the log.
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    /// Returns `true` if the log contains no entries.
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+
+    /// The agent identifier associated with this log.
+    pub fn agent_id(&self) -> AgentId {
+        self.agent_id
+    }
+
+    /// The session identifier associated with this log.
+    pub fn session_id(&self) -> SessionId {
+        self.session_id
+    }
+
+    /// Append a pre-built [`AuditEntry`] to the log, validating both invariants.
+    ///
+    /// ## Errors
+    ///
+    /// - [`AuditLogError::SequenceGap`] if `entry.seq() != self.next_seq`.
+    /// - [`AuditLogError::HashChainBroken`] if `entry.previous_hash() != &self.last_hash`.
+    ///
+    /// On error the log is not modified.
+    pub fn push(&mut self, entry: AuditEntry) -> Result<(), AuditLogError> {
+        if entry.seq() != self.next_seq {
+            return Err(AuditLogError::SequenceGap {
+                expected: self.next_seq,
+                got: entry.seq(),
+            });
+        }
+        if entry.previous_hash() != &self.last_hash {
+            return Err(AuditLogError::HashChainBroken { at_seq: entry.seq() });
+        }
+        self.last_hash = *entry.entry_hash();
+        self.next_seq += 1;
+        self.entries.push(entry);
+        Ok(())
+    }
+
+    /// Build and append the next [`AuditEntry`] in one atomic step.
+    ///
+    /// `seq` and `previous_hash` are derived automatically from the log's
+    /// current state, eliminating the risk of caller-side sequencing errors.
+    ///
+    /// ## Parameters
+    ///
+    /// - `event_type` — category of the governance event.
+    /// - `timestamp_ns` — nanoseconds since Unix epoch (caller-supplied for
+    ///   `no_std` compatibility).
+    /// - `payload` — pre-serialized UTF-8 string (JSON in practice).
+    ///
+    /// Returns a reference to the newly appended entry.
+    pub fn next_entry(&mut self, event_type: AuditEventType, timestamp_ns: u64, payload: String) -> &AuditEntry {
+        let entry = AuditEntry::new(
+            self.next_seq,
+            timestamp_ns,
+            event_type,
+            self.agent_id,
+            self.session_id,
+            payload,
+            self.last_hash,
+        );
+        // next_entry constructs the entry with the correct seq and previous_hash,
+        // so push() cannot fail here.
+        self.push(entry).expect("next_entry invariant: push cannot fail");
+        self.entries.last().expect("entry was just pushed")
+    }
+
+    /// Re-validate the entire log in O(n), checking both invariants for every entry.
+    ///
+    /// Returns `true` if:
+    /// - Every entry passes [`AuditEntry::verify_integrity`] (SHA-256 matches stored hash).
+    /// - Every entry's `seq` is exactly one greater than the previous entry's `seq`
+    ///   (first entry must have `seq = 0`).
+    /// - Every entry's `previous_hash` matches the preceding entry's `entry_hash`
+    ///   (first entry must have `previous_hash = [0u8; 32]`).
+    ///
+    /// Returns `true` for an empty log (vacuously valid).
+    pub fn verify_chain(&self) -> bool {
+        let mut expected_prev_hash: [u8; 32] = [0u8; 32];
+
+        for (expected_seq, entry) in self.entries.iter().enumerate() {
+            if !entry.verify_integrity() {
+                return false;
+            }
+            if entry.seq() != expected_seq as u64 {
+                return false;
+            }
+            if entry.previous_hash() != &expected_prev_hash {
+                return false;
+            }
+            expected_prev_hash = *entry.entry_hash();
+        }
+        true
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -515,5 +698,291 @@ mod tests {
         let entry = make_entry(0);
         let s = alloc::format!("{}", entry);
         assert!(!s.contains("bash"));
+    }
+
+    // --- AuditLog helpers ---
+
+    fn make_log() -> AuditLog {
+        AuditLog::new(AgentId::from_bytes(AGENT_BYTES), SessionId::from_bytes(SESSION_BYTES))
+    }
+
+    fn make_valid_entry(seq: u64, previous_hash: [u8; 32]) -> AuditEntry {
+        AuditEntry::new(
+            seq,
+            1_000_000_000,
+            AuditEventType::ToolCallIntercepted,
+            AgentId::from_bytes(AGENT_BYTES),
+            SessionId::from_bytes(SESSION_BYTES),
+            alloc::string::String::from("{}"),
+            previous_hash,
+        )
+    }
+
+    // --- AuditLog::push() ---
+
+    #[test]
+    fn push_genesis_entry_succeeds() {
+        let mut log = make_log();
+        let entry = make_valid_entry(0, GENESIS_HASH);
+        assert!(log.push(entry).is_ok());
+        assert_eq!(log.len(), 1);
+    }
+
+    #[test]
+    fn push_rejects_seq_gap_skipping_forward() {
+        let mut log = make_log();
+        let entry = make_valid_entry(2, GENESIS_HASH); // expected seq=0
+        let err = log.push(entry).unwrap_err();
+        assert_eq!(err, AuditLogError::SequenceGap { expected: 0, got: 2 });
+        assert!(log.is_empty(), "log must be unmodified on error");
+    }
+
+    #[test]
+    fn push_rejects_seq_going_backward() {
+        let mut log = make_log();
+        let e0 = make_valid_entry(0, GENESIS_HASH);
+        let hash0 = *e0.entry_hash();
+        log.push(e0).unwrap();
+
+        let e_back = make_valid_entry(0, hash0); // duplicate seq=0
+        let err = log.push(e_back).unwrap_err();
+        assert_eq!(err, AuditLogError::SequenceGap { expected: 1, got: 0 });
+        assert_eq!(log.len(), 1, "log must be unmodified on error");
+    }
+
+    #[test]
+    fn push_rejects_broken_hash_chain() {
+        let mut log = make_log();
+        let e0 = make_valid_entry(0, GENESIS_HASH);
+        log.push(e0).unwrap();
+
+        let wrong_prev = [0xAB; 32]; // not equal to e0.entry_hash()
+        let e1 = make_valid_entry(1, wrong_prev);
+        let err = log.push(e1).unwrap_err();
+        assert_eq!(err, AuditLogError::HashChainBroken { at_seq: 1 });
+        assert_eq!(log.len(), 1, "log must be unmodified on error");
+    }
+
+    #[test]
+    fn push_two_valid_entries_succeeds() {
+        let mut log = make_log();
+        let e0 = make_valid_entry(0, GENESIS_HASH);
+        let hash0 = *e0.entry_hash();
+        log.push(e0).unwrap();
+
+        let e1 = make_valid_entry(1, hash0);
+        log.push(e1).unwrap();
+
+        assert_eq!(log.len(), 2);
+        assert_eq!(log.entries()[0].seq(), 0);
+        assert_eq!(log.entries()[1].seq(), 1);
+    }
+
+    #[test]
+    fn audit_log_error_display_sequence_gap() {
+        let err = AuditLogError::SequenceGap { expected: 3, got: 7 };
+        let s = alloc::format!("{}", err);
+        assert!(s.contains("expected seq=3"));
+        assert!(s.contains("got seq=7"));
+    }
+
+    #[test]
+    fn audit_log_error_display_hash_chain_broken() {
+        let err = AuditLogError::HashChainBroken { at_seq: 5 };
+        let s = alloc::format!("{}", err);
+        assert!(s.contains("at_seq=5") || s.contains("at seq=5"));
+    }
+
+    // --- AuditLog::next_entry() ---
+
+    #[test]
+    fn next_entry_genesis_has_seq_zero_and_zero_prev_hash() {
+        let mut log = make_log();
+        let e = log.next_entry(
+            AuditEventType::ToolCallIntercepted,
+            1_000,
+            alloc::string::String::from("{}"),
+        );
+        assert_eq!(e.seq(), 0);
+        assert_eq!(e.previous_hash(), &GENESIS_HASH);
+        assert!(e.verify_integrity());
+    }
+
+    #[test]
+    fn next_entry_auto_increments_seq() {
+        let mut log = make_log();
+        log.next_entry(
+            AuditEventType::ToolCallIntercepted,
+            1_000,
+            alloc::string::String::from("{}"),
+        );
+        log.next_entry(
+            AuditEventType::PolicyViolation,
+            2_000,
+            alloc::string::String::from("{}"),
+        );
+        log.next_entry(
+            AuditEventType::ApprovalGranted,
+            3_000,
+            alloc::string::String::from("{}"),
+        );
+
+        assert_eq!(log.len(), 3);
+        assert_eq!(log.entries()[0].seq(), 0);
+        assert_eq!(log.entries()[1].seq(), 1);
+        assert_eq!(log.entries()[2].seq(), 2);
+    }
+
+    #[test]
+    fn next_entry_links_previous_hash_correctly() {
+        let mut log = make_log();
+        log.next_entry(
+            AuditEventType::ToolCallIntercepted,
+            1_000,
+            alloc::string::String::from("{}"),
+        );
+        log.next_entry(
+            AuditEventType::PolicyViolation,
+            2_000,
+            alloc::string::String::from("{}"),
+        );
+
+        let e0_hash = *log.entries()[0].entry_hash();
+        assert_eq!(log.entries()[1].previous_hash(), &e0_hash);
+    }
+
+    #[test]
+    fn next_entry_mixed_with_push_works_correctly() {
+        let mut log = make_log();
+        // First entry via next_entry
+        log.next_entry(
+            AuditEventType::ToolCallIntercepted,
+            1_000,
+            alloc::string::String::from("{}"),
+        );
+        let hash0 = *log.entries()[0].entry_hash();
+
+        // Second entry via manual push with correct seq and previous_hash
+        let e1 = make_valid_entry(1, hash0);
+        log.push(e1).unwrap();
+
+        // Third entry via next_entry — should pick up seq=2 and hash1
+        log.next_entry(
+            AuditEventType::ApprovalGranted,
+            3_000,
+            alloc::string::String::from("{}"),
+        );
+
+        assert_eq!(log.len(), 3);
+        assert_eq!(log.entries()[2].seq(), 2);
+        assert_eq!(log.entries()[2].previous_hash(), log.entries()[1].entry_hash());
+    }
+
+    #[test]
+    fn next_entry_all_entries_pass_verify_integrity() {
+        let mut log = make_log();
+        for i in 0..5 {
+            log.next_entry(
+                AuditEventType::ToolCallIntercepted,
+                i * 1_000,
+                alloc::string::String::from("{}"),
+            );
+        }
+        for entry in log.entries() {
+            assert!(entry.verify_integrity());
+        }
+    }
+
+    // --- AuditLog::verify_chain() ---
+
+    #[test]
+    fn verify_chain_empty_log_returns_true() {
+        assert!(make_log().verify_chain());
+    }
+
+    #[test]
+    fn verify_chain_valid_log_returns_true() {
+        let mut log = make_log();
+        for i in 0..4 {
+            log.next_entry(
+                AuditEventType::ToolCallIntercepted,
+                i * 1_000,
+                alloc::string::String::from("{}"),
+            );
+        }
+        assert!(log.verify_chain());
+    }
+
+    #[test]
+    fn verify_chain_false_after_unsafe_seq_tamper() {
+        let mut log = make_log();
+        log.next_entry(
+            AuditEventType::ToolCallIntercepted,
+            1_000,
+            alloc::string::String::from("{}"),
+        );
+        log.next_entry(
+            AuditEventType::PolicyViolation,
+            2_000,
+            alloc::string::String::from("{}"),
+        );
+
+        // Tamper the seq of the first entry.
+        // SAFETY: deliberate tampering to test verify_chain detection.
+        unsafe {
+            let entry = &mut *(log.entries.as_mut_ptr());
+            let ptr = &mut entry.seq as *mut u64;
+            *ptr = 99;
+        }
+        assert!(!log.verify_chain());
+    }
+
+    #[test]
+    fn verify_chain_false_after_unsafe_payload_tamper() {
+        let mut log = make_log();
+        log.next_entry(
+            AuditEventType::ToolCallIntercepted,
+            1_000,
+            alloc::string::String::from("{}"),
+        );
+        log.next_entry(
+            AuditEventType::PolicyViolation,
+            2_000,
+            alloc::string::String::from("{}"),
+        );
+
+        // Tamper the payload of the second entry — breaks its verify_integrity().
+        // SAFETY: deliberate tampering to test verify_chain detection.
+        unsafe {
+            let entry = &mut *(log.entries.as_mut_ptr().add(1));
+            if let Some(b) = entry.payload.as_mut_vec().first_mut() {
+                *b = b'X';
+            }
+        }
+        assert!(!log.verify_chain());
+    }
+
+    #[test]
+    fn verify_chain_false_after_unsafe_previous_hash_tamper() {
+        let mut log = make_log();
+        log.next_entry(
+            AuditEventType::ToolCallIntercepted,
+            1_000,
+            alloc::string::String::from("{}"),
+        );
+        log.next_entry(
+            AuditEventType::PolicyViolation,
+            2_000,
+            alloc::string::String::from("{}"),
+        );
+
+        // Tamper previous_hash of the second entry — breaks chain linkage check.
+        // SAFETY: deliberate tampering to test verify_chain detection.
+        unsafe {
+            let entry = &mut *(log.entries.as_mut_ptr().add(1));
+            let ptr = &mut entry.previous_hash as *mut [u8; 32];
+            (*ptr)[0] = 0xFF;
+        }
+        assert!(!log.verify_chain());
     }
 }

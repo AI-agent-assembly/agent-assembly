@@ -44,7 +44,7 @@ pub use policy::{ArgsJson, GovernanceAction, PolicyDocument, PolicyEvaluator, Po
 pub use evaluators::{DenyAllEvaluator, PermitAllEvaluator};
 
 #[cfg(feature = "alloc")]
-pub use audit::{AuditEntry, AuditEventType};
+pub use audit::{AuditEntry, AuditEventType, AuditLog, AuditLogError};
 
 #[cfg(feature = "std")]
 pub use scanner::{CredentialFinding, CredentialKind, CredentialScanner, ScanResult};
