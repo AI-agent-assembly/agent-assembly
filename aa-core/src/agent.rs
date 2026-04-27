@@ -26,7 +26,10 @@ pub struct AgentContext {
     /// Nanoseconds since the Unix epoch when this context was created.
     pub started_at: Timestamp,
     /// Extensible key-value metadata attached to this execution context.
-    pub metadata: BTreeMap<&'static str, String>,
+    ///
+    /// Keys are owned `String` so the map is serde-compatible and accepts
+    /// both string-literal keys and computed keys at runtime.
+    pub metadata: BTreeMap<String, String>,
 }
 
 #[cfg(all(feature = "alloc", feature = "std"))]
