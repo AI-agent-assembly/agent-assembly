@@ -31,6 +31,11 @@ typedef struct aa_string {
 
 aa_status aa_connect(const char* endpoint, aa_client_handle** out_client);
 aa_status aa_send_event(aa_client_handle* client, const char* event_json);
+aa_status aa_query_policy(
+    aa_client_handle* client,
+    const char* query_json,
+    char** out_response
+);
 
 #ifdef __cplusplus
 }

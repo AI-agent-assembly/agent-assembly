@@ -1,7 +1,7 @@
 //! Go C-ABI static library bindings for Agent Assembly.
 
 use core::ffi::c_char;
-use std::ffi::CStr;
+use std::ffi::{CStr, CString};
 use std::sync::Mutex;
 
 pub type AaStatus = i32;
@@ -100,5 +100,59 @@ pub unsafe extern "C" fn aa_send_event(
     }
 
     state.events_sent = state.events_sent.saturating_add(1);
+    AA_STATUS_OK
+}
+
+/// # Safety
+///
+/// `client`, `query_json`, and `out_response` must be valid pointers.
+#[no_mangle]
+pub unsafe extern "C" fn aa_query_policy(
+    client: *mut aa_client_handle,
+    query_json: *const c_char,
+    out_response: *mut *mut c_char,
+) -> AaStatus {
+    if client.is_null() || query_json.is_null() || out_response.is_null() {
+        return AA_STATUS_NULL_POINTER;
+    }
+
+    // SAFETY: `query_json` null-check above ensures pointer validity precondition.
+    let query = match unsafe { CStr::from_ptr(query_json) }.to_str() {
+        Ok(value) => value.to_owned(),
+        Err(_) => return AA_STATUS_INVALID_UTF8,
+    };
+
+    // SAFETY: `client` null-check above ensures pointer validity precondition.
+    let client_ref = unsafe { &*client };
+    let state = match client_ref.state.lock() {
+        Ok(guard) => guard,
+        Err(_) => return AA_STATUS_MUTEX_POISONED,
+    };
+
+    if !state.connected {
+        return AA_STATUS_NOT_CONNECTED;
+    }
+
+    let response_json = serde_json::json!({
+        "allow": true,
+        "reason": "stub-policy",
+        "endpoint": state.endpoint,
+        "events_sent": state.events_sent,
+        "query": query,
+    })
+    .to_string();
+
+    let response = match CString::new(response_json) {
+        Ok(value) => value,
+        Err(_) => return AA_STATUS_INVALID_UTF8,
+    };
+
+    let raw_response = response.into_raw();
+
+    // SAFETY: `out_response` null-check above ensures pointer validity precondition.
+    unsafe {
+        *out_response = raw_response;
+    }
+
     AA_STATUS_OK
 }
