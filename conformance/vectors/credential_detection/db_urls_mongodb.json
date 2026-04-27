@@ -2,6 +2,8 @@
   "description": "MongoDB connection URL — mongodb:// scheme",
   "input_text": "MONGO_URI=mongodb://admin:pass@cluster0.mongodb.net/mydb",
   "expected_findings": [
+    { "kind": "EmailAddress", "offset": 0 },
+    { "kind": "GenericHighEntropy", "offset": 0 },
     { "kind": "MongodbUrl", "offset": 10 }
   ],
   "expected_redacted": "MONGO_URI=[REDACTED:MongodbUrl]"

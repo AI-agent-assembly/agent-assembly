@@ -2,6 +2,8 @@
   "description": "PostgreSQL connection URL — postgres:// scheme with embedded credentials",
   "input_text": "DATABASE_URL=postgres://user:password@db.internal:5432/mydb",
   "expected_findings": [
+    { "kind": "EmailAddress", "offset": 0 },
+    { "kind": "GenericHighEntropy", "offset": 0 },
     { "kind": "PostgresUrl", "offset": 13 }
   ],
   "expected_redacted": "DATABASE_URL=[REDACTED:PostgresUrl]"

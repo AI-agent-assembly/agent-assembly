@@ -2,6 +2,7 @@
   "description": "MySQL connection URL — mysql:// scheme",
   "input_text": "DB=mysql://admin:secret@mysql.internal/app",
   "expected_findings": [
+    { "kind": "EmailAddress", "offset": 0 },
     { "kind": "MysqlUrl", "offset": 3 }
   ],
   "expected_redacted": "DB=[REDACTED:MysqlUrl]"

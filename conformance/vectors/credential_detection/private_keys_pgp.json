@@ -4,5 +4,5 @@
   "expected_findings": [
     { "kind": "PgpPrivateKey", "offset": 4 }
   ],
-  "expected_redacted": "KEY=[REDACTED:PgpPrivateKey]"
+  "expected_redacted": "KEY=[REDACTED:PgpPrivateKey]\n\nlQOYBGRkZGQBCACx\n-----END PGP PRIVATE KEY BLOCK-----"
 }

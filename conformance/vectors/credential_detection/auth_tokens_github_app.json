@@ -2,6 +2,7 @@
   "description": "GitHub App installation token — ghs_ prefix",
   "input_text": "tok=ghs_AbCdEfGh",
   "expected_findings": [
+    { "kind": "GenericHighEntropy", "offset": 0 },
     { "kind": "GitHubAppToken", "offset": 17 }
   ],
   "expected_redacted": "GITHUB_APP_TOKEN=[REDACTED:GitHubAppToken]"

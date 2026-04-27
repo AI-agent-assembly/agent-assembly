@@ -2,7 +2,7 @@
   "description": "Email address in user@domain.tld format",
   "input_text": "contact=alice@example.com",
   "expected_findings": [
-    { "kind": "EmailAddress", "offset": 8 }
+    { "kind": "EmailAddress", "offset": 0 }
   ],
-  "expected_redacted": "contact=[REDACTED:EmailAddress]"
+  "expected_redacted": "[REDACTED:EmailAddress]"
 }

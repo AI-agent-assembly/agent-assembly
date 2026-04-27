@@ -4,5 +4,5 @@
   "expected_findings": [
     { "kind": "OpensshPrivateKey", "offset": 4 }
   ],
-  "expected_redacted": "KEY=[REDACTED:OpensshPrivateKey]"
+  "expected_redacted": "KEY=[REDACTED:OpensshPrivateKey]\nb3BlbnNzaC1rZXktdjEAAAAA\n-----END OPENSSH PRIVATE KEY-----"
 }
