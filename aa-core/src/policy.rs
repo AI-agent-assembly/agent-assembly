@@ -69,6 +69,21 @@ pub struct PolicyDocument {
     pub rules: alloc::vec::Vec<PolicyRule>,
 }
 
+/// The outcome of a `PolicyEvaluator::evaluate` call.
+///
+/// Gated on `alloc` because `Deny::reason` carries a `String`.
+#[cfg(feature = "alloc")]
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum PolicyResult {
+    /// The action is permitted.
+    Allow,
+    /// The action is denied; `reason` explains why.
+    Deny { reason: alloc::string::String },
+    /// Human approval is required within the given timeout.
+    RequiresApproval { timeout_secs: u32 },
+}
+
 /// An agent action subject to governance evaluation.
 ///
 /// Gated on `alloc` because all variants carry `String` fields.
