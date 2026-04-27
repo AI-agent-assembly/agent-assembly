@@ -77,6 +77,36 @@
           "exclusiveMinimum": 0
         }
       }
+    },
+    "schedule": {
+      "description": "Time-based access controls that restrict when the agent is permitted to operate.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "active_hours": {
+          "description": "The time window during which the agent is allowed to run. Requests outside this window are denied.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["start", "end", "timezone"],
+          "properties": {
+            "start": {
+              "description": "Start of the active window in HH:MM 24-hour format (e.g. '09:00').",
+              "type": "string",
+              "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+            },
+            "end": {
+              "description": "End of the active window in HH:MM 24-hour format (e.g. '18:00'). Must be after start.",
+              "type": "string",
+              "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+            },
+            "timezone": {
+              "description": "IANA timezone name for the active_hours window (e.g. 'Asia/Taipei', 'America/New_York', 'UTC').",
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
     }
   },
   "examples": []
