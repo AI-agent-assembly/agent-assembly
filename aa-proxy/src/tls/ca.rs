@@ -97,7 +97,7 @@ impl CaStore {
                 f.write_all(&key_pem_bytes)
             })
             .await
-            .map_err(|e| ProxyError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))??;
+            .map_err(|e| ProxyError::Io(std::io::Error::other(e)))??;
         }
         #[cfg(not(unix))]
         {
