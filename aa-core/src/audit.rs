@@ -802,4 +802,72 @@ mod tests {
         let s = alloc::format!("{}", err);
         assert!(s.contains("at_seq=5") || s.contains("at seq=5"));
     }
+
+    // --- AuditLog::next_entry() ---
+
+    #[test]
+    fn next_entry_genesis_has_seq_zero_and_zero_prev_hash() {
+        let mut log = make_log();
+        let e = log.next_entry(AuditEventType::ToolCallIntercepted, 1_000, alloc::string::String::from("{}"));
+        assert_eq!(e.seq(), 0);
+        assert_eq!(e.previous_hash(), &GENESIS_HASH);
+        assert!(e.verify_integrity());
+    }
+
+    #[test]
+    fn next_entry_auto_increments_seq() {
+        let mut log = make_log();
+        log.next_entry(AuditEventType::ToolCallIntercepted, 1_000, alloc::string::String::from("{}"));
+        log.next_entry(AuditEventType::PolicyViolation,     2_000, alloc::string::String::from("{}"));
+        log.next_entry(AuditEventType::ApprovalGranted,     3_000, alloc::string::String::from("{}"));
+
+        assert_eq!(log.len(), 3);
+        assert_eq!(log.entries()[0].seq(), 0);
+        assert_eq!(log.entries()[1].seq(), 1);
+        assert_eq!(log.entries()[2].seq(), 2);
+    }
+
+    #[test]
+    fn next_entry_links_previous_hash_correctly() {
+        let mut log = make_log();
+        log.next_entry(AuditEventType::ToolCallIntercepted, 1_000, alloc::string::String::from("{}"));
+        log.next_entry(AuditEventType::PolicyViolation,     2_000, alloc::string::String::from("{}"));
+
+        let e0_hash = *log.entries()[0].entry_hash();
+        assert_eq!(log.entries()[1].previous_hash(), &e0_hash);
+    }
+
+    #[test]
+    fn next_entry_mixed_with_push_works_correctly() {
+        let mut log = make_log();
+        // First entry via next_entry
+        log.next_entry(AuditEventType::ToolCallIntercepted, 1_000, alloc::string::String::from("{}"));
+        let hash0 = *log.entries()[0].entry_hash();
+
+        // Second entry via manual push with correct seq and previous_hash
+        let e1 = make_valid_entry(1, hash0);
+        log.push(e1).unwrap();
+
+        // Third entry via next_entry — should pick up seq=2 and hash1
+        log.next_entry(AuditEventType::ApprovalGranted, 3_000, alloc::string::String::from("{}"));
+
+        assert_eq!(log.len(), 3);
+        assert_eq!(log.entries()[2].seq(), 2);
+        assert_eq!(log.entries()[2].previous_hash(), log.entries()[1].entry_hash());
+    }
+
+    #[test]
+    fn next_entry_all_entries_pass_verify_integrity() {
+        let mut log = make_log();
+        for i in 0..5 {
+            log.next_entry(
+                AuditEventType::ToolCallIntercepted,
+                i * 1_000,
+                alloc::string::String::from("{}"),
+            );
+        }
+        for entry in log.entries() {
+            assert!(entry.verify_integrity());
+        }
+    }
 }
