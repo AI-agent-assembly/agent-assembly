@@ -1,0 +1,8 @@
+{
+  "description": "US Social Security Number in XXX-XX-XXXX format",
+  "input_text": "ssn=123-45-6789",
+  "expected_findings": [
+    { "kind": "SsnPattern", "offset": 4 }
+  ],
+  "expected_redacted": "ssn=[REDACTED:SsnPattern]"
+}
