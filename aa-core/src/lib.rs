@@ -20,5 +20,9 @@ cfg_if::cfg_if! {
 
 pub mod time;
 pub mod identity;
+pub mod agent;
 
 pub use identity::{AgentId, SessionId};
+
+#[cfg(feature = "alloc")]
+pub use agent::AgentContext;
