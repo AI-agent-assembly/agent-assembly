@@ -28,10 +28,19 @@ pub use error::ProxyError;
 
 /// Start the proxy with the given configuration.
 ///
-/// Loads or creates the CA from `config.ca_dir`, constructs a [`proxy::ProxyServer`],
+/// Loads or creates the CA from `config.ca_dir`, installs it into the macOS
+/// System Keychain if not already trusted, constructs a [`proxy::ProxyServer`],
 /// and enters the TCP accept loop. Returns only on unrecoverable error.
 pub async fn run(config: ProxyConfig) -> anyhow::Result<()> {
     let ca = tls::CaStore::load_or_create(&config.ca_dir).await?;
+
+    #[cfg(target_os = "macos")]
+    if !ca.is_installed()? {
+        tracing::info!("CA not yet trusted — installing into macOS System Keychain");
+        ca.install()?;
+        tracing::info!("CA installed successfully");
+    }
+
     let server = proxy::ProxyServer::new(config, ca);
     server.run().await?;
     Ok(())

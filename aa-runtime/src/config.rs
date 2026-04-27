@@ -49,10 +49,17 @@ impl RuntimeConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    // Env vars are process-global; this mutex serializes all tests that
+    // read or write them so they cannot race under multi-threaded test runners
+    // (e.g. `cargo llvm-cov` which uses `cargo test` with parallel threads).
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn defaults_when_env_vars_absent() {
-        // Ensure neither var is set for this test.
+        let _guard = ENV_LOCK.lock().unwrap();
+
         std::env::remove_var("AA_RUNTIME_WORKER_THREADS");
         std::env::remove_var("AA_RUNTIME_SHUTDOWN_TIMEOUT_SECS");
 
@@ -64,6 +71,8 @@ mod tests {
 
     #[test]
     fn reads_worker_threads_from_env() {
+        let _guard = ENV_LOCK.lock().unwrap();
+
         std::env::set_var("AA_RUNTIME_WORKER_THREADS", "4");
         std::env::remove_var("AA_RUNTIME_SHUTDOWN_TIMEOUT_SECS");
 
@@ -77,6 +86,8 @@ mod tests {
 
     #[test]
     fn reads_shutdown_timeout_from_env() {
+        let _guard = ENV_LOCK.lock().unwrap();
+
         std::env::remove_var("AA_RUNTIME_WORKER_THREADS");
         std::env::set_var("AA_RUNTIME_SHUTDOWN_TIMEOUT_SECS", "60");
 
@@ -90,6 +101,8 @@ mod tests {
 
     #[test]
     fn falls_back_to_default_on_invalid_value() {
+        let _guard = ENV_LOCK.lock().unwrap();
+
         std::env::set_var("AA_RUNTIME_WORKER_THREADS", "not-a-number");
         std::env::set_var("AA_RUNTIME_SHUTDOWN_TIMEOUT_SECS", "abc");
 
