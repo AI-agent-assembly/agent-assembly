@@ -1,0 +1,8 @@
+{
+  "description": "High-entropy token (Shannon > 4.5 bits/char, length 20–64) is flagged as GenericHighEntropy",
+  "input_text": "token=aB3dEfGhIjKlMnOpQrStUvWxYz0123456789AB",
+  "expected_findings": [
+    { "kind": "GenericHighEntropy", "offset": 6 }
+  ],
+  "expected_redacted": "token=[REDACTED:GenericHighEntropy]"
+}
