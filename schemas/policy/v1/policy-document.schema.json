@@ -6,6 +6,24 @@
   "type": "object",
   "additionalProperties": false,
   "required": [],
-  "properties": {},
+  "properties": {
+    "network": {
+      "description": "Network access controls for the agent.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "allowlist": {
+          "description": "List of domain glob patterns the agent is permitted to reach (e.g. '*.openai.com', 'api.github.com'). Requests to domains not matching any pattern are denied.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "description": "A domain glob pattern (e.g. '*.example.com')."
+          },
+          "default": []
+        }
+      }
+    }
+  },
   "examples": []
 }
