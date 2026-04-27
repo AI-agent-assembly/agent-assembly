@@ -70,3 +70,35 @@ pub unsafe extern "C" fn aa_connect(
 
     AA_STATUS_OK
 }
+
+/// # Safety
+///
+/// `client` and `event_json` must be valid pointers for reads.
+#[no_mangle]
+pub unsafe extern "C" fn aa_send_event(
+    client: *mut aa_client_handle,
+    event_json: *const c_char,
+) -> AaStatus {
+    if client.is_null() || event_json.is_null() {
+        return AA_STATUS_NULL_POINTER;
+    }
+
+    // SAFETY: `event_json` null-check above ensures pointer validity precondition.
+    if unsafe { CStr::from_ptr(event_json) }.to_str().is_err() {
+        return AA_STATUS_INVALID_UTF8;
+    }
+
+    // SAFETY: `client` null-check above ensures pointer validity precondition.
+    let client_ref = unsafe { &*client };
+    let mut state = match client_ref.state.lock() {
+        Ok(guard) => guard,
+        Err(_) => return AA_STATUS_MUTEX_POISONED,
+    };
+
+    if !state.connected {
+        return AA_STATUS_NOT_CONNECTED;
+    }
+
+    state.events_sent = state.events_sent.saturating_add(1);
+    AA_STATUS_OK
+}
