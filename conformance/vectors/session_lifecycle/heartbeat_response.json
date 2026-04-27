@@ -1,8 +1,8 @@
 {
-  "description": "HeartbeatResponse — policy unchanged, agent may continue normal operation",
+  "description": "HeartbeatResponse — policy updated, gateway requests agent to suspend",
   "message_type": "HeartbeatResponse",
   "fields": {
-    "policy_updated": false,
-    "should_suspend": false
+    "policy_updated": true,
+    "should_suspend": true
   }
 }
