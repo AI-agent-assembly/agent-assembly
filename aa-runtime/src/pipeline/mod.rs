@@ -77,8 +77,10 @@ pub async fn run(
                 if let IpcFrame::EventReport(event) = frame {
                     let enriched = enrich(event, &config.agent_id);
                     metrics.record_processed(1);
+                    ::metrics::counter!("aa_events_received_total").increment(1);
                     if is_policy_violation(&enriched) {
                         // Bypass the batch — emit immediately.
+                        ::metrics::counter!("aa_policy_violations_total").increment(1);
                         let _ = broadcast_tx.send(enriched);
                     } else {
                         batch.push(enriched);
@@ -132,6 +134,7 @@ fn flush(batch: &mut Vec<EnrichedEvent>, broadcast_tx: &broadcast::Sender<Enrich
     for event in batch.drain(..) {
         let _ = broadcast_tx.send(event);
     }
+    ::metrics::counter!("aa_events_emitted_total").increment(n);
     metrics.record_batch_size(n);
 }
 
