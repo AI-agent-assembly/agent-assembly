@@ -404,3 +404,219 @@ fn scan_emails(text: &str, findings: &mut Vec<CredentialFinding>) {
         base = next;
     }
 }
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // --- CredentialKind::as_str ---
+
+    #[test]
+    fn credential_kind_as_str_round_trips() {
+        assert_eq!(CredentialKind::AnthropicKey.as_str(), "AnthropicKey");
+        assert_eq!(CredentialKind::AwsAccessKey.as_str(), "AwsAccessKey");
+        assert_eq!(CredentialKind::GenericHighEntropy.as_str(), "GenericHighEntropy");
+    }
+
+    // --- API key patterns ---
+
+    #[test]
+    fn detects_anthropic_key() {
+        let scanner = CredentialScanner::new();
+        let result = scanner.scan("auth: sk-ant-api03-XXXXXXXXXXXXXXXXXXXX");
+        assert!(result.findings.iter().any(|f| f.kind == CredentialKind::AnthropicKey));
+    }
+
+    #[test]
+    fn detects_openai_key_not_misclassified_as_anthropic() {
+        let scanner = CredentialScanner::new();
+        let result = scanner.scan("key: sk-proj-XXXXXXXXXXXXXXXXXXXX");
+        assert!(result.findings.iter().any(|f| f.kind == CredentialKind::OpenAiKey));
+        assert!(!result.findings.iter().any(|f| f.kind == CredentialKind::AnthropicKey));
+    }
+
+    #[test]
+    fn detects_aws_access_key() {
+        let scanner = CredentialScanner::new();
+        let result = scanner.scan("AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE");
+        assert!(result.findings.iter().any(|f| f.kind == CredentialKind::AwsAccessKey));
+    }
+
+    #[test]
+    fn detects_gcp_service_account() {
+        let scanner = CredentialScanner::new();
+        let result = scanner.scan(r#"{"type": "service_account", "project_id": "my-project"}"#);
+        assert!(result.findings.iter().any(|f| f.kind == CredentialKind::GcpServiceAccount));
+    }
+
+    // --- Auth token patterns ---
+
+    #[test]
+    fn detects_github_pat() {
+        let scanner = CredentialScanner::new();
+        let result = scanner.scan("token: ghp_1234567890abcdefghijklmnopqrstuvwxyz");
+        assert!(result.findings.iter().any(|f| f.kind == CredentialKind::GitHubPat));
+    }
+
+    #[test]
+    fn detects_github_app_token() {
+        let scanner = CredentialScanner::new();
+        let result = scanner.scan("token: ghs_1234567890abcdefghijklmnopqrstuvwxyz");
+        assert!(result.findings.iter().any(|f| f.kind == CredentialKind::GitHubAppToken));
+    }
+
+    #[test]
+    fn detects_slack_bot_token() {
+        let scanner = CredentialScanner::new();
+        let result = scanner.scan("SLACK_BOT_TOKEN=xoxb-123456789012-123456789012-XXXXXXXXXXXX");
+        assert!(result.findings.iter().any(|f| f.kind == CredentialKind::SlackBotToken));
+    }
+
+    #[test]
+    fn detects_slack_user_token() {
+        let scanner = CredentialScanner::new();
+        let result = scanner.scan("token=xoxp-123456789012-123456789012-XXXXXXXXXXXX");
+        assert!(result.findings.iter().any(|f| f.kind == CredentialKind::SlackUserToken));
+    }
+
+    #[test]
+    fn detects_slack_oauth_token() {
+        let scanner = CredentialScanner::new();
+        let result = scanner.scan("oauth=xoxa-123456789012-123456789012-XXXXXXXXXXXX");
+        assert!(result.findings.iter().any(|f| f.kind == CredentialKind::SlackOAuthToken));
+    }
+
+    // --- Cloud credential patterns ---
+
+    #[test]
+    fn detects_azure_connection_string() {
+        let scanner = CredentialScanner::new();
+        let result =
+            scanner.scan("DefaultEndpointsProtocol=https;AccountName=myaccount;AccountKey=XXXX");
+        assert!(result.findings.iter().any(|f| f.kind == CredentialKind::AzureConnectionString));
+    }
+
+    // --- Database URL patterns ---
+
+    #[test]
+    fn detects_postgres_url() {
+        let scanner = CredentialScanner::new();
+        let result = scanner.scan("DATABASE_URL=postgres://user:password@host:5432/db");
+        assert!(result.findings.iter().any(|f| f.kind == CredentialKind::PostgresUrl));
+    }
+
+    #[test]
+    fn detects_mysql_url() {
+        let scanner = CredentialScanner::new();
+        let result = scanner.scan("db=mysql://user:secret@localhost/mydb");
+        assert!(result.findings.iter().any(|f| f.kind == CredentialKind::MysqlUrl));
+    }
+
+    #[test]
+    fn detects_mongodb_url() {
+        let scanner = CredentialScanner::new();
+        let result = scanner.scan("uri=mongodb://admin:pass@cluster0.mongodb.net/mydb");
+        assert!(result.findings.iter().any(|f| f.kind == CredentialKind::MongodbUrl));
+    }
+
+    // --- Private key patterns ---
+
+    #[test]
+    fn detects_rsa_private_key() {
+        let scanner = CredentialScanner::new();
+        let result = scanner
+            .scan("-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAKCAQEA...\n-----END RSA PRIVATE KEY-----");
+        assert!(result.findings.iter().any(|f| f.kind == CredentialKind::RsaPrivateKey));
+    }
+
+    #[test]
+    fn detects_ec_private_key() {
+        let scanner = CredentialScanner::new();
+        let result = scanner
+            .scan("-----BEGIN EC PRIVATE KEY-----\nMHQCAQEEI...\n-----END EC PRIVATE KEY-----");
+        assert!(result.findings.iter().any(|f| f.kind == CredentialKind::EcPrivateKey));
+    }
+
+    #[test]
+    fn detects_openssh_private_key() {
+        let scanner = CredentialScanner::new();
+        let result = scanner.scan(
+            "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXkAAAA=\n-----END OPENSSH PRIVATE KEY-----",
+        );
+        assert!(result.findings.iter().any(|f| f.kind == CredentialKind::OpensshPrivateKey));
+    }
+
+    #[test]
+    fn detects_generic_private_key() {
+        let scanner = CredentialScanner::new();
+        let result = scanner
+            .scan("-----BEGIN PRIVATE KEY-----\nMIIEvAIBADANBgk=\n-----END PRIVATE KEY-----");
+        assert!(result.findings.iter().any(|f| f.kind == CredentialKind::PrivateKey));
+    }
+
+    #[test]
+    fn detects_pgp_private_key() {
+        let scanner = CredentialScanner::new();
+        let result = scanner.scan(
+            "-----BEGIN PGP PRIVATE KEY BLOCK-----\nlQOYBF...\n-----END PGP PRIVATE KEY BLOCK-----",
+        );
+        assert!(result.findings.iter().any(|f| f.kind == CredentialKind::PgpPrivateKey));
+    }
+
+    // --- PII patterns ---
+
+    #[test]
+    fn detects_credit_card_luhn() {
+        let scanner = CredentialScanner::new();
+        let result = scanner.scan("card: 4532015112830366");
+        assert!(result.findings.iter().any(|f| f.kind == CredentialKind::CreditCardLuhn));
+    }
+
+    #[test]
+    fn detects_credit_card_with_spaces() {
+        let scanner = CredentialScanner::new();
+        let result = scanner.scan("card: 4532 0151 1283 0366");
+        assert!(result.findings.iter().any(|f| f.kind == CredentialKind::CreditCardLuhn));
+    }
+
+    #[test]
+    fn does_not_flag_invalid_luhn() {
+        let scanner = CredentialScanner::new();
+        let result = scanner.scan("num: 4532015112830367");
+        assert!(!result.findings.iter().any(|f| f.kind == CredentialKind::CreditCardLuhn));
+    }
+
+    #[test]
+    fn detects_ssn() {
+        let scanner = CredentialScanner::new();
+        let result = scanner.scan("SSN: 123-45-6789");
+        assert!(result.findings.iter().any(|f| f.kind == CredentialKind::SsnPattern));
+    }
+
+    #[test]
+    fn detects_email_address() {
+        let scanner = CredentialScanner::new();
+        let result = scanner.scan("contact: user@example.com for support");
+        assert!(result.findings.iter().any(|f| f.kind == CredentialKind::EmailAddress));
+    }
+
+    // --- High-entropy ---
+
+    #[test]
+    fn detects_high_entropy_token() {
+        let scanner = CredentialScanner::new();
+        let result = scanner.scan("secret: xK9mP2nQvR7sT4wY1aB6dF3hJ8lN0eC5");
+        assert!(result.findings.iter().any(|f| f.kind == CredentialKind::GenericHighEntropy));
+    }
+
+    #[test]
+    fn does_not_flag_short_token_as_high_entropy() {
+        let scanner = CredentialScanner::new();
+        let result = scanner.scan("word: hello");
+        assert!(!result.findings.iter().any(|f| f.kind == CredentialKind::GenericHighEntropy));
+    }
+}
