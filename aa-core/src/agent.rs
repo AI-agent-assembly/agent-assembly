@@ -1,6 +1,7 @@
 #[cfg(feature = "alloc")]
 use alloc::{collections::BTreeMap, string::String};
 
+#[cfg(feature = "alloc")]
 use crate::{
     identity::{AgentId, SessionId},
     time::Timestamp,
