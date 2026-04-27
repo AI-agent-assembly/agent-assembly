@@ -155,6 +155,30 @@ pub struct ScanResult {
     pub findings: Vec<CredentialFinding>,
 }
 
+impl ScanResult {
+    /// Returns `true` if no credential findings were detected.
+    pub fn is_clean(&self) -> bool {
+        self.findings.is_empty()
+    }
+
+    /// Returns a copy of `text` with every finding replaced by its redacted label.
+    ///
+    /// Replacements are applied in reverse offset order so earlier byte positions
+    /// remain valid after each splice. The `end` field of each finding records the
+    /// original match boundary and is used here without being exposed in the public API.
+    pub fn redact(&self, text: &str) -> String {
+        let mut sorted: Vec<&CredentialFinding> = self.findings.iter().collect();
+        sorted.sort_by(|a, b| b.offset.cmp(&a.offset));
+        let mut result = text.to_string();
+        for finding in sorted {
+            if finding.end <= result.len() && finding.offset <= finding.end {
+                result.replace_range(finding.offset..finding.end, &finding.matched);
+            }
+        }
+        result
+    }
+}
+
 /// Pre-compiled multi-pattern credential scanner.
 ///
 /// Construct once with [`CredentialScanner::new`] and call [`CredentialScanner::scan`]
