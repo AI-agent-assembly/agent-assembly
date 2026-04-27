@@ -97,3 +97,18 @@ message BudgetThresholdHit {
   // Percentage of the budget consumed (0-100+).
   int32                      percent_used  = 4;
 }
+
+// ApprovalDecision is sent by the SDK to the runtime when a human reviewer
+// resolves a pending approval request.
+message ApprovalDecision {
+  // Unique identifier of the approval queue item being resolved.
+  string approval_id        = 1;
+  // true = approved, false = rejected.
+  bool   approved           = 2;
+  // User ID or system identifier of the decision maker.
+  string decided_by         = 3;
+  // Rejection reason; empty when approved = true.
+  string reason             = 4;
+  // Unix millisecond timestamp when the decision was made.
+  int64  decided_at_unix_ms = 5;
+}
