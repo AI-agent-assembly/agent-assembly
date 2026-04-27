@@ -42,9 +42,13 @@ pub fn router(state: HealthState) -> Router {
 // --- Stub handlers (replaced in Tasks 6–8) ---
 
 async fn health_handler(
-    axum::extract::State(_state): axum::extract::State<HealthState>,
+    axum::extract::State(state): axum::extract::State<HealthState>,
 ) -> axum::Json<HealthResponse> {
-    todo!("implemented in Task 6")
+    axum::Json(HealthResponse {
+        status: "healthy",
+        uptime_secs: state.start_time.elapsed().as_secs(),
+        events_processed: state.pipeline_metrics.processed(),
+    })
 }
 
 async fn ready_handler(
@@ -62,6 +66,17 @@ async fn metrics_handler(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::AtomicI64;
+
+    use axum::body::Body;
+    use axum::http::{Request, StatusCode};
+    use tower::ServiceExt; // for `oneshot`
+
+    fn make_prometheus_handle() -> metrics_exporter_prometheus::PrometheusHandle {
+        metrics_exporter_prometheus::PrometheusBuilder::new()
+            .build_recorder()
+            .handle()
+    }
 
     #[test]
     fn health_response_serializes_correctly() {
@@ -74,5 +89,36 @@ mod tests {
         assert!(json.contains("\"status\":\"healthy\""));
         assert!(json.contains("\"uptime_secs\":42"));
         assert!(json.contains("\"events_processed\":100"));
+    }
+
+    #[tokio::test]
+    async fn health_endpoint_returns_200_with_json() {
+        let (_, ready_rx) = tokio::sync::watch::channel(false);
+        let (inbound_tx, _) = tokio::sync::mpsc::channel(1);
+        let pipeline_metrics = Arc::new(crate::pipeline::PipelineMetrics::default());
+
+        let state = HealthState {
+            start_time: std::time::Instant::now(),
+            pipeline_metrics,
+            ready_rx,
+            prometheus_handle: make_prometheus_handle(),
+            active_connections: Arc::new(AtomicI64::new(0)),
+            inbound_tx,
+        };
+
+        let app = router(state);
+        let req = Request::builder()
+            .uri("/health")
+            .body(Body::empty())
+            .unwrap();
+
+        let response = app.oneshot(req).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["status"], "healthy");
+        assert!(json["uptime_secs"].as_u64().is_some());
+        assert_eq!(json["events_processed"], 0);
     }
 }
