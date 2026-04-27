@@ -451,6 +451,86 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn rule_match_bypasses_batch() {
+        use aa_proto::assembly::common::v1::ActionType;
+        use crate::policy::{PolicyRule, PolicyRules};
+
+        // Create a policy that blocks FILE_OPERATION
+        let policy = std::sync::Arc::new(PolicyRules {
+            rules: vec![PolicyRule {
+                name: "block-files".to_string(),
+                blocked_actions: vec![ActionType::FileOperation.as_str_name().to_string()],
+            }],
+        });
+
+        // batch_size=100, very long interval — only a rule-matched event should arrive immediately
+        let config = test_config(100, 10_000);
+        let (tx, rx) = mpsc::channel::<IpcFrame>(64);
+        let (broadcast_tx, mut broadcast_rx) = broadcast::channel::<EnrichedEvent>(64);
+        let metrics = Arc::new(PipelineMetrics::default());
+        let token = CancellationToken::new();
+
+        tokio::spawn(run(rx, broadcast_tx, config, metrics.clone(), token.clone(), policy));
+
+        // Build an AuditEvent with action_type = FILE_OPERATION
+        let event = AuditEvent {
+            action_type: ActionType::FileOperation as i32,
+            ..Default::default()
+        };
+        tx.send(IpcFrame::EventReport(event)).await.unwrap();
+
+        // Should arrive immediately (before flush interval)
+        let received = tokio::time::timeout(Duration::from_millis(200), broadcast_rx.recv())
+            .await
+            .expect("rule-matched event should bypass batch and arrive immediately")
+            .expect("broadcast error");
+
+        assert_eq!(received.source, EventSource::Sdk);
+        assert_eq!(metrics.processed(), 1);
+        token.cancel();
+    }
+
+    #[tokio::test]
+    async fn non_matching_action_stays_in_batch() {
+        use aa_proto::assembly::common::v1::ActionType;
+        use crate::policy::{PolicyRule, PolicyRules};
+
+        // Policy only blocks FILE_OPERATION
+        let policy = std::sync::Arc::new(PolicyRules {
+            rules: vec![PolicyRule {
+                name: "block-files".to_string(),
+                blocked_actions: vec![ActionType::FileOperation.as_str_name().to_string()],
+            }],
+        });
+
+        // batch_size=100, very long interval — event should NOT arrive before timeout
+        let config = test_config(100, 10_000);
+        let (tx, rx) = mpsc::channel::<IpcFrame>(64);
+        let (broadcast_tx, mut broadcast_rx) = broadcast::channel::<EnrichedEvent>(64);
+        let metrics = Arc::new(PipelineMetrics::default());
+        let token = CancellationToken::new();
+
+        tokio::spawn(run(rx, broadcast_tx, config, metrics.clone(), token.clone(), policy));
+
+        // Yield briefly so the pipeline's interval fires its immediate first tick
+        // (tokio::time::interval ticks once immediately on creation).
+        tokio::time::sleep(Duration::from_millis(10)).await;
+
+        // Build a TOOL_CALL event — not blocked by the policy
+        let event = AuditEvent {
+            action_type: ActionType::ToolCall as i32,
+            ..Default::default()
+        };
+        tx.send(IpcFrame::EventReport(event)).await.unwrap();
+
+        // Should NOT arrive before the flush interval (100ms timeout)
+        let result = tokio::time::timeout(Duration::from_millis(100), broadcast_rx.recv()).await;
+        assert!(result.is_err(), "non-matching event should stay in batch, not arrive immediately");
+
+        token.cancel();
+    }
+
+    #[tokio::test]
     #[ignore]
     async fn pipeline_load_benchmark() {
         // Run with: cargo test -p aa-runtime -- --ignored pipeline_load_benchmark --nocapture
