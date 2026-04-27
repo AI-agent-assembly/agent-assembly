@@ -9,13 +9,12 @@
 services:
   aa-runtime:
     image: ghcr.io/ai-agent-assembly/aa-runtime:latest
+    restart: unless-stopped               # restart if the process exits unexpectedly
     environment:
       AA_AGENT_ID: "my-agent-001"
-      AA_GATEWAY_URL: "https://api.agentassembly.io"
-      AA_API_KEY: "${AA_API_KEY}"
       # AA_METRICS_ADDR: "0.0.0.0:8080"   # default shown for reference
     volumes:
-      - aa-runtime-socket:/tmp            # IPC socket: /tmp/aa-runtime-my-agent-001.sock
+      - aa-runtime-socket:/tmp            # socket path hardcoded to /tmp/aa-runtime-<agent_id>.sock
     ports:
       - "8080:8080"                       # health + metrics
     # Note: requires a health-check-capable image or override; distroless images have no shell.
