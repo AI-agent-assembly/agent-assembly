@@ -28,8 +28,7 @@ async fn sigterm() {
     #[cfg(unix)]
     {
         use tokio::signal::unix::{signal, SignalKind};
-        let mut stream = signal(SignalKind::terminate())
-            .expect("failed to install SIGTERM handler");
+        let mut stream = signal(SignalKind::terminate()).expect("failed to install SIGTERM handler");
         stream.recv().await;
     }
     #[cfg(not(unix))]
