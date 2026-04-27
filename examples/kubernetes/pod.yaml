@@ -3,8 +3,8 @@
 # Usage:
 #   kubectl apply -f pod.yaml
 #
-# The aa-runtime sidecar uses an emptyDir volume for the Unix domain socket.
-# Add your agent container (see your-agent example) with the same volume mount.
+# The agent container and aa-runtime share an emptyDir volume for the Unix
+# domain socket. AA_AGENT_ID must be identical in both containers.
 
 apiVersion: v1
 kind: Pod
@@ -35,6 +35,22 @@ spec:
       volumeMounts:
         - name: aa-runtime-socket
           mountPath: /tmp   # socket path hardcoded to /tmp/aa-runtime-<agent_id>.sock
+    - name: your-agent
+      # Replace 'your-org/your-agent:latest' with your agent image.
+      image: your-org/your-agent:latest
+      env:
+        - name: AA_AGENT_ID
+          value: "my-agent-001"   # must match aa-runtime
+        - name: AA_GATEWAY_URL
+          value: "https://api.agentassembly.io"
+        - name: AA_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: agent-api-key
+              key: api-key
+      volumeMounts:
+        - name: aa-runtime-socket
+          mountPath: /tmp   # IPC socket at /tmp/aa-runtime-my-agent-001.sock
   volumes:
     - name: aa-runtime-socket
       emptyDir: {}
