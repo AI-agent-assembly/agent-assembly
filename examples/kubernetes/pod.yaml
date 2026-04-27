@@ -3,8 +3,8 @@
 # Usage:
 #   kubectl apply -f pod.yaml
 #
-# The agent container and the aa-runtime sidecar share an emptyDir volume
-# for the Unix domain socket. AA_AGENT_ID must match in both containers.
+# The aa-runtime sidecar uses an emptyDir volume for the Unix domain socket.
+# Add your agent container (see your-agent example) with the same volume mount.
 
 apiVersion: v1
 kind: Pod
