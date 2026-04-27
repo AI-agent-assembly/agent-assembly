@@ -1,0 +1,8 @@
+{
+  "description": "Generic PKCS#8 private key PEM header — BEGIN PRIVATE KEY",
+  "input_text": "KEY=-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcw\n-----END PRIVATE KEY-----",
+  "expected_findings": [
+    { "kind": "PrivateKey", "offset": 4 }
+  ],
+  "expected_redacted": "KEY=[REDACTED:PrivateKey]"
+}
