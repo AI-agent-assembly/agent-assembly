@@ -414,12 +414,7 @@ impl AuditLog {
     /// - `payload` — pre-serialized UTF-8 string (JSON in practice).
     ///
     /// Returns a reference to the newly appended entry.
-    pub fn next_entry(
-        &mut self,
-        event_type: AuditEventType,
-        timestamp_ns: u64,
-        payload: String,
-    ) -> &AuditEntry {
+    pub fn next_entry(&mut self, event_type: AuditEventType, timestamp_ns: u64, payload: String) -> &AuditEntry {
         let entry = AuditEntry::new(
             self.next_seq,
             timestamp_ns,
@@ -446,21 +441,19 @@ impl AuditLog {
     ///
     /// Returns `true` for an empty log (vacuously valid).
     pub fn verify_chain(&self) -> bool {
-        let mut expected_seq: u64 = 0;
         let mut expected_prev_hash: [u8; 32] = [0u8; 32];
 
-        for entry in &self.entries {
+        for (expected_seq, entry) in self.entries.iter().enumerate() {
             if !entry.verify_integrity() {
                 return false;
             }
-            if entry.seq() != expected_seq {
+            if entry.seq() != expected_seq as u64 {
                 return false;
             }
             if entry.previous_hash() != &expected_prev_hash {
                 return false;
             }
             expected_prev_hash = *entry.entry_hash();
-            expected_seq += 1;
         }
         true
     }
@@ -710,10 +703,7 @@ mod tests {
     // --- AuditLog helpers ---
 
     fn make_log() -> AuditLog {
-        AuditLog::new(
-            AgentId::from_bytes(AGENT_BYTES),
-            SessionId::from_bytes(SESSION_BYTES),
-        )
+        AuditLog::new(AgentId::from_bytes(AGENT_BYTES), SessionId::from_bytes(SESSION_BYTES))
     }
 
     fn make_valid_entry(seq: u64, previous_hash: [u8; 32]) -> AuditEntry {
@@ -808,7 +798,11 @@ mod tests {
     #[test]
     fn next_entry_genesis_has_seq_zero_and_zero_prev_hash() {
         let mut log = make_log();
-        let e = log.next_entry(AuditEventType::ToolCallIntercepted, 1_000, alloc::string::String::from("{}"));
+        let e = log.next_entry(
+            AuditEventType::ToolCallIntercepted,
+            1_000,
+            alloc::string::String::from("{}"),
+        );
         assert_eq!(e.seq(), 0);
         assert_eq!(e.previous_hash(), &GENESIS_HASH);
         assert!(e.verify_integrity());
@@ -817,9 +811,21 @@ mod tests {
     #[test]
     fn next_entry_auto_increments_seq() {
         let mut log = make_log();
-        log.next_entry(AuditEventType::ToolCallIntercepted, 1_000, alloc::string::String::from("{}"));
-        log.next_entry(AuditEventType::PolicyViolation,     2_000, alloc::string::String::from("{}"));
-        log.next_entry(AuditEventType::ApprovalGranted,     3_000, alloc::string::String::from("{}"));
+        log.next_entry(
+            AuditEventType::ToolCallIntercepted,
+            1_000,
+            alloc::string::String::from("{}"),
+        );
+        log.next_entry(
+            AuditEventType::PolicyViolation,
+            2_000,
+            alloc::string::String::from("{}"),
+        );
+        log.next_entry(
+            AuditEventType::ApprovalGranted,
+            3_000,
+            alloc::string::String::from("{}"),
+        );
 
         assert_eq!(log.len(), 3);
         assert_eq!(log.entries()[0].seq(), 0);
@@ -830,8 +836,16 @@ mod tests {
     #[test]
     fn next_entry_links_previous_hash_correctly() {
         let mut log = make_log();
-        log.next_entry(AuditEventType::ToolCallIntercepted, 1_000, alloc::string::String::from("{}"));
-        log.next_entry(AuditEventType::PolicyViolation,     2_000, alloc::string::String::from("{}"));
+        log.next_entry(
+            AuditEventType::ToolCallIntercepted,
+            1_000,
+            alloc::string::String::from("{}"),
+        );
+        log.next_entry(
+            AuditEventType::PolicyViolation,
+            2_000,
+            alloc::string::String::from("{}"),
+        );
 
         let e0_hash = *log.entries()[0].entry_hash();
         assert_eq!(log.entries()[1].previous_hash(), &e0_hash);
@@ -841,7 +855,11 @@ mod tests {
     fn next_entry_mixed_with_push_works_correctly() {
         let mut log = make_log();
         // First entry via next_entry
-        log.next_entry(AuditEventType::ToolCallIntercepted, 1_000, alloc::string::String::from("{}"));
+        log.next_entry(
+            AuditEventType::ToolCallIntercepted,
+            1_000,
+            alloc::string::String::from("{}"),
+        );
         let hash0 = *log.entries()[0].entry_hash();
 
         // Second entry via manual push with correct seq and previous_hash
@@ -849,7 +867,11 @@ mod tests {
         log.push(e1).unwrap();
 
         // Third entry via next_entry — should pick up seq=2 and hash1
-        log.next_entry(AuditEventType::ApprovalGranted, 3_000, alloc::string::String::from("{}"));
+        log.next_entry(
+            AuditEventType::ApprovalGranted,
+            3_000,
+            alloc::string::String::from("{}"),
+        );
 
         assert_eq!(log.len(), 3);
         assert_eq!(log.entries()[2].seq(), 2);
@@ -882,7 +904,11 @@ mod tests {
     fn verify_chain_valid_log_returns_true() {
         let mut log = make_log();
         for i in 0..4 {
-            log.next_entry(AuditEventType::ToolCallIntercepted, i * 1_000, alloc::string::String::from("{}"));
+            log.next_entry(
+                AuditEventType::ToolCallIntercepted,
+                i * 1_000,
+                alloc::string::String::from("{}"),
+            );
         }
         assert!(log.verify_chain());
     }
@@ -890,8 +916,16 @@ mod tests {
     #[test]
     fn verify_chain_false_after_unsafe_seq_tamper() {
         let mut log = make_log();
-        log.next_entry(AuditEventType::ToolCallIntercepted, 1_000, alloc::string::String::from("{}"));
-        log.next_entry(AuditEventType::PolicyViolation,     2_000, alloc::string::String::from("{}"));
+        log.next_entry(
+            AuditEventType::ToolCallIntercepted,
+            1_000,
+            alloc::string::String::from("{}"),
+        );
+        log.next_entry(
+            AuditEventType::PolicyViolation,
+            2_000,
+            alloc::string::String::from("{}"),
+        );
 
         // Tamper the seq of the first entry.
         // SAFETY: deliberate tampering to test verify_chain detection.
@@ -906,8 +940,16 @@ mod tests {
     #[test]
     fn verify_chain_false_after_unsafe_payload_tamper() {
         let mut log = make_log();
-        log.next_entry(AuditEventType::ToolCallIntercepted, 1_000, alloc::string::String::from("{}"));
-        log.next_entry(AuditEventType::PolicyViolation,     2_000, alloc::string::String::from("{}"));
+        log.next_entry(
+            AuditEventType::ToolCallIntercepted,
+            1_000,
+            alloc::string::String::from("{}"),
+        );
+        log.next_entry(
+            AuditEventType::PolicyViolation,
+            2_000,
+            alloc::string::String::from("{}"),
+        );
 
         // Tamper the payload of the second entry — breaks its verify_integrity().
         // SAFETY: deliberate tampering to test verify_chain detection.
@@ -923,8 +965,16 @@ mod tests {
     #[test]
     fn verify_chain_false_after_unsafe_previous_hash_tamper() {
         let mut log = make_log();
-        log.next_entry(AuditEventType::ToolCallIntercepted, 1_000, alloc::string::String::from("{}"));
-        log.next_entry(AuditEventType::PolicyViolation,     2_000, alloc::string::String::from("{}"));
+        log.next_entry(
+            AuditEventType::ToolCallIntercepted,
+            1_000,
+            alloc::string::String::from("{}"),
+        );
+        log.next_entry(
+            AuditEventType::PolicyViolation,
+            2_000,
+            alloc::string::String::from("{}"),
+        );
 
         // Tamper previous_hash of the second entry — breaks chain linkage check.
         // SAFETY: deliberate tampering to test verify_chain detection.
