@@ -8,6 +8,7 @@ description = "Pure domain logic for Agent Assembly — no_std compatible"
 
 [dependencies]
 cfg-if = "1"
+serde  = { version = "1", default-features = false, features = ["derive"], optional = true }
 
 [lints]
 workspace = true
