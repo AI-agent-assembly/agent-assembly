@@ -211,6 +211,9 @@ impl CredentialScanner {
         // Phase 3: Email addresses
         scan_emails(text, &mut findings);
 
+        // Phase 4: High-entropy tokens (Shannon entropy > 4.5 bits/char, length 20–64)
+        scan_high_entropy(text, &mut findings);
+
         findings.sort_by_key(|f| f.offset);
         ScanResult { findings }
     }
@@ -303,6 +306,44 @@ fn scan_digit_sequences(text: &str, findings: &mut Vec<CredentialFinding>) {
             findings.push(CredentialFinding::new(CredentialKind::CreditCardLuhn, start, end));
         }
         i = end.max(i + 1);
+    }
+}
+
+/// Computes the Shannon entropy of `s` in bits per character.
+fn shannon_entropy(s: &str) -> f64 {
+    if s.is_empty() {
+        return 0.0;
+    }
+    let mut freq = [0u32; 256];
+    for &b in s.as_bytes() {
+        freq[b as usize] += 1;
+    }
+    let len = s.len() as f64;
+    freq.iter()
+        .filter(|&&c| c > 0)
+        .map(|&c| {
+            let p = c as f64 / len;
+            -p * p.log2()
+        })
+        .sum()
+}
+
+/// Scans `text` for high-entropy whitespace-delimited tokens (> 4.5 bits/char,
+/// length 20–64 bytes) and reports them as [`CredentialKind::GenericHighEntropy`].
+fn scan_high_entropy(text: &str, findings: &mut Vec<CredentialFinding>) {
+    let mut offset = 0usize;
+    for token in text.split_whitespace() {
+        let token_offset = text[offset..].find(token).map(|i| offset + i).unwrap_or(offset);
+        let token_end_pos = token_offset + token.len();
+        let len = token.len();
+        if len >= 20 && len <= 64 && shannon_entropy(token) > 4.5 {
+            findings.push(CredentialFinding::new(
+                CredentialKind::GenericHighEntropy,
+                token_offset,
+                token_end_pos,
+            ));
+        }
+        offset = token_end_pos;
     }
 }
 
