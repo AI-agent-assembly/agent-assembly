@@ -1,6 +1,7 @@
 //! Go C-ABI static library bindings for Agent Assembly.
 
 use core::ffi::c_char;
+use std::sync::Mutex;
 
 pub type AaStatus = i32;
 
@@ -23,5 +24,12 @@ pub struct AaString {
 
 #[repr(C)]
 pub struct aa_client_handle {
-    _private: [u8; 0],
+    state: Mutex<ClientState>,
+}
+
+#[derive(Default)]
+struct ClientState {
+    endpoint: String,
+    connected: bool,
+    events_sent: u64,
 }
