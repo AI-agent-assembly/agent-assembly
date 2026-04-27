@@ -203,10 +203,9 @@ mod tests {
 
     #[tokio::test]
     async fn heartbeat_round_trip() {
-        // Write a Heartbeat frame
-        let mut buf: Vec<u8> = Vec::new();
-        buf.push(TAG_HEARTBEAT);
-        write_varint(&mut buf, 0).await.unwrap();
+        // Heartbeat frame: just the tag byte, no payload or length.
+        // Note: read_frame for Heartbeat only consumes the tag byte, no length field.
+        let buf: Vec<u8> = vec![TAG_HEARTBEAT];
 
         let mut cursor = Cursor::new(buf);
         let frame = read_frame(&mut cursor).await.unwrap();
@@ -308,14 +307,40 @@ mod tests {
 
         assert_eq!(bytes[0], TAG_POLICY_RESPONSE);
         // Decode back: skip tag byte, read varint length, then decode payload.
-        // The varint length sits between the tag byte and the payload.
-        // Re-parse the length from the buffer to find where the payload starts.
+        // cursor.position() after read_varint equals the number of varint bytes consumed,
+        // so the payload starts at 1 (tag) + varint_bytes into the original buffer.
         let mut cursor = Cursor::new(&bytes[1..]);
         let len = read_varint(&mut cursor).await.unwrap() as usize;
-        let payload_start = bytes.len() - len;
-        let payload = &bytes[payload_start..];
+        let varint_bytes = cursor.position() as usize;
+        let payload_start = 1 + varint_bytes; // skip tag byte + varint bytes
+        let payload = &bytes[payload_start..payload_start + len];
         let decoded = CheckActionResponse::decode(payload).unwrap();
         assert_eq!(decoded.reason, "allowed by policy");
+    }
+
+    #[tokio::test]
+    async fn approval_decision_response_encodes_correctly() {
+        let decision = ApprovalDecision {
+            approval_id: "appr-777".to_string(),
+            approved: false,
+            decided_by: "reviewer-2".to_string(),
+            reason: "policy violation".to_string(),
+            decided_at_unix_ms: 1_700_000_000_000,
+        };
+
+        let bytes = encode_response(IpcResponse::ApprovalDecision(decision)).await;
+
+        assert_eq!(bytes[0], TAG_APPROVAL_DECISION);
+        // Decode payload back
+        let mut cursor = Cursor::new(&bytes[1..]);
+        let len = read_varint(&mut cursor).await.unwrap() as usize;
+        let varint_bytes = cursor.position() as usize;
+        let payload_start = 1 + varint_bytes;
+        let payload = &bytes[payload_start..payload_start + len];
+        let decoded = ApprovalDecision::decode(payload).unwrap();
+        assert_eq!(decoded.approval_id, "appr-777");
+        assert!(!decoded.approved);
+        assert_eq!(decoded.reason, "policy violation");
     }
 
     #[tokio::test]
