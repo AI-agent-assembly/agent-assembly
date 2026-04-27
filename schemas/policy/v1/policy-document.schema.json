@@ -48,6 +48,23 @@
           }
         }
       }
+    },
+    "data": {
+      "description": "Data sensitivity controls applied to all agent inputs and outputs.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sensitive_patterns": {
+          "description": "List of regular expression patterns used to detect sensitive data (e.g. PII, credentials). Any match in an agent's input or output triggers the configured redaction or denial action.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "description": "A regular expression pattern string."
+          },
+          "default": []
+        }
+      }
     }
   },
   "examples": []
