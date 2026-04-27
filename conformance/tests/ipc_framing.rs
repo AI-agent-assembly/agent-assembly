@@ -35,19 +35,19 @@ fn deframe(framed: &[u8]) -> Vec<u8> {
 #[test]
 fn basic_framing_vectors_encode() {
     let vectors: Vec<FramingVector> = load_framing_vectors();
-    let basic: Vec<_> = vectors
-        .iter()
-        .filter(|v| !v.description.contains("edge"))
-        .collect();
+    let basic: Vec<_> = vectors.iter().filter(|v| !v.description.contains("edge")).collect();
 
     for v in &basic {
         let input = hex_decode(&v.input_hex);
         let expected = hex_decode(&v.expected_framed_hex);
         let actual = frame(&input);
         assert_eq!(
-            actual, expected,
+            actual,
+            expected,
             "encode mismatch in '{}'\n  got:      {}\n  expected: {}",
-            v.description, hex_encode(&actual), v.expected_framed_hex
+            v.description,
+            hex_encode(&actual),
+            v.expected_framed_hex
         );
     }
 }
@@ -55,20 +55,13 @@ fn basic_framing_vectors_encode() {
 #[test]
 fn basic_framing_vectors_decode() {
     let vectors: Vec<FramingVector> = load_framing_vectors();
-    let basic: Vec<_> = vectors
-        .iter()
-        .filter(|v| !v.description.contains("edge"))
-        .collect();
+    let basic: Vec<_> = vectors.iter().filter(|v| !v.description.contains("edge")).collect();
 
     for v in &basic {
         let framed = hex_decode(&v.expected_framed_hex);
         let expected_inner = hex_decode(&v.input_hex);
         let actual = deframe(&framed);
-        assert_eq!(
-            actual, expected_inner,
-            "decode mismatch in '{}'",
-            v.description
-        );
+        assert_eq!(actual, expected_inner, "decode mismatch in '{}'", v.description);
     }
 }
 
@@ -91,11 +84,7 @@ fn large_message_framing_encode() {
         let input = hex_decode(&v.input_hex);
         let expected = hex_decode(&v.expected_framed_hex);
         let actual = frame(&input);
-        assert_eq!(
-            actual, expected,
-            "large encode mismatch in '{}'",
-            v.description
-        );
+        assert_eq!(actual, expected, "large encode mismatch in '{}'", v.description);
     }
 }
 
@@ -115,11 +104,7 @@ fn large_message_framing_decode() {
         let framed = hex_decode(&v.expected_framed_hex);
         let expected_inner = hex_decode(&v.input_hex);
         let actual = deframe(&framed);
-        assert_eq!(
-            actual, expected_inner,
-            "large decode mismatch in '{}'",
-            v.description
-        );
+        assert_eq!(actual, expected_inner, "large decode mismatch in '{}'", v.description);
     }
 }
 
@@ -128,10 +113,7 @@ fn large_message_framing_decode() {
 #[test]
 fn stream_split_decode_assembles_full_message() {
     let vectors = load_edge_vectors();
-    let splits: Vec<_> = vectors
-        .iter()
-        .filter(|v| v["case_type"] == "stream_split")
-        .collect();
+    let splits: Vec<_> = vectors.iter().filter(|v| v["case_type"] == "stream_split").collect();
 
     assert!(!splits.is_empty(), "no stream_split vectors found");
     for v in splits {
@@ -170,7 +152,11 @@ fn consecutive_frames_decoded_independently() {
         let prefix_len = remaining.len() - tmp.len();
         offset += prefix_len + body_len;
 
-        assert_eq!(decoded, expected_inner, "consecutive frame mismatch: {}", frame_spec["note"]);
+        assert_eq!(
+            decoded, expected_inner,
+            "consecutive frame mismatch: {}",
+            frame_spec["note"]
+        );
     }
 }
 
@@ -227,9 +213,7 @@ fn load_framing_vectors() -> Vec<FramingVector> {
         .iter()
         .map(|e| {
             let raw = std::fs::read_to_string(e.path()).unwrap();
-            serde_json::from_str(&raw).unwrap_or_else(|err| {
-                panic!("cannot parse {}: {}", e.path().display(), err)
-            })
+            serde_json::from_str(&raw).unwrap_or_else(|err| panic!("cannot parse {}: {}", e.path().display(), err))
         })
         .collect()
 }
@@ -240,11 +224,7 @@ fn load_edge_vectors() -> Vec<Value> {
     let mut entries: Vec<_> = std::fs::read_dir(&dir)
         .unwrap()
         .filter_map(|e| e.ok())
-        .filter(|e| {
-            e.file_name()
-                .to_string_lossy()
-                .contains("edge")
-        })
+        .filter(|e| e.file_name().to_string_lossy().contains("edge"))
         .collect();
     entries.sort_by_key(|e| e.file_name());
     entries

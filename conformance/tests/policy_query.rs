@@ -24,9 +24,7 @@ fn load_policy_vectors() -> Vec<Value> {
         .iter()
         .map(|e| {
             let raw = std::fs::read_to_string(e.path()).unwrap();
-            serde_json::from_str(&raw).unwrap_or_else(|err| {
-                panic!("parse {}: {err}", e.path().display())
-            })
+            serde_json::from_str(&raw).unwrap_or_else(|err| panic!("parse {}: {err}", e.path().display()))
         })
         .collect()
 }
@@ -72,9 +70,18 @@ fn allow_vectors_cover_llm_call_tool_call_and_network_call() {
         .map(|v| v["request"]["action_type"].as_str().unwrap_or("").to_string())
         .collect();
 
-    assert!(action_types.contains(&"LLM_CALL".to_string()), "missing LLM_CALL ALLOW vector");
-    assert!(action_types.contains(&"TOOL_CALL".to_string()), "missing TOOL_CALL ALLOW vector");
-    assert!(action_types.contains(&"NETWORK_CALL".to_string()), "missing NETWORK_CALL ALLOW vector");
+    assert!(
+        action_types.contains(&"LLM_CALL".to_string()),
+        "missing LLM_CALL ALLOW vector"
+    );
+    assert!(
+        action_types.contains(&"TOOL_CALL".to_string()),
+        "missing TOOL_CALL ALLOW vector"
+    );
+    assert!(
+        action_types.contains(&"NETWORK_CALL".to_string()),
+        "missing NETWORK_CALL ALLOW vector"
+    );
 }
 
 // ── DENY decisions ────────────────────────────────────────────────────────────
@@ -82,10 +89,7 @@ fn allow_vectors_cover_llm_call_tool_call_and_network_call() {
 #[test]
 fn deny_decisions_have_no_redact_and_no_approval_id() {
     let vectors = load_policy_vectors();
-    let deny_vecs: Vec<_> = vectors
-        .iter()
-        .filter(|v| v["response"]["decision"] == "DENY")
-        .collect();
+    let deny_vecs: Vec<_> = vectors.iter().filter(|v| v["response"]["decision"] == "DENY").collect();
 
     assert!(!deny_vecs.is_empty(), "no DENY vectors found");
     for v in deny_vecs {
@@ -101,7 +105,8 @@ fn deny_decisions_have_no_redact_and_no_approval_id() {
             "DENY response must have empty approval_id: {}",
             v["description"]
         );
-        assert!(!resp["policy_rule"].as_str().unwrap_or("").is_empty(),
+        assert!(
+            !resp["policy_rule"].as_str().unwrap_or("").is_empty(),
             "DENY response must name the blocking policy rule: {}",
             v["description"]
         );
@@ -144,14 +149,20 @@ fn redact_decisions_have_at_least_one_rule() {
         let rules = v["response"]["redact"]["rules"]
             .as_array()
             .expect("REDACT response must have redact.rules array");
-        assert!(!rules.is_empty(), "REDACT response must have at least one rule: {}", v["description"]);
+        assert!(
+            !rules.is_empty(),
+            "REDACT response must have at least one rule: {}",
+            v["description"]
+        );
 
         for rule in rules {
-            assert!(!rule["field_path"].as_str().unwrap_or("").is_empty(),
+            assert!(
+                !rule["field_path"].as_str().unwrap_or("").is_empty(),
                 "each RedactRule must have a field_path: {}",
                 v["description"]
             );
-            assert!(!rule["replacement"].as_str().unwrap_or("").is_empty(),
+            assert!(
+                !rule["replacement"].as_str().unwrap_or("").is_empty(),
                 "each RedactRule must have a replacement: {}",
                 v["description"]
             );
@@ -176,13 +187,29 @@ fn redact_multi_fields_vector_has_two_rules() {
 #[test]
 fn all_policy_vectors_have_required_fields() {
     let vectors = load_policy_vectors();
-    assert!(vectors.len() >= 10, "expected at least 10 policy query vectors, got {}", vectors.len());
+    assert!(
+        vectors.len() >= 10,
+        "expected at least 10 policy query vectors, got {}",
+        vectors.len()
+    );
 
     for v in &vectors {
-        assert!(!v["description"].as_str().unwrap_or("").is_empty(), "missing description");
+        assert!(
+            !v["description"].as_str().unwrap_or("").is_empty(),
+            "missing description"
+        );
         assert!(v["request"]["agent_id"].is_object(), "missing request.agent_id");
-        assert!(!v["request"]["action_type"].as_str().unwrap_or("").is_empty(), "missing action_type");
-        assert!(!v["response"]["decision"].as_str().unwrap_or("").is_empty(), "missing decision");
-        assert!(!v["response"]["policy_rule"].as_str().unwrap_or("").is_empty(), "missing policy_rule");
+        assert!(
+            !v["request"]["action_type"].as_str().unwrap_or("").is_empty(),
+            "missing action_type"
+        );
+        assert!(
+            !v["response"]["decision"].as_str().unwrap_or("").is_empty(),
+            "missing decision"
+        );
+        assert!(
+            !v["response"]["policy_rule"].as_str().unwrap_or("").is_empty(),
+            "missing policy_rule"
+        );
     }
 }

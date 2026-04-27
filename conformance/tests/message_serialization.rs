@@ -11,8 +11,7 @@ use aa_proto::assembly::{
     agent::v1::{RegisterRequest, RegisterResponse},
     common::v1::{AgentId, Decision, RiskTier, Timestamp},
     policy::v1::{
-        ActionContext, CheckActionRequest, CheckActionResponse, RedactInstructions, RedactRule,
-        ToolCallContext,
+        ActionContext, CheckActionRequest, CheckActionResponse, RedactInstructions, RedactRule, ToolCallContext,
     },
 };
 use conformance::load_golden_bin;
@@ -55,20 +54,17 @@ fn check_action_request_tool_call_matches_golden() {
         span_id: "01HZAB0000000000000001".into(),
         action_type: 2, // TOOL_CALL
         context: Some(ActionContext {
-            action: Some(
-                aa_proto::assembly::policy::v1::action_context::Action::ToolCall(ToolCallContext {
+            action: Some(aa_proto::assembly::policy::v1::action_context::Action::ToolCall(
+                ToolCallContext {
                     tool_name: "web_search".into(),
                     tool_source: "mcp".into(),
                     args_json: b"{\"query\":\"test\"}".to_vec(),
                     target_url: "https://search.example.com".into(),
-                }),
-            ),
+                },
+            )),
         }),
     };
-    assert_eq!(
-        msg.encode_to_vec(),
-        load_golden_bin("check_action_request_tool_call")
-    );
+    assert_eq!(msg.encode_to_vec(), load_golden_bin("check_action_request_tool_call"));
 }
 
 // ── CheckActionResponse ───────────────────────────────────────────────────────
@@ -83,10 +79,7 @@ fn check_action_response_allow_matches_golden() {
         redact: None,
         decision_latency_us: 312,
     };
-    assert_eq!(
-        msg.encode_to_vec(),
-        load_golden_bin("check_action_response_allow")
-    );
+    assert_eq!(msg.encode_to_vec(), load_golden_bin("check_action_response_allow"));
 }
 
 #[test]
@@ -104,10 +97,7 @@ fn check_action_response_redact_matches_golden() {
         }),
         decision_latency_us: 520,
     };
-    assert_eq!(
-        msg.encode_to_vec(),
-        load_golden_bin("check_action_response_redact")
-    );
+    assert_eq!(msg.encode_to_vec(), load_golden_bin("check_action_response_redact"));
 }
 
 // ── RegisterRequest / RegisterResponse ───────────────────────────────────────

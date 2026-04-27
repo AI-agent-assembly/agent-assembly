@@ -6,9 +6,9 @@
 //! key fields survive the wire-format serialisation.
 
 use aa_proto::assembly::agent::v1::{
-    control_command::Command, ControlCommand, DeregisterRequest, DeregisterResponse,
-    HeartbeatRequest, HeartbeatResponse, KillCommand, PolicyUpdateCommand, RegisterRequest,
-    RegisterResponse, ResumeCommand, SuspendCommand,
+    control_command::Command, ControlCommand, DeregisterRequest, DeregisterResponse, HeartbeatRequest,
+    HeartbeatResponse, KillCommand, PolicyUpdateCommand, RegisterRequest, RegisterResponse, ResumeCommand,
+    SuspendCommand,
 };
 use aa_proto::assembly::common::v1::AgentId;
 use conformance::{load_vectors, SessionLifecycleVector};
@@ -17,15 +17,21 @@ use prost::Message;
 // ── helpers ──────────────────────────────────────────────────────────────────
 
 fn str_field<'a>(fields: &'a serde_json::Value, key: &str) -> &'a str {
-    fields[key].as_str().unwrap_or_else(|| panic!("missing string field '{key}' in vector"))
+    fields[key]
+        .as_str()
+        .unwrap_or_else(|| panic!("missing string field '{key}' in vector"))
 }
 
 fn bool_field(fields: &serde_json::Value, key: &str) -> bool {
-    fields[key].as_bool().unwrap_or_else(|| panic!("missing bool field '{key}' in vector"))
+    fields[key]
+        .as_bool()
+        .unwrap_or_else(|| panic!("missing bool field '{key}' in vector"))
 }
 
 fn i64_field(fields: &serde_json::Value, key: &str) -> i64 {
-    fields[key].as_i64().unwrap_or_else(|| panic!("missing i64 field '{key}' in vector"))
+    fields[key]
+        .as_i64()
+        .unwrap_or_else(|| panic!("missing i64 field '{key}' in vector"))
 }
 
 fn agent_id_field(fields: &serde_json::Value) -> AgentId {
@@ -68,9 +74,21 @@ fn register_request_round_trips() {
             ..Default::default()
         };
         let decoded = round_trip(&msg);
-        assert_eq!(decoded.name, msg.name, "vector '{}': name survives round-trip", v.description);
-        assert_eq!(decoded.framework, msg.framework, "vector '{}': framework survives round-trip", v.description);
-        assert_eq!(decoded.tool_names, msg.tool_names, "vector '{}': tool_names survive round-trip", v.description);
+        assert_eq!(
+            decoded.name, msg.name,
+            "vector '{}': name survives round-trip",
+            v.description
+        );
+        assert_eq!(
+            decoded.framework, msg.framework,
+            "vector '{}': framework survives round-trip",
+            v.description
+        );
+        assert_eq!(
+            decoded.tool_names, msg.tool_names,
+            "vector '{}': tool_names survive round-trip",
+            v.description
+        );
     }
 }
 
@@ -84,9 +102,21 @@ fn register_response_round_trips() {
             heartbeat_interval_sec: i64_field(f, "heartbeat_interval_sec"),
         };
         let decoded = round_trip(&msg);
-        assert_eq!(decoded.credential_token, msg.credential_token, "vector '{}': credential_token survives round-trip", v.description);
-        assert_eq!(decoded.heartbeat_interval_sec, msg.heartbeat_interval_sec, "vector '{}': heartbeat_interval_sec survives round-trip", v.description);
-        assert!(!decoded.credential_token.is_empty(), "vector '{}': credential_token must be non-empty", v.description);
+        assert_eq!(
+            decoded.credential_token, msg.credential_token,
+            "vector '{}': credential_token survives round-trip",
+            v.description
+        );
+        assert_eq!(
+            decoded.heartbeat_interval_sec, msg.heartbeat_interval_sec,
+            "vector '{}': heartbeat_interval_sec survives round-trip",
+            v.description
+        );
+        assert!(
+            !decoded.credential_token.is_empty(),
+            "vector '{}': credential_token must be non-empty",
+            v.description
+        );
     }
 }
 
@@ -101,8 +131,16 @@ fn heartbeat_request_round_trips() {
             actions_count: i64_field(f, "actions_count"),
         };
         let decoded = round_trip(&msg);
-        assert_eq!(decoded.actions_count, msg.actions_count, "vector '{}': actions_count survives round-trip", v.description);
-        assert_eq!(decoded.active_runs, msg.active_runs, "vector '{}': active_runs survives round-trip", v.description);
+        assert_eq!(
+            decoded.actions_count, msg.actions_count,
+            "vector '{}': actions_count survives round-trip",
+            v.description
+        );
+        assert_eq!(
+            decoded.active_runs, msg.active_runs,
+            "vector '{}': active_runs survives round-trip",
+            v.description
+        );
     }
 }
 
@@ -115,8 +153,16 @@ fn heartbeat_response_round_trips() {
             should_suspend: bool_field(f, "should_suspend"),
         };
         let decoded = round_trip(&msg);
-        assert_eq!(decoded.policy_updated, msg.policy_updated, "vector '{}': policy_updated survives round-trip", v.description);
-        assert_eq!(decoded.should_suspend, msg.should_suspend, "vector '{}': should_suspend survives round-trip", v.description);
+        assert_eq!(
+            decoded.policy_updated, msg.policy_updated,
+            "vector '{}': policy_updated survives round-trip",
+            v.description
+        );
+        assert_eq!(
+            decoded.should_suspend, msg.should_suspend,
+            "vector '{}': should_suspend survives round-trip",
+            v.description
+        );
     }
 }
 
@@ -130,7 +176,11 @@ fn deregister_request_round_trips() {
             reason: str_field(f, "reason").to_string(),
         };
         let decoded = round_trip(&msg);
-        assert_eq!(decoded.reason, msg.reason, "vector '{}': reason survives round-trip", v.description);
+        assert_eq!(
+            decoded.reason, msg.reason,
+            "vector '{}': reason survives round-trip",
+            v.description
+        );
     }
 }
 
@@ -143,8 +193,16 @@ fn deregister_response_round_trips() {
             agent_id: str_field(f, "agent_id").to_string(),
         };
         let decoded = round_trip(&msg);
-        assert_eq!(decoded.success, msg.success, "vector '{}': success survives round-trip", v.description);
-        assert_eq!(decoded.agent_id, msg.agent_id, "vector '{}': agent_id survives round-trip", v.description);
+        assert_eq!(
+            decoded.success, msg.success,
+            "vector '{}': success survives round-trip",
+            v.description
+        );
+        assert_eq!(
+            decoded.agent_id, msg.agent_id,
+            "vector '{}': agent_id survives round-trip",
+            v.description
+        );
     }
 }
 
@@ -161,7 +219,11 @@ fn control_suspend_round_trips() {
         let Command::Suspend(inner) = decoded.command.expect("command must be Some") else {
             panic!("vector '{}': expected Suspend variant", v.description);
         };
-        assert!(!inner.reason.is_empty(), "vector '{}': suspend reason must be non-empty", v.description);
+        assert!(
+            !inner.reason.is_empty(),
+            "vector '{}': suspend reason must be non-empty",
+            v.description
+        );
     }
 }
 
@@ -178,7 +240,11 @@ fn control_resume_round_trips() {
         let Command::Resume(inner) = decoded.command.expect("command must be Some") else {
             panic!("vector '{}': expected Resume variant", v.description);
         };
-        assert!(!inner.note.is_empty(), "vector '{}': resume note must be non-empty", v.description);
+        assert!(
+            !inner.note.is_empty(),
+            "vector '{}': resume note must be non-empty",
+            v.description
+        );
     }
 }
 
@@ -196,7 +262,11 @@ fn control_policy_update_round_trips() {
         let Command::PolicyUpdate(inner) = decoded.command.expect("command must be Some") else {
             panic!("vector '{}': expected PolicyUpdate variant", v.description);
         };
-        assert!(!inner.new_policy_id.is_empty(), "vector '{}': new_policy_id must be non-empty", v.description);
+        assert!(
+            !inner.new_policy_id.is_empty(),
+            "vector '{}': new_policy_id must be non-empty",
+            v.description
+        );
     }
 }
 
@@ -213,6 +283,10 @@ fn control_kill_round_trips() {
         let Command::Kill(inner) = decoded.command.expect("command must be Some") else {
             panic!("vector '{}': expected Kill variant", v.description);
         };
-        assert!(!inner.reason.is_empty(), "vector '{}': kill reason must be non-empty", v.description);
+        assert!(
+            !inner.reason.is_empty(),
+            "vector '{}': kill reason must be non-empty",
+            v.description
+        );
     }
 }

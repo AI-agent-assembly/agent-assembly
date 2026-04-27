@@ -11,8 +11,7 @@ use aa_proto::assembly::{
     agent::v1::{RegisterRequest, RegisterResponse},
     common::v1::{AgentId, Decision, RiskTier, Timestamp},
     policy::v1::{
-        ActionContext, CheckActionRequest, CheckActionResponse, RedactInstructions, RedactRule,
-        ToolCallContext,
+        ActionContext, CheckActionRequest, CheckActionResponse, RedactInstructions, RedactRule, ToolCallContext,
     },
 };
 use prost::Message;
@@ -70,16 +69,14 @@ fn main() {
             span_id: "01HZAB0000000000000001".into(),
             action_type: 2, // TOOL_CALL
             context: Some(ActionContext {
-                action: Some(
-                    aa_proto::assembly::policy::v1::action_context::Action::ToolCall(
-                        ToolCallContext {
-                            tool_name: "web_search".into(),
-                            tool_source: "mcp".into(),
-                            args_json: b"{\"query\":\"test\"}".to_vec(),
-                            target_url: "https://search.example.com".into(),
-                        },
-                    ),
-                ),
+                action: Some(aa_proto::assembly::policy::v1::action_context::Action::ToolCall(
+                    ToolCallContext {
+                        tool_name: "web_search".into(),
+                        tool_source: "mcp".into(),
+                        args_json: b"{\"query\":\"test\"}".to_vec(),
+                        target_url: "https://search.example.com".into(),
+                    },
+                )),
             }),
         },
     );

@@ -83,10 +83,9 @@ pub fn load_vectors<T: DeserializeOwned>(dir: &str) -> Vec<T> {
         .iter()
         .map(|entry| {
             let path = entry.path();
-            let raw = std::fs::read_to_string(&path)
-                .unwrap_or_else(|e| panic!("cannot read {}: {}", path.display(), e));
-            serde_json::from_str(&raw)
-                .unwrap_or_else(|e| panic!("cannot parse {}: {}", path.display(), e))
+            let raw =
+                std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("cannot read {}: {}", path.display(), e));
+            serde_json::from_str(&raw).unwrap_or_else(|e| panic!("cannot parse {}: {}", path.display(), e))
         })
         .collect()
 }
@@ -98,8 +97,7 @@ pub fn load_golden_bin(name: &str) -> Vec<u8> {
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("vectors/proto")
         .join(format!("{name}.bin"));
-    std::fs::read(&path)
-        .unwrap_or_else(|e| panic!("cannot read golden file {}: {}", path.display(), e))
+    std::fs::read(&path).unwrap_or_else(|e| panic!("cannot read golden file {}: {}", path.display(), e))
 }
 
 /// Decodes a lowercase hex string into bytes.
@@ -109,6 +107,8 @@ pub fn hex_decode(s: &str) -> Vec<u8> {
     assert!(s.len() % 2 == 0, "hex string has odd length: {s}");
     (0..s.len())
         .step_by(2)
-        .map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap_or_else(|_| panic!("invalid hex at {i}: {}", &s[i..i + 2])))
+        .map(|i| {
+            u8::from_str_radix(&s[i..i + 2], 16).unwrap_or_else(|_| panic!("invalid hex at {i}: {}", &s[i..i + 2]))
+        })
         .collect()
 }
