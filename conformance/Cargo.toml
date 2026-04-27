@@ -1,0 +1,21 @@
+[package]
+name = "conformance"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Language-neutral conformance test suite for the Agent Assembly protocol"
+
+[dependencies]
+aa-core = { path = "../aa-core", features = ["std"] }
+aa-proto = { path = "../aa-proto" }
+prost = "0.13"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dev-dependencies]
+aa-core = { path = "../aa-core", features = ["std"] }
+aa-proto = { path = "../aa-proto" }
+
+[lints]
+workspace = true
