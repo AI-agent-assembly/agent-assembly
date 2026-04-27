@@ -104,4 +104,13 @@ mod tests {
         assert!(ctx.started_at.as_nanos() > 0);
         assert!(ctx.metadata.is_empty());
     }
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn serde_round_trip() {
+        let original = make_context();
+        let json = serde_json::to_string(&original).expect("serialize");
+        let restored: AgentContext = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(original, restored);
+    }
 }
