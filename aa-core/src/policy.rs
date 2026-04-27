@@ -1,3 +1,11 @@
+//! Policy types and the [`PolicyEvaluator`] trait for governance decisions.
+//!
+//! A [`GovernanceAction`] describes what an agent wants to do.
+//! A [`PolicyEvaluator`] decides whether that action is permitted,
+//! denied, or requires human approval, and returns a [`PolicyResult`].
+//! Policy rules are expressed as [`PolicyDocument`] objects containing
+//! ordered [`PolicyRule`] entries.
+
 /// Pre-serialized JSON string passed at policy trait boundaries.
 ///
 /// Callers serialize arguments before handing them to an evaluator;
