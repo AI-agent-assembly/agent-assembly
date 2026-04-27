@@ -4,5 +4,5 @@ pub mod codec;
 pub mod message;
 pub mod server;
 
-pub use message::IpcFrame;
+pub use message::{IpcFrame, IpcResponse};
 pub use server::IpcServer;
