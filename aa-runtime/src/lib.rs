@@ -5,4 +5,5 @@
 //! coordination, and lifecycle hooks.
 
 pub mod config;
+pub mod lifecycle;
 pub mod runtime;
