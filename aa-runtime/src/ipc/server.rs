@@ -6,6 +6,7 @@
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicI64, Ordering};
 
 use tokio::net::UnixListener;
 use tokio::sync::{mpsc, Semaphore};
@@ -73,7 +74,13 @@ impl IpcServer {
     ///
     /// Each accepted connection is handed off to a pair of reader/writer tasks
     /// registered with the provided `TaskTracker`.
-    pub async fn run(self, tracker: TaskTracker, token: CancellationToken, inbound_tx: mpsc::Sender<IpcFrame>) {
+    pub async fn run(
+        self,
+        tracker: TaskTracker,
+        token: CancellationToken,
+        inbound_tx: mpsc::Sender<IpcFrame>,
+        active_connections: Arc<AtomicI64>,
+    ) {
         let semaphore = Arc::new(Semaphore::new(self.config.max_connections));
         let listener = self.listener;
         let socket_path = self.config.socket_path.clone();
@@ -118,6 +125,9 @@ impl IpcServer {
                             let (resp_tx, resp_rx) =
                                 mpsc::channel::<IpcResponse>(inbound_channel_capacity);
 
+                            // Increment the active connection counter before spawning.
+                            active_connections.fetch_add(1, Ordering::Relaxed);
+
                             // Spawn connection handler tasks.
                             spawn_connection(
                                 &tracker,
@@ -127,6 +137,7 @@ impl IpcServer {
                                 resp_rx,
                                 conn_token,
                                 permit,
+                                Arc::clone(&active_connections),
                             );
                         }
                     }
@@ -154,6 +165,7 @@ pub(super) fn spawn_connection(
     resp_rx: mpsc::Receiver<IpcResponse>,
     token: CancellationToken,
     permit: tokio::sync::OwnedSemaphorePermit,
+    active_connections: Arc<AtomicI64>,
 ) {
     let (read_half, write_half) = stream.into_split();
 
@@ -162,7 +174,7 @@ pub(super) fn spawn_connection(
     let reader_frame_tx = frame_tx;
     tracker.spawn(async move {
         let _permit = permit; // held until reader task completes
-        run_reader(read_half, reader_frame_tx, reader_token).await;
+        run_reader(read_half, reader_frame_tx, reader_token, active_connections).await;
     });
 
     // Writer task: outbound responses → socket.
@@ -176,6 +188,7 @@ pub(super) async fn run_reader(
     mut stream: tokio::net::unix::OwnedReadHalf,
     frame_tx: mpsc::Sender<IpcFrame>,
     token: CancellationToken,
+    active_connections: Arc<AtomicI64>,
 ) {
     loop {
         tokio::select! {
@@ -207,6 +220,7 @@ pub(super) async fn run_reader(
         }
     }
     token.cancel(); // Signal the paired writer to stop.
+    active_connections.fetch_sub(1, Ordering::Relaxed);
 }
 
 /// Writer task: reads responses from the channel and writes them to the socket.
@@ -268,7 +282,11 @@ mod tests {
     }
 
     /// Start a test IpcServer and return the inbound frame receiver.
-    async fn start_server(socket_path: std::path::PathBuf, token: CancellationToken) -> mpsc::Receiver<IpcFrame> {
+    async fn start_server(
+        socket_path: std::path::PathBuf,
+        token: CancellationToken,
+        active_connections: Arc<AtomicI64>,
+    ) -> mpsc::Receiver<IpcFrame> {
         let config = IpcServerConfig {
             socket_path,
             max_connections: 64,
@@ -279,7 +297,7 @@ mod tests {
         let tracker = TaskTracker::new();
         let tracker_clone = tracker.clone();
         tracker.spawn(async move {
-            server.run(tracker_clone, token, tx).await;
+            server.run(tracker_clone, token, tx, active_connections).await;
         });
         rx
     }
@@ -308,7 +326,8 @@ mod tests {
     async fn heartbeat_frame_arrives_on_inbound_channel() {
         let socket_path = temp_socket_path("heartbeat");
         let token = CancellationToken::new();
-        let mut rx = start_server(socket_path.clone(), token.clone()).await;
+        let counter = Arc::new(AtomicI64::new(0));
+        let mut rx = start_server(socket_path.clone(), token.clone(), Arc::clone(&counter)).await;
 
         let client = connect_client(&socket_path).await;
         let (_, mut write_half) = client.into_split();
@@ -331,7 +350,8 @@ mod tests {
     async fn policy_query_arrives_decoded_on_inbound_channel() {
         let socket_path = temp_socket_path("policy-query");
         let token = CancellationToken::new();
-        let mut rx = start_server(socket_path.clone(), token.clone()).await;
+        let counter = Arc::new(AtomicI64::new(0));
+        let mut rx = start_server(socket_path.clone(), token.clone(), Arc::clone(&counter)).await;
 
         let client = connect_client(&socket_path).await;
         let (_, mut write_half) = client.into_split();
@@ -359,7 +379,8 @@ mod tests {
     async fn event_report_arrives_decoded_on_inbound_channel() {
         let socket_path = temp_socket_path("event-report");
         let token = CancellationToken::new();
-        let mut rx = start_server(socket_path.clone(), token.clone()).await;
+        let counter = Arc::new(AtomicI64::new(0));
+        let mut rx = start_server(socket_path.clone(), token.clone(), Arc::clone(&counter)).await;
 
         let client = connect_client(&socket_path).await;
         let (_, mut write_half) = client.into_split();
@@ -387,7 +408,8 @@ mod tests {
     async fn concurrent_connections_up_to_limit() {
         let socket_path = temp_socket_path("concurrent");
         let token = CancellationToken::new();
-        let _rx = start_server(socket_path.clone(), token.clone()).await;
+        let counter = Arc::new(AtomicI64::new(0));
+        let _rx = start_server(socket_path.clone(), token.clone(), Arc::clone(&counter)).await;
 
         const CONN_COUNT: usize = 5;
         let mut clients = Vec::new();
@@ -406,7 +428,8 @@ mod tests {
     async fn round_trip_latency_under_1ms() {
         let socket_path = temp_socket_path("latency");
         let token = CancellationToken::new();
-        let mut rx = start_server(socket_path.clone(), token.clone()).await;
+        let counter = Arc::new(AtomicI64::new(0));
+        let mut rx = start_server(socket_path.clone(), token.clone(), Arc::clone(&counter)).await;
 
         let client = connect_client(&socket_path).await;
         let (_, mut write_half) = client.into_split();
@@ -429,6 +452,71 @@ mod tests {
         println!("Average round-trip: {avg_us} µs");
 
         assert!(avg_us < 1000, "average round-trip {avg_us} µs exceeded 1ms threshold");
+
+        token.cancel();
+    }
+
+    #[tokio::test]
+    async fn active_connections_increments_on_accept() {
+        let socket_path = temp_socket_path("counter-increment");
+        let token = CancellationToken::new();
+        let counter = Arc::new(AtomicI64::new(0));
+        let _rx = start_server(socket_path.clone(), token.clone(), Arc::clone(&counter)).await;
+
+        const CONN_COUNT: usize = 3;
+        let mut clients = Vec::new();
+        for _ in 0..CONN_COUNT {
+            clients.push(connect_client(&socket_path).await);
+        }
+
+        // Poll briefly for the server accept loop to process all connections.
+        let mut observed = 0i64;
+        for _ in 0..50 {
+            observed = counter.load(Ordering::Relaxed);
+            if observed == CONN_COUNT as i64 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+
+        assert_eq!(observed, CONN_COUNT as i64, "counter should equal number of accepted connections");
+
+        token.cancel();
+        drop(clients);
+    }
+
+    #[tokio::test]
+    async fn active_connections_decrements_on_disconnect() {
+        let socket_path = temp_socket_path("counter-decrement");
+        let token = CancellationToken::new();
+        let counter = Arc::new(AtomicI64::new(0));
+        let _rx = start_server(socket_path.clone(), token.clone(), Arc::clone(&counter)).await;
+
+        let client = connect_client(&socket_path).await;
+
+        // Wait for counter to reach 1.
+        for _ in 0..50 {
+            if counter.load(Ordering::Relaxed) == 1 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert_eq!(counter.load(Ordering::Relaxed), 1, "counter should be 1 after one connection");
+
+        // Drop the client to trigger disconnect.
+        drop(client);
+
+        // Poll for counter to return to 0.
+        let mut observed = 1i64;
+        for _ in 0..100 {
+            observed = counter.load(Ordering::Relaxed);
+            if observed == 0 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+
+        assert_eq!(observed, 0, "counter should return to 0 after client disconnects");
 
         token.cancel();
     }

@@ -34,14 +34,20 @@ pub async fn run(config: RuntimeConfig) {
     // Shared metrics — future health/metrics endpoints will receive an Arc clone.
     let pipeline_metrics = std::sync::Arc::new(crate::pipeline::PipelineMetrics::default());
 
+    // Shared active-connections counter exposed to the health/metrics endpoint.
+    let active_connections = std::sync::Arc::new(
+        std::sync::atomic::AtomicI64::new(0),
+    );
+
     // Spawn the IPC server task.
     let ipc_config = crate::ipc::server::IpcServerConfig::from_runtime_config(&config);
     match crate::ipc::server::IpcServer::bind(ipc_config) {
         Ok(ipc_server) => {
             let ipc_tracker = tracker.clone();
             let ipc_token = token.clone();
+            let ipc_active_connections = std::sync::Arc::clone(&active_connections);
             tracker.spawn(async move {
-                ipc_server.run(ipc_tracker, ipc_token, inbound_tx).await;
+                ipc_server.run(ipc_tracker, ipc_token, inbound_tx, ipc_active_connections).await;
             });
             tracing::info!("IPC server task spawned");
         }
