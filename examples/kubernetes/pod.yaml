@@ -1,0 +1,56 @@
+# aa-runtime sidecar — Kubernetes pod example
+#
+# Usage:
+#   kubectl apply -f pod.yaml
+#
+# The agent container and aa-runtime share an emptyDir volume for the Unix
+# domain socket. AA_AGENT_ID must be identical in both containers.
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: my-agent-pod
+  labels:
+    app: my-agent
+spec:
+  containers:
+    - name: aa-runtime
+      image: ghcr.io/ai-agent-assembly/aa-runtime:latest
+      env:
+        - name: AA_AGENT_ID
+          value: "my-agent-001"
+        - name: AA_METRICS_ADDR
+          value: "0.0.0.0:8080"
+      ports:
+        - name: health
+          containerPort: 8080
+          protocol: TCP
+      readinessProbe:
+        httpGet:
+          path: /ready
+          port: health
+        initialDelaySeconds: 2
+        periodSeconds: 5
+        failureThreshold: 3
+      volumeMounts:
+        - name: aa-runtime-socket
+          mountPath: /tmp   # socket path hardcoded to /tmp/aa-runtime-<agent_id>.sock
+    - name: your-agent
+      # Replace 'your-org/your-agent:latest' with your agent image.
+      image: your-org/your-agent:latest
+      env:
+        - name: AA_AGENT_ID
+          value: "my-agent-001"   # must match aa-runtime
+        - name: AA_GATEWAY_URL
+          value: "https://api.agentassembly.io"
+        - name: AA_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: agent-api-key
+              key: api-key
+      volumeMounts:
+        - name: aa-runtime-socket
+          mountPath: /tmp   # IPC socket at /tmp/aa-runtime-my-agent-001.sock
+  volumes:
+    - name: aa-runtime-socket
+      emptyDir: {}
