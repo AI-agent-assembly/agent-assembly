@@ -7,4 +7,5 @@
 pub mod config;
 pub mod ipc;
 pub mod lifecycle;
+pub mod pipeline;
 pub mod runtime;
