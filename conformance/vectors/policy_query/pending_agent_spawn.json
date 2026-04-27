@@ -1,0 +1,26 @@
+{
+  "description": "AGENT_SPAWN — PENDING: spawning a child agent always requires human approval at MEDIUM risk tier",
+  "request": {
+    "agent_id": { "org_id": "acme", "team_id": "platform", "agent_id": "agent-008" },
+    "credential_token": "tok-spawn",
+    "trace_id": "trace-008",
+    "span_id": "span-008",
+    "action_type": "AGENT_SPAWN",
+    "context": {
+      "tool_call": {
+        "tool_name": "agent_spawn",
+        "tool_source": "function",
+        "args_json_utf8": "{\"child_type\":\"research-agent\",\"risk_tier\":\"MEDIUM\"}",
+        "target_url": ""
+      }
+    }
+  },
+  "response": {
+    "decision": "PENDING",
+    "reason": "AGENT_SPAWN requires human approval at MEDIUM risk tier",
+    "policy_rule": "rule:approval-agent-spawn-v1",
+    "approval_id": "appr-01HZ9XABCDEF9876543210",
+    "redact": null,
+    "decision_latency_us": 380
+  }
+}
