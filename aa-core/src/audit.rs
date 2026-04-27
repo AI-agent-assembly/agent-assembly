@@ -380,4 +380,57 @@ mod tests {
         let entry = make_entry(0);
         assert_eq!(entry.previous_hash(), &[0u8; 32]);
     }
+
+    // --- verify_integrity() ---
+
+    #[test]
+    fn verify_integrity_true_for_untampered_entry() {
+        assert!(make_entry(0).verify_integrity());
+    }
+
+    #[test]
+    fn verify_integrity_false_after_seq_tamper() {
+        let mut entry = make_entry(0);
+        // SAFETY: deliberate tampering to test integrity detection.
+        unsafe {
+            let ptr = &mut entry.seq as *mut u64;
+            *ptr = 999;
+        }
+        assert!(!entry.verify_integrity());
+    }
+
+    #[test]
+    fn verify_integrity_false_after_payload_tamper() {
+        let mut entry = make_entry(0);
+        // SAFETY: deliberate tampering to test integrity detection.
+        unsafe {
+            let ptr = entry.payload.as_mut_vec();
+            if let Some(b) = ptr.first_mut() {
+                *b = b'X';
+            }
+        }
+        assert!(!entry.verify_integrity());
+    }
+
+    #[test]
+    fn verify_integrity_false_after_event_type_tamper() {
+        let mut entry = make_entry(0);
+        // SAFETY: deliberate tampering to test integrity detection.
+        unsafe {
+            let ptr = &mut entry.event_type as *mut AuditEventType;
+            *ptr = AuditEventType::BudgetLimitExceeded;
+        }
+        assert!(!entry.verify_integrity());
+    }
+
+    #[test]
+    fn verify_integrity_false_after_previous_hash_tamper() {
+        let mut entry = make_entry(0);
+        // SAFETY: deliberate tampering to test integrity detection.
+        unsafe {
+            let ptr = &mut entry.previous_hash as *mut [u8; 32];
+            (*ptr)[0] = 0xFF;
+        }
+        assert!(!entry.verify_integrity());
+    }
 }
