@@ -109,5 +109,66 @@
       }
     }
   },
-  "examples": []
+  "examples": [
+    {
+      "network": {
+        "allowlist": ["api.openai.com", "api.anthropic.com"]
+      },
+      "tools": {
+        "web_search": { "allow": false },
+        "code_interpreter": { "allow": false },
+        "file_read": { "allow": true, "limit_per_hour": 10 }
+      },
+      "data": {
+        "sensitive_patterns": [
+          "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Z|a-z]{2,}\\b",
+          "sk-[A-Za-z0-9]{32,}",
+          "\\b\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4}\\b"
+        ]
+      },
+      "budget": { "daily_limit_usd": 1.00 },
+      "schedule": {
+        "active_hours": { "start": "09:00", "end": "17:00", "timezone": "Asia/Taipei" }
+      }
+    },
+    {
+      "network": {
+        "allowlist": ["*.openai.com", "*.anthropic.com", "api.github.com", "*.amazonaws.com"]
+      },
+      "tools": {
+        "web_search": { "allow": true, "limit_per_hour": 20 },
+        "code_interpreter": { "allow": true, "limit_per_hour": 10, "requires_approval_if": "estimated_cost_usd > 0.10" },
+        "file_write": { "allow": true, "requires_approval_if": "path starts_with /etc" }
+      },
+      "data": {
+        "sensitive_patterns": [
+          "sk-[A-Za-z0-9]{32,}",
+          "ghp_[A-Za-z0-9]{36}"
+        ]
+      },
+      "budget": { "daily_limit_usd": 25.00 },
+      "schedule": {
+        "active_hours": { "start": "00:00", "end": "23:59", "timezone": "UTC" }
+      }
+    },
+    {
+      "network": {
+        "allowlist": ["*"]
+      },
+      "tools": {
+        "web_search": { "allow": true },
+        "code_interpreter": { "allow": true },
+        "file_read": { "allow": true },
+        "file_write": { "allow": true },
+        "shell": { "allow": true }
+      },
+      "data": {
+        "sensitive_patterns": []
+      },
+      "budget": { "daily_limit_usd": 500.00 },
+      "schedule": {
+        "active_hours": { "start": "00:00", "end": "23:59", "timezone": "UTC" }
+      }
+    }
+  ]
 }
