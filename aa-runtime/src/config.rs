@@ -401,7 +401,10 @@ mod tests {
         assert_eq!(config.pipeline_input_buffer, 10_000, "0 should fall back to default");
         assert_eq!(config.pipeline_batch_size, 100, "0 should fall back to default");
         assert_eq!(config.pipeline_flush_interval_ms, 100, "0 should fall back to default");
-        assert_eq!(config.pipeline_broadcast_capacity, 1_024, "0 should fall back to default");
+        assert_eq!(
+            config.pipeline_broadcast_capacity, 1_024,
+            "0 should fall back to default"
+        );
 
         std::env::remove_var("AA_AGENT_ID");
         std::env::remove_var("AA_PIPELINE_INPUT_BUFFER");

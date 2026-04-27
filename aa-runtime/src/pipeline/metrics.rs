@@ -13,8 +13,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 #[derive(Debug, Default)]
 pub struct PipelineMetrics {
     events_processed_total: AtomicU64,
-    events_dropped_total:   AtomicU64,
-    last_batch_size:        AtomicU64,
+    events_dropped_total: AtomicU64,
+    last_batch_size: AtomicU64,
 }
 
 impl PipelineMetrics {

@@ -35,11 +35,11 @@ impl PipelineConfig {
     /// Build a [`PipelineConfig`] from a [`RuntimeConfig`].
     pub fn from_runtime_config(c: &RuntimeConfig) -> Self {
         Self {
-            input_buffer:       c.pipeline_input_buffer,
-            batch_size:         c.pipeline_batch_size,
-            flush_interval:     Duration::from_millis(c.pipeline_flush_interval_ms),
+            input_buffer: c.pipeline_input_buffer,
+            batch_size: c.pipeline_batch_size,
+            flush_interval: Duration::from_millis(c.pipeline_flush_interval_ms),
             broadcast_capacity: c.pipeline_broadcast_capacity,
-            agent_id:           c.agent_id.clone(),
+            agent_id: c.agent_id.clone(),
         }
     }
 }
@@ -51,11 +51,11 @@ impl PipelineConfig {
 ///
 /// Returns when `token` is cancelled — flushing any pending batch first.
 pub async fn run(
-    mut rx:       mpsc::Receiver<IpcFrame>,
+    mut rx: mpsc::Receiver<IpcFrame>,
     broadcast_tx: broadcast::Sender<EnrichedEvent>,
-    config:       PipelineConfig,
-    metrics:      Arc<PipelineMetrics>,
-    token:        CancellationToken,
+    config: PipelineConfig,
+    metrics: Arc<PipelineMetrics>,
+    token: CancellationToken,
 ) {
     let mut batch: Vec<EnrichedEvent> = Vec::with_capacity(config.batch_size);
     let mut ticker = tokio::time::interval(config.flush_interval);
@@ -127,11 +127,7 @@ fn is_policy_violation(event: &EnrichedEvent) -> bool {
 /// Clears `batch` after broadcasting. Errors from `broadcast_tx.send`
 /// (all receivers dropped) are silently ignored — the pipeline does not
 /// require any active subscribers to operate.
-fn flush(
-    batch:        &mut Vec<EnrichedEvent>,
-    broadcast_tx: &broadcast::Sender<EnrichedEvent>,
-    metrics:      &PipelineMetrics,
-) {
+fn flush(batch: &mut Vec<EnrichedEvent>, broadcast_tx: &broadcast::Sender<EnrichedEvent>, metrics: &PipelineMetrics) {
     let n = batch.len() as u64;
     for event in batch.drain(..) {
         let _ = broadcast_tx.send(event);
@@ -208,10 +204,7 @@ mod tests {
     fn flush_broadcasts_all_events_and_records_batch_size() {
         let (tx, mut rx) = broadcast::channel::<EnrichedEvent>(16);
         let metrics = PipelineMetrics::default();
-        let mut batch = vec![
-            enrich(make_audit_event(), "a"),
-            enrich(make_audit_event(), "b"),
-        ];
+        let mut batch = vec![enrich(make_audit_event(), "a"), enrich(make_audit_event(), "b")];
         flush(&mut batch, &tx, &metrics);
         assert!(batch.is_empty());
         assert_eq!(metrics.last_batch_size(), 2);
@@ -269,11 +262,11 @@ mod tests {
 
     fn test_config(batch_size: usize, flush_interval_ms: u64) -> PipelineConfig {
         PipelineConfig {
-            input_buffer:       1_024,
+            input_buffer: 1_024,
             batch_size,
-            flush_interval:     Duration::from_millis(flush_interval_ms),
+            flush_interval: Duration::from_millis(flush_interval_ms),
             broadcast_capacity: 1_024,
-            agent_id:           "test-agent".to_string(),
+            agent_id: "test-agent".to_string(),
         }
     }
 
@@ -451,9 +444,7 @@ mod tests {
         tokio::spawn(run(rx, broadcast_tx, config, metrics.clone(), token.clone()));
 
         // Spawn a receiver that drains the broadcast channel
-        tokio::spawn(async move {
-            while broadcast_rx.recv().await.is_ok() {}
-        });
+        tokio::spawn(async move { while broadcast_rx.recv().await.is_ok() {} });
 
         let start = std::time::Instant::now();
 
@@ -468,14 +459,22 @@ mod tests {
                 break;
             }
             if std::time::Instant::now() > deadline {
-                panic!("load benchmark timeout: only {} / {} events processed", metrics.processed(), EVENT_COUNT);
+                panic!(
+                    "load benchmark timeout: only {} / {} events processed",
+                    metrics.processed(),
+                    EVENT_COUNT
+                );
             }
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
 
         let elapsed = start.elapsed();
-        println!("pipeline_load_benchmark: {} events in {:?} ({:.0} events/sec)",
-            EVENT_COUNT, elapsed, EVENT_COUNT as f64 / elapsed.as_secs_f64());
+        println!(
+            "pipeline_load_benchmark: {} events in {:?} ({:.0} events/sec)",
+            EVENT_COUNT,
+            elapsed,
+            EVENT_COUNT as f64 / elapsed.as_secs_f64()
+        );
 
         assert!(elapsed.as_secs() < 5, "100k events took more than 5s: {:?}", elapsed);
         token.cancel();
