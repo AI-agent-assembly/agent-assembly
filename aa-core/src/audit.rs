@@ -6,6 +6,10 @@
 //! Gated on the `alloc` feature because [`AuditEntry::payload`] is an
 //! [`alloc::string::String`].
 
+use alloc::string::String;
+
+use crate::{AgentId, SessionId};
+
 // ---------------------------------------------------------------------------
 // AuditEventType
 // ---------------------------------------------------------------------------
@@ -43,5 +47,95 @@ impl AuditEventType {
             Self::BudgetLimitApproached => "BudgetLimitApproached",
             Self::BudgetLimitExceeded => "BudgetLimitExceeded",
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// AuditEntry
+// ---------------------------------------------------------------------------
+
+/// An immutable, hash-chained record of a single governance event.
+///
+/// ## Immutability
+///
+/// All fields are private. The only way to create an [`AuditEntry`] is via
+/// [`AuditEntry::new`]. There are no mutation methods.
+///
+/// ## Hash chain
+///
+/// `entry_hash` is a SHA-256 digest computed over all tamper-meaningful fields
+/// in a canonical byte order (see [`AuditEntry::new`] for the full sequence).
+/// Each entry commits to `previous_hash`, linking entries into a tamper-evident
+/// chain. The genesis entry uses `[0u8; 32]` as `previous_hash`.
+///
+/// ## Tamper detection
+///
+/// [`AuditEntry::verify_integrity`] re-computes the hash from the stored fields
+/// and compares it to the stored `entry_hash`. Any field alteration — including
+/// via `unsafe` code — will cause the re-computed hash to diverge.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct AuditEntry {
+    seq: u64,
+    timestamp_ns: u64,
+    event_type: AuditEventType,
+    agent_id: AgentId,
+    session_id: SessionId,
+    payload: String,
+    previous_hash: [u8; 32],
+    entry_hash: [u8; 32],
+}
+
+impl AuditEntry {
+    // -----------------------------------------------------------------------
+    // Getters
+    // -----------------------------------------------------------------------
+
+    /// Monotonic sequence counter within the session.
+    #[inline]
+    pub fn seq(&self) -> u64 {
+        self.seq
+    }
+
+    /// Nanoseconds since the Unix epoch at the time the entry was created.
+    #[inline]
+    pub fn timestamp_ns(&self) -> u64 {
+        self.timestamp_ns
+    }
+
+    /// Category of the governance event.
+    #[inline]
+    pub fn event_type(&self) -> AuditEventType {
+        self.event_type
+    }
+
+    /// Identifier of the agent that produced this entry.
+    #[inline]
+    pub fn agent_id(&self) -> AgentId {
+        self.agent_id
+    }
+
+    /// Identifier of the specific agent run (session) that produced this entry.
+    #[inline]
+    pub fn session_id(&self) -> SessionId {
+        self.session_id
+    }
+
+    /// Pre-serialized UTF-8 payload (JSON in practice).
+    #[inline]
+    pub fn payload(&self) -> &str {
+        &self.payload
+    }
+
+    /// SHA-256 hash of the preceding entry; `[0u8; 32]` for the genesis entry.
+    #[inline]
+    pub fn previous_hash(&self) -> &[u8; 32] {
+        &self.previous_hash
+    }
+
+    /// SHA-256 hash computed over all tamper-meaningful fields at construction.
+    #[inline]
+    pub fn entry_hash(&self) -> &[u8; 32] {
+        &self.entry_hash
     }
 }
