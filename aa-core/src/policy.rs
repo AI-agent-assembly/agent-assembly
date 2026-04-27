@@ -3,7 +3,8 @@
 /// Callers serialize arguments before handing them to an evaluator;
 /// evaluators deserialize lazily only if they need to inspect the payload.
 /// This keeps the trait boundary free of any serde-json dependency.
-pub type ArgsJson = String;
+#[cfg(feature = "alloc")]
+pub type ArgsJson = alloc::string::String;
 
 /// File access mode for `GovernanceAction::FileAccess`.
 #[derive(Debug, Clone, PartialEq)]
@@ -114,6 +115,9 @@ pub trait PolicyEvaluator {
     fn evaluate(&self, ctx: &crate::AgentContext, action: &GovernanceAction) -> PolicyResult;
 
     /// Load a policy document into this evaluator, replacing any prior policy.
+    ///
+    /// Requires `&mut self`, so callers holding `&dyn PolicyEvaluator` must
+    /// upgrade to `&mut dyn PolicyEvaluator` before calling this method.
     fn load_policy(&mut self, policy: &PolicyDocument) -> Result<(), PolicyError>;
 
     /// Validate a policy document without applying it.
@@ -220,5 +224,47 @@ mod tests {
     fn policy_decision_variants() {
         assert_eq!(PolicyDecision::Allow, PolicyDecision::Allow);
         assert_ne!(PolicyDecision::Deny, PolicyDecision::RequireApproval);
+    }
+
+    #[test]
+    #[cfg(feature = "alloc")]
+    fn policy_rule_field_access_clone_eq() {
+        let rule = PolicyRule {
+            action_pattern: alloc::string::String::from("tool_call/*"),
+            decision: PolicyDecision::Deny,
+        };
+        let cloned = rule.clone();
+        assert_eq!(rule, cloned);
+        assert_eq!(rule.action_pattern, "tool_call/*");
+        assert_eq!(rule.decision, PolicyDecision::Deny);
+    }
+
+    #[test]
+    #[cfg(feature = "alloc")]
+    fn policy_document_field_access_clone_eq() {
+        let doc = PolicyDocument {
+            version: 1,
+            name: alloc::string::String::from("test-policy"),
+            rules: alloc::vec![PolicyRule {
+                action_pattern: alloc::string::String::from("*"),
+                decision: PolicyDecision::Allow,
+            }],
+        };
+        let cloned = doc.clone();
+        assert_eq!(doc, cloned);
+        assert_eq!(doc.version, 1);
+        assert_eq!(doc.name, "test-policy");
+        assert_eq!(doc.rules.len(), 1);
+        assert_eq!(doc.rules[0].decision, PolicyDecision::Allow);
+    }
+
+    #[test]
+    #[cfg(feature = "alloc")]
+    fn policy_result_cross_variant_inequality() {
+        assert_ne!(PolicyResult::Allow, PolicyResult::Deny { reason: alloc::string::String::from("x") });
+        assert_ne!(
+            PolicyResult::Deny { reason: alloc::string::String::from("x") },
+            PolicyResult::RequiresApproval { timeout_secs: 10 }
+        );
     }
 }

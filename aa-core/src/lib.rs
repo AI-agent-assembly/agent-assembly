@@ -26,13 +26,13 @@ pub mod policy;
 pub mod time;
 
 pub use identity::{AgentId, SessionId};
-pub use policy::{ArgsJson, FileMode, PolicyDecision, PolicyError};
+pub use policy::{FileMode, PolicyDecision, PolicyError};
 
 #[cfg(feature = "alloc")]
 pub use agent::AgentContext;
 
 #[cfg(feature = "alloc")]
-pub use policy::{GovernanceAction, PolicyDocument, PolicyEvaluator, PolicyResult, PolicyRule};
+pub use policy::{ArgsJson, GovernanceAction, PolicyDocument, PolicyEvaluator, PolicyResult, PolicyRule};
 
 #[cfg(all(feature = "alloc", feature = "test-utils"))]
 pub use evaluators::{DenyAllEvaluator, PermitAllEvaluator};
