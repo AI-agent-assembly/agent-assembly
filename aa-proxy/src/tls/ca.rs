@@ -42,11 +42,18 @@ impl CaStore {
         let cert_path = ca_dir.join("ca-cert.pem");
         let key_path  = ca_dir.join("ca-key.pem");
 
-        // Load existing CA if both files are present.
-        if cert_path.exists() && key_path.exists() {
-            let ca_cert_pem = tokio::fs::read_to_string(&cert_path).await?;
-            let ca_key_pem  = tokio::fs::read_to_string(&key_path).await?;
-            return Ok(Self { ca_dir: ca_dir.to_path_buf(), ca_cert_pem, ca_key_pem });
+        // Attempt to load existing CA; fall through to generation only on NotFound.
+        match (
+            tokio::fs::read_to_string(&cert_path).await,
+            tokio::fs::read_to_string(&key_path).await,
+        ) {
+            (Ok(ca_cert_pem), Ok(ca_key_pem)) => {
+                return Ok(Self { ca_dir: ca_dir.to_path_buf(), ca_cert_pem, ca_key_pem });
+            }
+            (Err(e), _) | (_, Err(e)) if e.kind() == std::io::ErrorKind::NotFound => {
+                // fall through to generate
+            }
+            (Err(e), _) | (_, Err(e)) => return Err(ProxyError::Io(e)),
         }
 
         // Generate a new EC P-256 CA key pair.
@@ -58,9 +65,9 @@ impl CaStore {
         ca_params.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
         ca_params.key_usages = vec![KeyUsagePurpose::KeyCertSign, KeyUsagePurpose::CrlSign];
         ca_params.distinguished_name.push(DnType::CommonName, "Agent Assembly CA");
-        ca_params.not_before = OffsetDateTime::now_utc();
-        ca_params.not_after  = OffsetDateTime::now_utc()
-            .checked_add(Duration::days(365 * 10))
+        let now = OffsetDateTime::now_utc();
+        ca_params.not_before = now;
+        ca_params.not_after  = now.checked_add(Duration::days(365 * 10))
             .expect("date arithmetic cannot overflow for 10-year span");
 
         let ca_cert     = ca_params.self_signed(&ca_key)
@@ -70,14 +77,31 @@ impl CaStore {
 
         // Persist to disk.
         tokio::fs::create_dir_all(ca_dir).await?;
-        tokio::fs::write(&cert_path, &ca_cert_pem).await?;
-        tokio::fs::write(&key_path,  &ca_key_pem).await?;
 
-        // Restrict key file to owner read/write only.
+        // Write the cert file (world-readable is fine for public cert).
+        tokio::fs::write(&cert_path, &ca_cert_pem).await?;
+
+        // Write the key file with restricted permissions from the start (mode 0o600).
         #[cfg(unix)]
         {
-            use std::os::unix::fs::PermissionsExt;
-            tokio::fs::set_permissions(&key_path, std::fs::Permissions::from_mode(0o600)).await?;
+            use std::os::unix::fs::OpenOptionsExt;
+            use std::io::Write;
+            let key_path_clone = key_path.clone();
+            let key_pem_bytes = ca_key_pem.as_bytes().to_vec();
+            tokio::task::spawn_blocking(move || {
+                let mut f = std::fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .mode(0o600)
+                    .open(&key_path_clone)?;
+                f.write_all(&key_pem_bytes)
+            })
+            .await
+            .map_err(|e| ProxyError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))??;
+        }
+        #[cfg(not(unix))]
+        {
+            tokio::fs::write(&key_path, &ca_key_pem).await?;
         }
 
         Ok(Self { ca_dir: ca_dir.to_path_buf(), ca_cert_pem, ca_key_pem })
