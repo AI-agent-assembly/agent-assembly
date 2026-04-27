@@ -187,3 +187,18 @@ pub unsafe extern "C" fn aa_disconnect(client: *mut aa_client_handle) -> AaStatu
 
     AA_STATUS_OK
 }
+
+/// # Safety
+///
+/// `value` must be a pointer previously returned by `aa_query_policy`.
+#[no_mangle]
+pub unsafe extern "C" fn aa_free_string(value: *mut c_char) {
+    if value.is_null() {
+        return;
+    }
+
+    // SAFETY: `value` originated from `CString::into_raw` in this crate.
+    unsafe {
+        drop(CString::from_raw(value));
+    }
+}
