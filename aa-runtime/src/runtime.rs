@@ -37,8 +37,30 @@ pub async fn run(config: RuntimeConfig) {
 
     tracing::info!("structured concurrency primitives initialised");
 
-    // Policy rules are loaded in a later startup step; placeholder until Commit 6.
-    let policy = std::sync::Arc::new(crate::policy::PolicyRules::default());
+    // Load policy rules from the mounted volume (or use empty rules if disabled/absent).
+    let policy = {
+        let rules = match &config.policy_path {
+            None => {
+                tracing::info!("policy enforcement disabled (AA_POLICY_PATH set to empty)");
+                crate::policy::PolicyRules::default()
+            }
+            Some(path) => match crate::policy::load_policy(path) {
+                Ok(rules) => {
+                    tracing::info!(
+                        path = %path.display(),
+                        rule_count = rules.rules.len(),
+                        "policy loaded"
+                    );
+                    rules
+                }
+                Err(e) => {
+                    tracing::error!(error = %e, path = %path.display(), "failed to parse policy file — aborting");
+                    std::process::exit(1);
+                }
+            },
+        };
+        std::sync::Arc::new(rules)
+    };
 
     // Build pipeline config and create the inbound channel at the configured depth.
     let pipeline_config = crate::pipeline::PipelineConfig::from_runtime_config(&config);
