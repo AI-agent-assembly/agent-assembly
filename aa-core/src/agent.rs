@@ -28,3 +28,19 @@ pub struct AgentContext {
     /// Extensible key-value metadata attached to this execution context.
     pub metadata: BTreeMap<&'static str, String>,
 }
+
+#[cfg(all(feature = "alloc", feature = "std"))]
+impl AgentContext {
+    /// Construct an [`AgentContext`] stamped at the current wall-clock time.
+    ///
+    /// `metadata` is initialised empty; insert entries after construction.
+    pub fn now(agent_id: AgentId, session_id: SessionId, pid: u32) -> Self {
+        Self {
+            started_at: Timestamp::from(std::time::SystemTime::now()),
+            agent_id,
+            session_id,
+            pid,
+            metadata: BTreeMap::new(),
+        }
+    }
+}
