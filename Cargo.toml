@@ -5,6 +5,7 @@ members = [
     "aa-runtime",
     "aa-ebpf",
     "aa-proxy",
+    "aa-ffi-go",
     "aa-ffi-python",
     "aa-ffi-node",
     "aa-wasm",
