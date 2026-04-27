@@ -300,6 +300,72 @@ pub enum AuditLogError {
 }
 
 // ---------------------------------------------------------------------------
+// AuditLog
+// ---------------------------------------------------------------------------
+
+/// A session-scoped, append-only sequence of [`AuditEntry`] records that
+/// enforces monotonic sequence numbers and hash-chain continuity on every append.
+///
+/// ## Invariants
+///
+/// - Every entry's `seq` equals the previous entry's `seq + 1` (genesis: `seq = 0`).
+/// - Every entry's `previous_hash` equals the preceding entry's `entry_hash`
+///   (genesis entry uses `[0u8; 32]`).
+///
+/// Both invariants are checked by [`AuditLog::push`] at append time.
+/// [`AuditLog::verify_chain`] re-validates them across the entire stored log.
+pub struct AuditLog {
+    agent_id: AgentId,
+    session_id: SessionId,
+    entries: alloc::vec::Vec<AuditEntry>,
+    /// The `seq` value the next appended entry must carry.
+    next_seq: u64,
+    /// The `entry_hash` of the last appended entry; `[0u8; 32]` before any entry.
+    last_hash: [u8; 32],
+}
+
+impl AuditLog {
+    /// Create a new, empty [`AuditLog`] for the given agent and session.
+    ///
+    /// The log starts with `next_seq = 0` and `last_hash = [0u8; 32]` (the
+    /// genesis previous-hash sentinel).
+    pub fn new(agent_id: AgentId, session_id: SessionId) -> Self {
+        Self {
+            agent_id,
+            session_id,
+            entries: alloc::vec::Vec::new(),
+            next_seq: 0,
+            last_hash: [0u8; 32],
+        }
+    }
+
+    /// Read-only view of all entries in append order.
+    pub fn entries(&self) -> &[AuditEntry] {
+        &self.entries
+    }
+
+    /// Number of entries currently stored in the log.
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    /// Returns `true` if the log contains no entries.
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+
+    /// The agent identifier associated with this log.
+    pub fn agent_id(&self) -> AgentId {
+        self.agent_id
+    }
+
+    /// The session identifier associated with this log.
+    pub fn session_id(&self) -> SessionId {
+        self.session_id
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
