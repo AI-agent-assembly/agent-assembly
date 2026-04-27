@@ -7,6 +7,7 @@ repository.workspace = true
 description = "Pure domain logic for Agent Assembly — no_std compatible"
 
 [dependencies]
+cfg-if = "1"
 
 [lints]
 workspace = true
