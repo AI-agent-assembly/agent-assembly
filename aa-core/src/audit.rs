@@ -7,6 +7,7 @@
 //! [`alloc::string::String`].
 
 use alloc::string::String;
+use sha2::{Digest, Sha256};
 
 use crate::{AgentId, SessionId};
 
@@ -137,5 +138,33 @@ impl AuditEntry {
     #[inline]
     pub fn entry_hash(&self) -> &[u8; 32] {
         &self.entry_hash
+    }
+
+    // -----------------------------------------------------------------------
+    // Private helpers
+    // -----------------------------------------------------------------------
+
+    /// Canonical SHA-256 computation over all tamper-meaningful fields.
+    ///
+    /// Field order and encoding are fixed — see [`AuditEntry::new`] for the
+    /// documented byte sequence.
+    fn compute_hash(
+        seq: u64,
+        timestamp_ns: u64,
+        event_type: &AuditEventType,
+        agent_id: &AgentId,
+        session_id: &SessionId,
+        previous_hash: &[u8; 32],
+        payload: &str,
+    ) -> [u8; 32] {
+        let mut hasher = Sha256::new();
+        hasher.update(seq.to_be_bytes());
+        hasher.update(timestamp_ns.to_be_bytes());
+        hasher.update((*event_type as u32).to_be_bytes());
+        hasher.update(agent_id.as_bytes());
+        hasher.update(session_id.as_bytes());
+        hasher.update(previous_hash);
+        hasher.update(payload.as_bytes());
+        hasher.finalize().into()
     }
 }
