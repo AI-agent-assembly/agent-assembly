@@ -1,0 +1,14 @@
+{
+  "description": "RegisterRequest — full fields: agent identity, framework, risk tier, tool list, public key, metadata",
+  "message_type": "RegisterRequest",
+  "fields": {
+    "agent_id": { "org_id": "acme", "team_id": "ml", "agent_id": "agent-001" },
+    "name": "my-research-agent",
+    "framework": "langgraph",
+    "version": "1.2.3",
+    "risk_tier": "MEDIUM",
+    "tool_names": ["search", "code_exec", "file_read"],
+    "public_key": "ed25519:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+    "metadata": { "env": "staging", "git_commit": "abc1234" }
+  }
+}

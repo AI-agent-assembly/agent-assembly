@@ -49,6 +49,20 @@ pub struct FindingSpec {
     pub offset: usize,
 }
 
+/// A single session lifecycle test vector.
+///
+/// `message_type` names the proto message under test (e.g. `"RegisterRequest"`).
+/// `fields` carries the representative field values in language-neutral JSON.
+/// The Rust test in `tests/session_lifecycle.rs` matches on `message_type`,
+/// constructs the proto message from `fields`, round-trips through prost, and
+/// verifies the specified fields survive encoding / decoding.
+#[derive(Debug, serde::Deserialize)]
+pub struct SessionLifecycleVector {
+    pub description: String,
+    pub message_type: String,
+    pub fields: serde_json::Value,
+}
+
 // ── VectorLoader ─────────────────────────────────────────────────────────────
 
 /// Loads all JSON test vectors from a directory.

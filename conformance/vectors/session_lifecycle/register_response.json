@@ -1,0 +1,9 @@
+{
+  "description": "RegisterResponse — credential token issued, policy assigned, heartbeat interval set",
+  "message_type": "RegisterResponse",
+  "fields": {
+    "credential_token": "tok-abcdef-123456",
+    "assigned_policy": "policy:default-medium-v1",
+    "heartbeat_interval_sec": 30
+  }
+}
