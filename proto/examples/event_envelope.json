@@ -1,0 +1,83 @@
+{
+  "_service": "Internal Event Bus (Pub/Sub or Kafka)",
+  "_message": "assembly.event.v1.EnvelopedEvent",
+  "_direction": "gateway → notification-service / analytics-service (paths ⑤ ⑥)",
+  "_note": "Not a gRPC service — this is the envelope message published to the event bus. Four payload variants shown.",
+  "examples": [
+    {
+      "_variant": "audit_event — forwarded audit record",
+      "eventId": "01HZAB1234567890000EEE",
+      "eventType": "audit.action",
+      "publishedAt": { "unixMs": 1745740830000 },
+      "source": "aa-gateway",
+      "auditEvent": {
+        "eventId": "01HZAB1234567890000AAA",
+        "agentId": {
+          "orgId": "acme-corp",
+          "teamId": "platform-team",
+          "agentId": "did:key:z6Mkm5rByiqq5UNbvPFPfXtGJwdg2kD1T"
+        },
+        "occurredAt": { "unixMs": 1745740812000 },
+        "actionType": "LLM_CALL",
+        "decision": "ALLOW",
+        "traceId": "01HZAB1234567890ABCDEF",
+        "spanId": "01HZAB1234567890000001"
+      }
+    },
+    {
+      "_variant": "alert_triggered — policy violation alert",
+      "eventId": "01HZAB1234567890000FFF",
+      "eventType": "alert.triggered",
+      "publishedAt": { "unixMs": 1745740815000 },
+      "source": "aa-gateway",
+      "alert": {
+        "alertRuleId": "rule:no-file-write-prod",
+        "alertName": "Blocked file write to /etc",
+        "severity": "HIGH",
+        "agentId": {
+          "orgId": "acme-corp",
+          "teamId": "platform-team",
+          "agentId": "did:key:z6Mkm5rByiqq5UNbvPFPfXtGJwdg2kD1T"
+        },
+        "description": "Agent attempted to write to /etc/hosts which is blocked",
+        "context": { "path": "/etc/hosts", "operation": "write" }
+      }
+    },
+    {
+      "_variant": "approval_requested — human-in-the-loop",
+      "eventId": "01HZAB1234567890000GGG",
+      "eventType": "approval.requested",
+      "publishedAt": { "unixMs": 1745740840000 },
+      "source": "aa-gateway",
+      "approvalRequest": {
+        "approvalId": "appr_01HZ9GQPK5VFNMZR",
+        "agentId": {
+          "orgId": "acme-corp",
+          "teamId": "platform-team",
+          "agentId": "did:key:z6Mkm5rByiqq5UNbvPFPfXtGJwdg2kD1T"
+        },
+        "actionSummary": "Agent wants to execute: rm -rf /tmp/workspace",
+        "actionContextJson": "eyJjb21tYW5kIjoicm0iLCJhcmdzIjpbIi1yZiIsIi90bXAvd29ya3NwYWNlIl19",
+        "expiresAtUnixMs": 1745740900000,
+        "notifyUserIds": ["user_alice", "user_bob"]
+      }
+    },
+    {
+      "_variant": "budget_alert — spend threshold hit",
+      "eventId": "01HZAB1234567890000HHH",
+      "eventType": "budget.threshold_hit",
+      "publishedAt": { "unixMs": 1745740900000 },
+      "source": "aa-gateway",
+      "budgetAlert": {
+        "agentId": {
+          "orgId": "acme-corp",
+          "teamId": "platform-team",
+          "agentId": "did:key:z6Mkm5rByiqq5UNbvPFPfXtGJwdg2kD1T"
+        },
+        "currentSpend": 8.42,
+        "budgetLimit": 10.00,
+        "percentUsed": 84
+      }
+    }
+  ]
+}
