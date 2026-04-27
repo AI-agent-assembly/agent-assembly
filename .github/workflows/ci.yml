@@ -6,6 +6,7 @@ on:
     paths:
       - "aa-*/**"
       - "proto/**"
+      - "conformance/**"
       - "Cargo.toml"
       - "Cargo.lock"
       - "deny.toml"
@@ -16,6 +17,7 @@ on:
     paths:
       - "aa-*/**"
       - "proto/**"
+      - "conformance/**"
       - "Cargo.toml"
       - "Cargo.lock"
       - "deny.toml"
@@ -217,3 +219,66 @@ jobs:
           fetch-depth: 0
       - name: Check compatibility matrix is updated when versions change
         run: bash .ci/check-compatibility-matrix.sh
+
+  conformance:
+    name: Rust conformance suite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install protobuf compiler
+        run: sudo apt-get install -y protobuf-compiler
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+      - name: Run conformance suite (all categories)
+        run: cargo test -p conformance
+
+  # ---------------------------------------------------------------------------
+  # SDK conformance placeholders — remove continue-on-error when SDK is ready
+  # ---------------------------------------------------------------------------
+
+  conformance-python:
+    name: Python SDK conformance (placeholder)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install runner dependencies
+        run: pip install -r conformance/runner/requirements.txt
+      - name: Run Python conformance runner
+        run: python conformance/runner/runner.py
+        # AA_SDK_MODULE is unset — runner uses no-op stub and exits 1 until a
+        # real SDK implementation is wired up. Set AA_SDK_MODULE in a secrets or
+        # env block when the Python SDK ships.
+
+  conformance-node:
+    name: Node.js SDK conformance (placeholder)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Node.js SDK conformance (not yet implemented)
+        run: |
+          echo "Node.js SDK conformance runner not yet implemented."
+          echo "Add a conformance/runner/runner.js and wire it up here."
+          exit 0
+
+  conformance-go:
+    name: Go SDK conformance (placeholder)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+      - name: Go SDK conformance (not yet implemented)
+        run: |
+          echo "Go SDK conformance runner not yet implemented."
+          echo "Add a conformance/runner/runner.go and wire it up here."
+          exit 0
