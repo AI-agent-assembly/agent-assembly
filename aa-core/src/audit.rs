@@ -251,3 +251,27 @@ impl AuditEntry {
         hasher.finalize().into()
     }
 }
+
+// ---------------------------------------------------------------------------
+// Display
+// ---------------------------------------------------------------------------
+
+impl core::fmt::Display for AuditEntry {
+    /// Human-readable one-line representation suitable for log output.
+    ///
+    /// Format: `[seq=N ts=T agent=HEX session=HEX event=TypeName]`
+    ///
+    /// `payload` is omitted from `Display` — it may be arbitrarily large.
+    /// Use [`AuditEntry::payload`] to access the full payload string.
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "[seq={} ts={} agent=", self.seq, self.timestamp_ns)?;
+        for b in self.agent_id.as_bytes() {
+            write!(f, "{:02x}", b)?;
+        }
+        write!(f, " session=")?;
+        for b in self.session_id.as_bytes() {
+            write!(f, "{:02x}", b)?;
+        }
+        write!(f, " event={}]", self.event_type.as_str())
+    }
+}
