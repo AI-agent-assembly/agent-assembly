@@ -299,6 +299,19 @@ pub enum AuditLogError {
     },
 }
 
+impl core::fmt::Display for AuditLogError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::SequenceGap { expected, got } => {
+                write!(f, "audit log sequence gap: expected seq={expected}, got seq={got}")
+            }
+            Self::HashChainBroken { at_seq } => {
+                write!(f, "audit log hash chain broken at seq={at_seq}")
+            }
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // AuditLog
 // ---------------------------------------------------------------------------
