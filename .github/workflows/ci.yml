@@ -158,3 +158,23 @@ jobs:
             --target "$TARGET" \
             --no-default-features \
             --features alloc
+
+  buf-lint:
+    name: Proto lint & breaking check (buf)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # full history needed for buf breaking --against
+      - uses: bufbuild/buf-setup-action@v1.50.0
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Lint proto files
+        run: buf lint
+        working-directory: proto
+      - name: Check breaking changes against master
+        if: github.event_name == 'pull_request'
+        run: |
+          buf breaking \
+            --against ".git#branch=origin/master,subdir=proto"
+        working-directory: proto
