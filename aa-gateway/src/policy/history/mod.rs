@@ -4,5 +4,7 @@
 //! enabling rollback to any previous version.
 
 pub mod meta;
+pub mod snapshot;
 
 pub use meta::PolicyVersionMeta;
+pub use snapshot::PolicySnapshot;
