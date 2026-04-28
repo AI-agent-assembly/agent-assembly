@@ -196,6 +196,16 @@ impl PolicyValidator {
             }
         }
 
+        // Validate timezone string if provided
+        if let Some(tz_str) = &raw.timezone {
+            if tz_str.parse::<chrono_tz::Tz>().is_err() {
+                errors.push(ValidationError::new(
+                    "budget.timezone",
+                    format!("'{}' is not a valid IANA timezone name", tz_str),
+                ));
+            }
+        }
+
         Some(BudgetPolicy {
             daily_limit_usd: raw.daily_limit_usd,
             timezone: raw.timezone,
@@ -389,6 +399,27 @@ mod tests {
         let out = PolicyValidator::from_yaml(yaml).unwrap();
         let bp = out.document.budget.unwrap();
         assert_eq!(bp.daily_limit_usd, Some(50.0));
+    }
+
+    #[test]
+    fn budget_timezone_valid_string_round_trips() {
+        let yaml = "budget:\n  daily_limit_usd: 10.0\n  timezone: \"Asia/Tokyo\"\n";
+        let out = PolicyValidator::from_yaml(yaml).unwrap();
+        let bp = out.document.budget.unwrap();
+        assert_eq!(bp.timezone, Some("Asia/Tokyo".to_string()));
+    }
+
+    #[test]
+    fn budget_timezone_invalid_string_is_an_error() {
+        let yaml = "budget:\n  daily_limit_usd: 10.0\n  timezone: \"Not/AValidZone\"\n";
+        let result = PolicyValidator::from_yaml(yaml);
+        assert!(result.is_err(), "expected validation error for invalid timezone");
+        let errors = result.unwrap_err();
+        assert!(
+            errors.iter().any(|e| e.field == "budget.timezone"),
+            "expected error mentioning budget.timezone, got: {:?}",
+            errors
+        );
     }
 
     // ── Schedule active_hours validation ───────────────────────────────────
