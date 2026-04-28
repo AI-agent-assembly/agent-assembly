@@ -1,0 +1,81 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema",
+  "$id": "https://agent-assembly.github.io/schemas/simulation/v1/simulation-report.schema.json",
+  "title": "SimulationReport",
+  "description": "Schema for the output of `aasm policy simulate`. Contains aggregate statistics and per-event outcomes from a dry-run policy evaluation.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "total_events",
+    "denied",
+    "allowed",
+    "approval_required",
+    "flagged_outcomes"
+  ],
+  "properties": {
+    "total_events": {
+      "description": "Total number of events evaluated during the simulation.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "denied": {
+      "description": "Number of events that would have been denied by the policy.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "allowed": {
+      "description": "Number of events that would have been allowed by the policy.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "approval_required": {
+      "description": "Number of events that would have required human approval.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "budget_impact_usd": {
+      "description": "Estimated budget impact in USD, if a budget policy section is present. Null when no budget policy is configured.",
+      "type": ["number", "null"]
+    },
+    "flagged_outcomes": {
+      "description": "Per-event outcomes for events that were not simply allowed (denied or approval-required).",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/EventOutcome"
+      }
+    }
+  },
+  "$defs": {
+    "EventOutcome": {
+      "description": "The outcome of evaluating a single event against a policy in dry-run mode.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "event_index",
+        "action",
+        "decision",
+        "reason"
+      ],
+      "properties": {
+        "event_index": {
+          "description": "Zero-based index of the event in the input sequence.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "action": {
+          "description": "Human-readable description of the action that was evaluated.",
+          "type": "string"
+        },
+        "decision": {
+          "description": "The policy decision for this event.",
+          "type": "string",
+          "enum": ["allow", "deny", "requires_approval"]
+        },
+        "reason": {
+          "description": "Explanation of why this decision was reached.",
+          "type": "string"
+        }
+      }
+    }
+  }
+}

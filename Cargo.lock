@@ -19,7 +19,10 @@ name = "aa-cli"
 version = "0.0.1"
 dependencies = [
  "aa-core",
+ "aa-gateway",
  "clap",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]
@@ -90,6 +93,7 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "tempfile",
+ "thiserror 2.0.18",
  "tokio",
  "tracing",
 ]
