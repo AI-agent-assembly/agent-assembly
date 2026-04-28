@@ -99,10 +99,31 @@ impl UprobeManager {
 
 /// Find the path to the OpenSSL shared library for the given PID.
 ///
-/// Scans `/proc/<pid>/maps` for a line containing `libssl.so`.
+/// Scans `/proc/<pid>/maps` (or `/proc/self/maps` when `target_pid` is
+/// `None`) for any mapped region whose pathname contains `libssl.so`.
+/// Supports both OpenSSL 1.1.x (`libssl.so.1.1`) and 3.x (`libssl.so.3`).
+///
+/// # Errors
+///
+/// Returns [`EbpfError::OpenSslNotFound`] if no `libssl` mapping is present.
+/// Returns [`EbpfError::Io`] if `/proc/<pid>/maps` cannot be read.
 #[cfg(target_os = "linux")]
 fn find_openssl_path(target_pid: Option<i32>) -> Result<String, EbpfError> {
-    // TODO(AAASM-37): implement /proc/<pid>/maps parsing to find libssl path.
-    let _ = target_pid;
-    todo!("find OpenSSL library path for target PID")
+    let pid_str = target_pid.map(|p| p.to_string()).unwrap_or_else(|| "self".to_string());
+    let maps_path = format!("/proc/{}/maps", pid_str);
+
+    let content = std::fs::read_to_string(&maps_path)?;
+
+    for line in content.lines() {
+        // Each maps line: addr-addr perms offset dev inode [pathname]
+        // The pathname is the last whitespace-separated field and may be
+        // absent for anonymous mappings — skip those.
+        if let Some(pathname) = line.split_whitespace().last() {
+            if pathname.contains("libssl.so") {
+                return Ok(pathname.to_string());
+            }
+        }
+    }
+
+    Err(EbpfError::OpenSslNotFound { pid: target_pid })
 }
