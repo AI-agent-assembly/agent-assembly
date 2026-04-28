@@ -22,9 +22,6 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 aya     = { version = "0.13", features = ["async_tokio"] }
 aya-log = "0.2"
 
-[build-dependencies]
-aya-build = "0.1"
-
 [features]
 # Enables integration tests that load BPF programs into a live kernel.
 # Requires root (CAP_BPF + CAP_PERFMON). Only meaningful on Linux.
