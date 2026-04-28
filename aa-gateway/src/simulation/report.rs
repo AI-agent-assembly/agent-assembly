@@ -14,3 +14,20 @@ pub struct EventOutcome {
     /// Explanation of why this decision was reached.
     pub reason: String,
 }
+
+/// Aggregate report produced by a simulation run.
+#[derive(Debug, Clone, Serialize)]
+pub struct SimulationReport {
+    /// Total number of events evaluated.
+    pub total_events: usize,
+    /// Number of events that would have been denied.
+    pub denied: usize,
+    /// Number of events that would have been allowed.
+    pub allowed: usize,
+    /// Number of events that would have required human approval.
+    pub approval_required: usize,
+    /// Estimated budget impact in USD (if budget policy is present).
+    pub budget_impact_usd: Option<f64>,
+    /// Per-event outcomes for events that were not simply allowed.
+    pub flagged_outcomes: Vec<EventOutcome>,
+}
