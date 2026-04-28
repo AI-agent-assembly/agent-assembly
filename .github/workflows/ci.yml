@@ -286,7 +286,9 @@ jobs:
         # CARGO_HOME, RUSTUP_HOME, and PATH so cargo uses the already-installed
         # nightly toolchain and bpf-linker.
         working-directory: ${{ github.workspace }}
-        run: sudo -E cargo test -p aa-ebpf --features integration-test --test load_hello -- --nocapture
+        # sudo strips PATH, so cargo (installed by rustup into ~/.cargo/bin) is not found.
+        # Passing PATH explicitly via sudo env makes the rustup toolchain visible to root.
+        run: sudo env "PATH=$PATH" cargo test -p aa-ebpf --features integration-test --test load_hello -- --nocapture
 
   conformance:
     name: Rust conformance suite

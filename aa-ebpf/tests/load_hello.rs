@@ -5,7 +5,7 @@
 //   - feature = "integration-test" — opted-in explicitly; requires root (CAP_BPF)
 //
 // Run locally (Linux, as root or via sudo):
-//   sudo -E cargo test -p aa-ebpf --features integration-test --test load_hello -- --nocapture
+//   sudo env "PATH=$PATH" cargo test -p aa-ebpf --features integration-test --test load_hello -- --nocapture
 #![cfg(all(target_os = "linux", feature = "integration-test"))]
 
 use aa_ebpf::AA_HELLO_BPF;
@@ -21,8 +21,8 @@ use aya::{programs::KProbe, Ebpf};
 /// kernel is left clean after the test regardless of pass/fail.
 #[test]
 fn aa_hello_loads_and_attaches() {
-    let mut bpf = Ebpf::load(AA_HELLO_BPF)
-        .expect("failed to load aa-hello BPF program — ensure the test is running as root");
+    let mut bpf =
+        Ebpf::load(AA_HELLO_BPF).expect("failed to load aa-hello BPF program — ensure the test is running as root");
 
     let program: &mut KProbe = bpf
         .program_mut("aa_hello")
