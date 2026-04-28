@@ -7,6 +7,7 @@
 pub mod approval;
 pub mod config;
 pub mod correlation;
+pub mod gateway_client;
 pub mod health;
 pub mod ipc;
 pub mod lifecycle;
