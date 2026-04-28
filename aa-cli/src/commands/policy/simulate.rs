@@ -4,6 +4,10 @@ use std::path::PathBuf;
 
 use clap::Args;
 
+// Gateway types will be used when simulation logic is implemented.
+#[allow(unused_imports)]
+use aa_gateway::simulation::{SimulationEngine, SimulationReport};
+
 /// Arguments for `aasm policy simulate`.
 #[derive(Args)]
 pub struct SimulateArgs {
