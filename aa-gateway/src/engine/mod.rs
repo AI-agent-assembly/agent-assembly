@@ -714,4 +714,29 @@ mod tests {
         assert!(result.credential_findings.is_empty());
         assert!(result.redacted_payload.is_none());
     }
+
+    #[test]
+    fn scan_100kb_payload_within_ci_time_bound() {
+        // The scanner must process a 100 KB clean payload in under 100 ms.
+        // This guards against O(n²) regressions in the Aho-Corasick or regex passes.
+        use std::time::Instant;
+
+        let engine = make_engine(empty_doc());
+        let ctx = make_ctx();
+        // Build a ~100 KB payload of benign repeated text (no credentials).
+        let payload = "the quick brown fox jumps over the lazy dog ".repeat(2_500); // ~110 KB
+        let action = tool_call("any", &payload);
+
+        let start = Instant::now();
+        let result = engine.evaluate(&ctx, &action);
+        let elapsed = start.elapsed();
+
+        assert_eq!(result.decision, PolicyResult::Allow);
+        assert!(result.credential_findings.is_empty());
+        assert!(
+            elapsed.as_millis() < 100,
+            "scan took {}ms — exceeds 100ms CI budget",
+            elapsed.as_millis()
+        );
+    }
 }
