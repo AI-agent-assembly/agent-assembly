@@ -210,7 +210,7 @@ fn eval_clause_safe(field: &FieldRef, op: &OpKind, literal: &LiteralVal, action:
         OpKind::Eq => match literal {
             LiteralVal::Num(rhs) => {
                 if let Ok(lhs_num) = lhs.parse::<f64>() {
-                    (lhs_num - rhs).abs() < f64::EPSILON
+                    lhs_num == *rhs
                 } else {
                     false
                 }
@@ -220,7 +220,7 @@ fn eval_clause_safe(field: &FieldRef, op: &OpKind, literal: &LiteralVal, action:
         OpKind::Ne => match literal {
             LiteralVal::Num(rhs) => {
                 if let Ok(lhs_num) = lhs.parse::<f64>() {
-                    (lhs_num - rhs).abs() >= f64::EPSILON
+                    lhs_num != *rhs
                 } else {
                     true // can't parse as number, so not equal numerically
                 }
@@ -294,9 +294,6 @@ fn eval_tokens(tokens: &[Token], action: &GovernanceAction) -> bool {
     let mut i = 0;
     while i < tokens.len() {
         // Expect: Field Op Literal
-        if i + 2 >= tokens.len() && i + 2 != tokens.len() - 1 {
-            // Could be an error; handle below
-        }
         match (&tokens[i], tokens.get(i + 1), tokens.get(i + 2)) {
             (Token::Field(f), Some(Token::Op(op)), Some(Token::Literal(lit))) => {
                 let clause = Clause {
