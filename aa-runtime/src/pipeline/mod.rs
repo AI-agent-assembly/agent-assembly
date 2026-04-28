@@ -7,9 +7,9 @@ pub use event::{EnrichedEvent, EventSource};
 pub use metrics::PipelineMetrics;
 
 use crate::config::RuntimeConfig;
-use crate::ipc::{IpcFrame, ResponseRouter};
+use crate::ipc::{IpcFrame, IpcResponse, ResponseRouter};
 use crate::policy::PolicyRules;
-use aa_proto::assembly::audit::v1::{audit_event::Detail, AuditEvent};
+use aa_proto::assembly::audit::v1::{audit_event::Detail, AuditEvent, PolicyViolation};
 use aa_proto::assembly::common::v1::ActionType;
 use std::sync::Arc;
 use std::time::Duration;
@@ -59,7 +59,7 @@ pub async fn run(
     metrics: Arc<PipelineMetrics>,
     token: CancellationToken,
     policy: Arc<PolicyRules>,
-    _response_router: ResponseRouter, // wired in commit 6
+    response_router: ResponseRouter,
 ) {
     let mut batch: Vec<EnrichedEvent> = Vec::with_capacity(config.batch_size);
     let mut ticker = tokio::time::interval(config.flush_interval);
@@ -85,6 +85,8 @@ pub async fn run(
                     if is_policy_violation(&enriched, &policy) {
                         // Bypass the batch — emit immediately.
                         ::metrics::counter!("aa_policy_violations_total").increment(1);
+                        // Push a ViolationAlert back to the originating SDK connection.
+                        push_violation_alert(&enriched, &response_router).await;
                         let _ = broadcast_tx.send(enriched);
                     } else {
                         batch.push(enriched);
@@ -146,6 +148,42 @@ fn is_policy_violation(event: &EnrichedEvent, policy: &PolicyRules) -> bool {
         }
     }
     false
+}
+
+/// Extract a `PolicyViolation` from an `EnrichedEvent`, if one is present.
+///
+/// Returns `Some` when the event's detail is `Detail::Violation(_)`.
+/// Returns `None` for rule-matched events that have no embedded violation proto —
+/// in that case the SDK already knows the action was blocked.
+fn extract_violation(event: &EnrichedEvent) -> Option<PolicyViolation> {
+    match &event.inner.detail {
+        Some(Detail::Violation(v)) => Some(v.clone()),
+        _ => None,
+    }
+}
+
+/// Send a `ViolationAlert` to the SDK connection that originated `event`.
+///
+/// Looks up the per-connection sender in the `ResponseRouter`. If the connection
+/// has already disconnected the entry will be absent and the alert is silently
+/// dropped — the connection is gone so there is no point delivering it.
+async fn push_violation_alert(event: &EnrichedEvent, router: &crate::ipc::ResponseRouter) {
+    let Some(violation) = extract_violation(event) else {
+        // Rule-matched events don't carry a PolicyViolation proto; skip.
+        return;
+    };
+    let sender = {
+        let map = router.read().await;
+        map.get(&event.connection_id).cloned()
+    };
+    if let Some(tx) = sender {
+        if tx.send(IpcResponse::ViolationAlert(violation)).await.is_err() {
+            tracing::debug!(
+                connection_id = event.connection_id,
+                "ViolationAlert dropped — connection already closed"
+            );
+        }
+    }
 }
 
 /// Broadcast all events in `batch` and record metrics.
