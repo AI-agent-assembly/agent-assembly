@@ -139,7 +139,7 @@ impl EbpfLoader {
 
         let (tx, rx) = tokio::sync::mpsc::channel::<FileIoEvent>(256);
 
-        let cpus = online_cpus().map_err(|e| EbpfError::EventParse(format!("online_cpus: {e}")))?;
+        let cpus = online_cpus().map_err(|e| EbpfError::EventParse(format!("online_cpus: {e:?}")))?;
         for cpu_id in cpus {
             let mut buf = perf_array
                 .open(cpu_id, None)
