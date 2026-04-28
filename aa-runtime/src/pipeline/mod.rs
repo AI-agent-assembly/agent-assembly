@@ -78,7 +78,7 @@ pub async fn run(
 
             Some(frame) = rx.recv() => {
                 if let IpcFrame::EventReport(event) = frame {
-                    let enriched = enrich(event, &config.agent_id);
+                    let enriched = enrich(event, &config.agent_id, 0); // connection_id wired in commit 4
                     metrics.record_processed(1);
                     ::metrics::counter!("aa_events_received_total").increment(1);
                     if is_policy_violation(&enriched, &policy) {
@@ -106,7 +106,7 @@ pub async fn run(
 }
 
 /// Enrich a raw [`AuditEvent`] with runtime-side metadata.
-fn enrich(event: AuditEvent, agent_id: &str) -> EnrichedEvent {
+fn enrich(event: AuditEvent, agent_id: &str, connection_id: u64) -> EnrichedEvent {
     use std::time::{SystemTime, UNIX_EPOCH};
     let received_at_ms = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -117,6 +117,7 @@ fn enrich(event: AuditEvent, agent_id: &str) -> EnrichedEvent {
         received_at_ms,
         source: EventSource::Sdk,
         agent_id: agent_id.to_string(),
+        connection_id,
     }
 }
 
@@ -184,35 +185,35 @@ mod tests {
     #[test]
     fn enrich_sets_agent_id() {
         let event = make_audit_event();
-        let enriched = enrich(event, "my-agent");
+        let enriched = enrich(event, "my-agent", 0);
         assert_eq!(enriched.agent_id, "my-agent");
     }
 
     #[test]
     fn enrich_sets_received_at_ms_positive() {
         let event = make_audit_event();
-        let enriched = enrich(event, "agent");
+        let enriched = enrich(event, "agent", 0);
         assert!(enriched.received_at_ms > 0);
     }
 
     #[test]
     fn enrich_sets_source_to_sdk() {
         let event = make_audit_event();
-        let enriched = enrich(event, "agent");
+        let enriched = enrich(event, "agent", 0);
         assert_eq!(enriched.source, EventSource::Sdk);
     }
 
     #[test]
     fn is_policy_violation_true_for_violation_detail() {
         let event = make_policy_violation_event();
-        let enriched = enrich(event, "agent");
+        let enriched = enrich(event, "agent", 0);
         assert!(is_policy_violation(&enriched, &PolicyRules::default()));
     }
 
     #[test]
     fn is_policy_violation_false_for_normal_event() {
         let event = make_audit_event(); // detail = None
-        let enriched = enrich(event, "agent");
+        let enriched = enrich(event, "agent", 0);
         assert!(!is_policy_violation(&enriched, &PolicyRules::default()));
     }
 
@@ -230,7 +231,7 @@ mod tests {
     fn flush_broadcasts_all_events_and_records_batch_size() {
         let (tx, mut rx) = broadcast::channel::<EnrichedEvent>(16);
         let metrics = PipelineMetrics::default();
-        let mut batch = vec![enrich(make_audit_event(), "a"), enrich(make_audit_event(), "b")];
+        let mut batch = vec![enrich(make_audit_event(), "a", 0), enrich(make_audit_event(), "b", 0)];
         flush(&mut batch, &tx, &metrics);
         assert!(batch.is_empty());
         assert_eq!(metrics.last_batch_size(), 2);
