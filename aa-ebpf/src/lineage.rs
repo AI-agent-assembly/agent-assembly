@@ -134,3 +134,131 @@ impl Default for ProcessLineageTracker {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn tracker_with_chain() -> ProcessLineageTracker {
+        // Build a 4-level chain: init(1) → agent(100) → python(200) → curl(300)
+        let mut t = ProcessLineageTracker::new();
+        t.insert(1, 0, "/sbin/init".into(), 1000);
+        t.insert(100, 1, "/usr/bin/agent".into(), 2000);
+        t.insert(200, 100, "/usr/bin/python".into(), 3000);
+        t.insert(300, 200, "/usr/bin/curl".into(), 4000);
+        t
+    }
+
+    #[test]
+    fn insert_and_get() {
+        let mut t = ProcessLineageTracker::new();
+        t.insert(42, 1, "/bin/bash".into(), 1000);
+
+        let node = t.get(42).unwrap();
+        assert_eq!(node.pid, 42);
+        assert_eq!(node.ppid, 1);
+        assert_eq!(node.filename, "/bin/bash");
+        assert_eq!(node.timestamp_ns, 1000);
+    }
+
+    #[test]
+    fn get_missing_returns_none() {
+        let t = ProcessLineageTracker::new();
+        assert!(t.get(999).is_none());
+    }
+
+    #[test]
+    fn remove_returns_node() {
+        let mut t = ProcessLineageTracker::new();
+        t.insert(42, 1, "/bin/bash".into(), 1000);
+
+        let removed = t.remove(42).unwrap();
+        assert_eq!(removed.pid, 42);
+        assert!(t.get(42).is_none());
+    }
+
+    #[test]
+    fn remove_missing_returns_none() {
+        let mut t = ProcessLineageTracker::new();
+        assert!(t.remove(999).is_none());
+    }
+
+    #[test]
+    fn ancestry_walks_full_chain() {
+        let t = tracker_with_chain();
+        let chain = t.ancestry(300);
+
+        assert_eq!(chain.len(), 4);
+        assert_eq!(chain[0].pid, 300);
+        assert_eq!(chain[1].pid, 200);
+        assert_eq!(chain[2].pid, 100);
+        assert_eq!(chain[3].pid, 1);
+    }
+
+    #[test]
+    fn ancestry_stops_at_unknown_parent() {
+        let mut t = ProcessLineageTracker::new();
+        t.insert(500, 999, "/bin/orphan".into(), 5000);
+
+        let chain = t.ancestry(500);
+        assert_eq!(chain.len(), 1);
+        assert_eq!(chain[0].pid, 500);
+    }
+
+    #[test]
+    fn ancestry_stops_at_depth_limit() {
+        // Build a chain longer than MAX_LINEAGE_DEPTH (5).
+        let mut t = ProcessLineageTracker::new();
+        for i in 1..=8 {
+            t.insert(i, i.saturating_sub(1), format!("/proc/{i}"), i as u64 * 1000);
+        }
+
+        let chain = t.ancestry(8);
+        assert_eq!(chain.len(), MAX_LINEAGE_DEPTH);
+    }
+
+    #[test]
+    fn ancestry_handles_self_parent_cycle() {
+        let mut t = ProcessLineageTracker::new();
+        t.insert(1, 1, "/sbin/init".into(), 1000);
+
+        let chain = t.ancestry(1);
+        assert_eq!(chain.len(), 1);
+    }
+
+    #[test]
+    fn is_descendant_of_direct_parent() {
+        let t = tracker_with_chain();
+        assert!(t.is_descendant_of(300, 200));
+    }
+
+    #[test]
+    fn is_descendant_of_grandparent() {
+        let t = tracker_with_chain();
+        assert!(t.is_descendant_of(300, 100));
+    }
+
+    #[test]
+    fn is_descendant_of_self() {
+        let t = tracker_with_chain();
+        assert!(t.is_descendant_of(300, 300));
+    }
+
+    #[test]
+    fn is_not_descendant_of_unrelated() {
+        let mut t = tracker_with_chain();
+        t.insert(999, 0, "/unrelated".into(), 9000);
+        assert!(!t.is_descendant_of(300, 999));
+    }
+
+    #[test]
+    fn len_and_is_empty() {
+        let mut t = ProcessLineageTracker::new();
+        assert!(t.is_empty());
+        assert_eq!(t.len(), 0);
+
+        t.insert(1, 0, "/init".into(), 1000);
+        assert!(!t.is_empty());
+        assert_eq!(t.len(), 1);
+    }
+}
