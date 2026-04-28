@@ -14,6 +14,16 @@ pub struct RawNetworkPolicy {
     pub unknown: HashMap<String, serde_yaml::Value>,
 }
 
+/// Raw (unvalidated) deserialization target for the `data` policy section.
+#[derive(Debug, Deserialize)]
+pub struct RawDataPolicy {
+    /// Regex patterns for PII / credential detection.
+    pub sensitive_patterns: Option<Vec<String>>,
+    /// Unknown keys captured for warning emission.
+    #[serde(flatten)]
+    pub unknown: HashMap<String, serde_yaml::Value>,
+}
+
 /// Raw (unvalidated) deserialization target for a single entry in `tools`.
 #[derive(Debug, Deserialize)]
 pub struct RawToolPolicy {
@@ -57,6 +67,22 @@ mod tests {
         let yaml = "{}\n";
         let raw: RawNetworkPolicy = serde_yaml::from_str(yaml).unwrap();
         assert_eq!(raw.allowlist, None);
+    }
+
+    // ── RawDataPolicy ───────────────────────────────────────────────────────
+
+    #[test]
+    fn raw_data_deserializes_sensitive_patterns() {
+        let yaml = "sensitive_patterns:\n  - \"sk-[a-zA-Z0-9]{48}\"\n  - \"\\\\b\\\\d{4}\\\\b\"\n";
+        let raw: RawDataPolicy = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(raw.sensitive_patterns.as_ref().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn raw_data_absent_patterns_is_none() {
+        let yaml = "{}\n";
+        let raw: RawDataPolicy = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(raw.sensitive_patterns, None);
     }
 
     // ── RawToolPolicy ───────────────────────────────────────────────────────
