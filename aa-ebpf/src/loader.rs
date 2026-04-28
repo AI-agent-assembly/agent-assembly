@@ -12,12 +12,19 @@ use crate::maps::PathPattern;
 pub struct EbpfLoader {
     /// Target PID to monitor (and its descendants).
     target_pid: u32,
+    /// Loaded BPF object handle (Linux only).
+    #[cfg(target_os = "linux")]
+    bpf: Option<aya::Ebpf>,
 }
 
 impl EbpfLoader {
     /// Create a new loader targeting the given PID and its descendants.
     pub fn new(target_pid: u32) -> Self {
-        Self { target_pid }
+        Self {
+            target_pid,
+            #[cfg(target_os = "linux")]
+            bpf: None,
+        }
     }
 
     /// Load the compiled eBPF bytecode into the kernel.
@@ -35,7 +42,21 @@ impl EbpfLoader {
         #[cfg(target_os = "linux")]
         {
             tracing::info!(pid = self.target_pid, "loading eBPF programs");
-            // TODO: load bytecode via aya::Ebpf::load() (AAASM-132)
+            let mut bpf = aya::Ebpf::load(crate::AA_FILE_IO_BPF)
+                .map_err(|e| EbpfError::ProgramLoad(e.to_string()))?;
+
+            // Insert the target PID into the PID filter map.
+            let mut pid_filter: aya::maps::HashMap<_, u32, u8> = aya::maps::HashMap::try_from(
+                bpf.map_mut("PID_FILTER")
+                    .ok_or_else(|| EbpfError::ProgramLoad("PID_FILTER map not found".into()))?,
+            )
+            .map_err(|e| EbpfError::ProgramLoad(e.to_string()))?;
+
+            pid_filter
+                .insert(self.target_pid, 1, 0)
+                .map_err(|e| EbpfError::ProgramLoad(e.to_string()))?;
+
+            self.bpf = Some(bpf);
             Ok(())
         }
     }
