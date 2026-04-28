@@ -58,6 +58,15 @@ impl BudgetState {
             date: chrono::Utc::now().date_naive(),
         }
     }
+
+    /// Reset `spent_usd` to zero if `date` is before today UTC. No-op if same day.
+    pub fn maybe_reset(&mut self) {
+        let today = chrono::Utc::now().date_naive();
+        if self.date < today {
+            self.spent_usd = rust_decimal::Decimal::ZERO;
+            self.date = today;
+        }
+    }
 }
 
 #[cfg(test)]
@@ -112,5 +121,31 @@ mod tests {
         let state = BudgetState::new_today();
         assert_eq!(state.spent_usd, Decimal::ZERO);
         assert_eq!(state.date, Utc::now().date_naive());
+    }
+
+    #[test]
+    fn budget_state_maybe_reset_clears_old_date() {
+        use chrono::Utc;
+        use rust_decimal::Decimal;
+        let mut state = BudgetState {
+            spent_usd: Decimal::new(500, 2), // 5.00
+            date: Utc::now().date_naive() - chrono::Duration::days(1),
+        };
+        state.maybe_reset();
+        assert_eq!(state.spent_usd, Decimal::ZERO);
+        assert_eq!(state.date, Utc::now().date_naive());
+    }
+
+    #[test]
+    fn budget_state_maybe_reset_same_day_is_noop() {
+        use chrono::Utc;
+        use rust_decimal::Decimal;
+        let amount = Decimal::new(500, 2); // 5.00
+        let mut state = BudgetState {
+            spent_usd: amount,
+            date: Utc::now().date_naive(),
+        };
+        state.maybe_reset();
+        assert_eq!(state.spent_usd, amount);
     }
 }
