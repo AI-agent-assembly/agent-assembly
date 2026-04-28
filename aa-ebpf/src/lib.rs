@@ -78,5 +78,6 @@ pub mod syscall;
 
 pub use error::EbpfError;
 pub use events::FileIoEvent;
+pub use loader::EbpfLoader;
 pub use maps::{PathPattern, PathVerdict, MAX_PATH_LEN, MAX_PATH_PATTERNS};
 pub use syscall::SyscallKind;
