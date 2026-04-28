@@ -12,3 +12,7 @@ aya-log-ebpf = "0.1"
 [[bin]]
 name = "aa-hello"
 path = "src/main.rs"
+
+# Declare this crate as its own standalone workspace so Cargo does not
+# attempt to include it in the parent agent-assembly workspace.
+[workspace]
