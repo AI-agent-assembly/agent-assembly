@@ -16,7 +16,7 @@ use crate::policy::{PolicyDocument, PolicyValidator};
 #[allow(dead_code)]
 pub(crate) fn start_watcher(
     path: &Path,
-    slot: Arc<ArcSwap<Arc<PolicyDocument>>>,
+    slot: Arc<ArcSwap<PolicyDocument>>,
 ) -> notify::Result<notify::RecommendedWatcher> {
     let path_buf = path.to_path_buf();
     let mut watcher = recommended_watcher(move |res: notify::Result<notify::Event>| {
@@ -24,7 +24,7 @@ pub(crate) fn start_watcher(
             if matches!(event.kind, EventKind::Modify(_)) {
                 if let Ok(yaml) = std::fs::read_to_string(&path_buf) {
                     if let Ok(output) = PolicyValidator::from_yaml(&yaml) {
-                        slot.store(Arc::new(Arc::new(output.document)));
+                        slot.store(Arc::new(output.document));
                     }
                 }
             }
@@ -55,7 +55,7 @@ mod tests {
         tmp.flush().unwrap();
 
         let initial_doc = parse_doc(ALLOW_YAML);
-        let slot = Arc::new(ArcSwap::new(Arc::new(Arc::new(initial_doc.clone()))));
+        let slot = Arc::new(ArcSwap::new(Arc::new(initial_doc.clone())));
 
         let _watcher = start_watcher(tmp.path(), slot.clone()).unwrap();
 
@@ -72,7 +72,7 @@ mod tests {
         std::thread::sleep(Duration::from_secs(1));
 
         let loaded = slot.load();
-        let current_doc: &PolicyDocument = loaded.as_ref().as_ref();
+        let current_doc: &PolicyDocument = &*loaded;
         assert_ne!(
             current_doc, &initial_doc,
             "slot should have been swapped to the new policy"
@@ -90,7 +90,7 @@ mod tests {
         tmp.flush().unwrap();
 
         let initial_doc = parse_doc(ALLOW_YAML);
-        let slot = Arc::new(ArcSwap::new(Arc::new(Arc::new(initial_doc.clone()))));
+        let slot = Arc::new(ArcSwap::new(Arc::new(initial_doc.clone())));
 
         let _watcher = start_watcher(tmp.path(), slot.clone()).unwrap();
 
@@ -107,7 +107,7 @@ mod tests {
         std::thread::sleep(Duration::from_secs(1));
 
         let loaded = slot.load();
-        let current_doc: &PolicyDocument = loaded.as_ref().as_ref();
+        let current_doc: &PolicyDocument = &*loaded;
         assert_eq!(
             current_doc, &initial_doc,
             "slot should still hold the original policy after an invalid parse"

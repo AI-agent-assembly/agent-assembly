@@ -17,7 +17,13 @@ use crate::policy::{PolicyDocument, PolicyValidator};
 
 /// Assembled policy engine that evaluates governance actions through a 7-step pipeline.
 pub struct PolicyEngine {
-    policy: Arc<ArcSwap<Arc<PolicyDocument>>>,
+    policy: Arc<ArcSwap<PolicyDocument>>,
+    /// Pre-compiled regex patterns from the policy's data section.
+    ///
+    /// Compiled once at load time to avoid re-compiling on every `evaluate()` call.
+    // TODO: recompile on hot-reload — currently these patterns reflect the policy at engine
+    // construction time and will not update when the watcher swaps in a new policy document.
+    compiled_patterns: Vec<regex::Regex>,
     rate_state: DashMap<String, Mutex<crate::engine::rate_limit::TokenBucket>>,
     budget: crate::engine::budget::BudgetTracker,
     _watcher: Option<notify::RecommendedWatcher>,
@@ -37,10 +43,22 @@ impl PolicyEngine {
     pub fn load_from_file(path: &Path) -> Result<Self, PolicyLoadError> {
         let yaml = std::fs::read_to_string(path).map_err(PolicyLoadError::Io)?;
         let output = PolicyValidator::from_yaml(&yaml).map_err(PolicyLoadError::Validation)?;
-        let policy_arc = Arc::new(ArcSwap::new(Arc::new(Arc::new(output.document))));
+        let compiled_patterns = output
+            .document
+            .data
+            .as_ref()
+            .map(|dp| {
+                dp.sensitive_patterns
+                    .iter()
+                    .filter_map(|p| regex::Regex::new(p).ok())
+                    .collect()
+            })
+            .unwrap_or_default();
+        let policy_arc = Arc::new(ArcSwap::new(Arc::new(output.document)));
         let watcher = crate::engine::watcher::start_watcher(path, policy_arc.clone()).ok();
         Ok(PolicyEngine {
             policy: policy_arc,
+            compiled_patterns,
             rate_state: DashMap::new(),
             budget: crate::engine::budget::BudgetTracker::new(),
             _watcher: watcher,
@@ -107,7 +125,7 @@ impl PolicyEngine {
                         .rate_state
                         .entry(name.clone())
                         .or_insert_with(|| Mutex::new(rate_limit::TokenBucket::new(limit)));
-                    let mut bucket = entry.lock().unwrap();
+                    let mut bucket = entry.lock().unwrap_or_else(|e| e.into_inner());
                     if !bucket.try_consume() {
                         return aa_core::PolicyResult::Deny {
                             reason: "rate limit exceeded".into(),
@@ -128,23 +146,19 @@ impl PolicyEngine {
             }
         }
 
-        // Stage 6 — Data pattern scan.
-        if let Some(dp) = &policy.data {
-            if !dp.sensitive_patterns.is_empty() {
-                let text = match action {
-                    aa_core::GovernanceAction::ToolCall { args, .. } => args.as_str(),
-                    aa_core::GovernanceAction::FileAccess { path, .. } => path.as_str(),
-                    aa_core::GovernanceAction::NetworkRequest { url, .. } => url.as_str(),
-                    aa_core::GovernanceAction::ProcessExec { command } => command.as_str(),
-                };
-                for pattern in &dp.sensitive_patterns {
-                    if let Ok(re) = regex::Regex::new(pattern) {
-                        if re.is_match(text) {
-                            return aa_core::PolicyResult::Deny {
-                                reason: "sensitive data pattern matched".into(),
-                            };
-                        }
-                    }
+        // Stage 6 — Data pattern scan (uses pre-compiled regexes from load time).
+        if !self.compiled_patterns.is_empty() {
+            let text = match action {
+                aa_core::GovernanceAction::ToolCall { args, .. } => args.as_str(),
+                aa_core::GovernanceAction::FileAccess { path, .. } => path.as_str(),
+                aa_core::GovernanceAction::NetworkRequest { url, .. } => url.as_str(),
+                aa_core::GovernanceAction::ProcessExec { command } => command.as_str(),
+            };
+            for re in &self.compiled_patterns {
+                if re.is_match(text) {
+                    return aa_core::PolicyResult::Deny {
+                        reason: "sensitive data pattern matched".into(),
+                    };
                 }
             }
         }
@@ -206,8 +220,19 @@ mod tests {
     }
 
     fn make_engine(doc: PolicyDocument) -> PolicyEngine {
+        let compiled_patterns = doc
+            .data
+            .as_ref()
+            .map(|dp| {
+                dp.sensitive_patterns
+                    .iter()
+                    .filter_map(|p| regex::Regex::new(p).ok())
+                    .collect()
+            })
+            .unwrap_or_default();
         PolicyEngine {
-            policy: Arc::new(ArcSwap::new(Arc::new(Arc::new(doc)))),
+            policy: Arc::new(ArcSwap::new(Arc::new(doc))),
+            compiled_patterns,
             rate_state: DashMap::new(),
             budget: budget::BudgetTracker::new(),
             _watcher: None,
