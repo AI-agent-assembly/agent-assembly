@@ -4,6 +4,7 @@
 
 pub mod document;
 pub mod error;
+pub(crate) mod expr;
 pub mod raw;
 pub mod validator;
 

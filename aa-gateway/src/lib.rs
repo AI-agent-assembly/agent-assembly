@@ -4,4 +4,7 @@
 //! registry, evaluates governance policies, routes enforcement decisions
 //! back to proxies and SDK shims, and writes the audit trail.
 
+pub mod engine;
 pub mod policy;
+
+pub use engine::{PolicyEngine, PolicyLoadError};
