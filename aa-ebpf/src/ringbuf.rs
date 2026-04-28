@@ -7,8 +7,11 @@
 use std::mem;
 
 use aa_ebpf_common::{exec::ExecEvent, file::FileEvent, tls::TlsCaptureEvent};
-#[cfg(target_os = "linux")]
-use aya::Ebpf;
+use aya::{
+    maps::{MapData, RingBuf},
+    Ebpf,
+};
+use tokio::io::unix::AsyncFd;
 
 use crate::error::EbpfError;
 
@@ -27,44 +30,69 @@ pub enum EbpfEvent {
 ///
 /// Create via [`RingBufReader::new`], then poll with [`RingBufReader::next`]
 /// inside a Tokio task.
-#[allow(dead_code)]
+///
+/// The reader keeps the [`Ebpf`] handle alive so that all loaded programs and
+/// maps remain in the kernel for the lifetime of the reader.
 pub struct RingBufReader {
-    bpf: Ebpf,
+    /// Keeps loaded BPF programs alive; dropping this detaches all probes.
+    _bpf: Ebpf,
+    /// Async-ready wrapper around the `EVENTS` ring buffer map.
+    async_fd: AsyncFd<RingBuf<MapData>>,
 }
 
 impl RingBufReader {
     /// Construct a `RingBufReader` from a loaded [`Ebpf`] handle.
     ///
-    /// Looks up the `EVENTS` ring buffer map in the loaded object.
+    /// Takes ownership of `bpf`, extracts the `EVENTS` ring buffer map, and
+    /// wraps it in a [`tokio::io::unix::AsyncFd`] for non-blocking polling.
     ///
     /// # Errors
     ///
     /// Returns [`EbpfError::MapNotFound`] if the `EVENTS` map is absent.
-    pub fn new(bpf: Ebpf) -> Result<Self, EbpfError> {
-        // TODO(AAASM-37/38/39): obtain AsyncRingBuf handle from the EVENTS map.
-        Ok(Self { bpf })
+    /// Returns [`EbpfError::Map`] if the map cannot be interpreted as a ring buffer.
+    /// Returns [`EbpfError::Io`] if the `AsyncFd` registration fails.
+    pub fn new(mut bpf: Ebpf) -> Result<Self, EbpfError> {
+        let map = bpf
+            .take_map("EVENTS")
+            .ok_or_else(|| EbpfError::MapNotFound { name: "EVENTS".into() })?;
+        let ring_buf = RingBuf::try_from(map)?;
+        let async_fd = AsyncFd::new(ring_buf)?;
+        Ok(Self { _bpf: bpf, async_fd })
     }
 
     /// Read the next event from the ring buffer (async).
+    ///
+    /// Waits until the kernel signals that data is available, then drains one
+    /// entry, copies its bytes, and returns the parsed event.
     ///
     /// Returns `None` when the ring buffer has been closed (loader shut down).
     ///
     /// # Errors
     ///
+    /// Returns [`EbpfError::Io`] if the async wait fails.
     /// Returns [`EbpfError::EventSize`] if the raw bytes cannot be
     /// interpreted as a known event type.
     pub async fn next(&mut self) -> Result<Option<EbpfEvent>, EbpfError> {
-        // TODO(AAASM-37/38/39): await next raw bytes, discriminate by size,
-        // cast to the correct event type, and return.
-        todo!("read next event from BPF ring buffer")
+        loop {
+            let mut guard = self.async_fd.readable_mut().await?;
+            let rb = guard.get_inner_mut();
+            // Copy the raw bytes out before releasing the borrow on `guard`.
+            let raw: Option<Vec<u8>> = rb.next().map(|item| item.to_vec());
+            guard.clear_ready();
+            if let Some(bytes) = raw {
+                return Ok(Some(parse_event(&bytes)?));
+            }
+            // Ring buffer was readable but contained no complete record yet —
+            // loop and wait for the next readability notification.
+        }
     }
 }
 
 /// Discriminate a raw byte slice by size and copy it into an owned event.
 ///
 /// Sizes (from `#[repr(C)]` layout):
-/// - [`TlsCaptureEvent`]: 4 + 8 + 4 + 4 + 4 + 4 + 1 + 7 + 4096 = 4112 bytes
-/// - [`FileEvent`]:  8 + 4 + 4 + 4 + 4 + 3 + 256 = 283... see struct for exact
+/// - [`TlsCaptureEvent`]: 8 + 4 + 4 + 4 + 4 + 1 + 7 + 4096 = 4128 bytes
+/// - [`FileEvent`]:  8 + 4 + 4 + 4 + 1 + 3 + 256 = 280 bytes
 /// - [`ExecEvent`]:  8 + 4 + 4 + 4 + 4 + 256 + 512 = 792 bytes
 fn parse_event(bytes: &[u8]) -> Result<EbpfEvent, EbpfError> {
     match bytes.len() {

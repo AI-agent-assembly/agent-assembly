@@ -77,3 +77,16 @@ pub static AA_HELLO_BPF: &[u8] = aya::include_bytes_aligned!(concat!(
     // Binary name is "aa-hello" (from Cargo.toml [[bin]].name).
     "/aa-ebpf-probes/bpfel-unknown-none/release/aa-hello"
 ));
+
+/// Compiled BPF bytecode for the TLS uprobe programs (AAASM-37).
+///
+/// Embedded from `aa-ebpf-probes/src/ssl_probes.rs` at build time.
+/// Contains three programs: `ssl_write`, `ssl_read_entry`, `ssl_read_exit`.
+/// Pass this slice to [`aya::Ebpf::load`] to obtain a handle.
+///
+/// Only meaningful on Linux — on other platforms this constant is absent.
+#[cfg(target_os = "linux")]
+pub static AA_TLS_BPF: &[u8] = aya::include_bytes_aligned!(concat!(
+    env!("OUT_DIR"),
+    "/aa-ebpf-probes/bpfel-unknown-none/release/aa-tls-probes"
+));
