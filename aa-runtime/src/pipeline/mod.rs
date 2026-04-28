@@ -57,6 +57,7 @@ impl PipelineConfig {
 /// enriches and batches events, and fans them out via `broadcast_tx`.
 ///
 /// Returns when `token` is cancelled — flushing any pending batch first.
+#[allow(clippy::too_many_arguments)]
 pub async fn run(
     mut rx: mpsc::Receiver<(u64, IpcFrame)>,
     broadcast_tx: broadcast::Sender<EnrichedEvent>,
