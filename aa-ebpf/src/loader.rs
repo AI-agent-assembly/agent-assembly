@@ -350,6 +350,116 @@ impl FileIoLoader {
     }
 }
 
+// ── Exec tracepoint loader (AAASM-39) ──────────────────────────────────
+
+use crate::lineage::ProcessLineageTracker;
+use crate::shell_detect::ShellDetector;
+
+/// Manages the lifecycle of exec tracepoint eBPF programs: loading bytecode,
+/// attaching tracepoints, reading events, and feeding the lineage tracker.
+///
+/// The exec loader is the primary entry point for userspace interaction
+/// with the process exec monitoring subsystem.
+pub struct ExecLoader {
+    /// Target PID to monitor (and its descendants).
+    target_pid: u32,
+    /// Process lineage tracker, populated by exec events.
+    lineage: ProcessLineageTracker,
+    /// Shell injection pattern detector.
+    detector: ShellDetector,
+    /// Loaded BPF object handle (Linux only).
+    #[cfg(target_os = "linux")]
+    bpf: Option<aya::Ebpf>,
+}
+
+impl ExecLoader {
+    /// Create a new exec loader targeting the given PID and its descendants.
+    pub fn new(target_pid: u32) -> Self {
+        Self {
+            target_pid,
+            lineage: ProcessLineageTracker::new(),
+            detector: ShellDetector::new(),
+            #[cfg(target_os = "linux")]
+            bpf: None,
+        }
+    }
+
+    /// Load the compiled eBPF bytecode into the kernel.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EbpfError::ProgramLoad`] if the bytecode cannot be loaded.
+    pub fn load(&mut self) -> Result<(), EbpfError> {
+        #[cfg(not(target_os = "linux"))]
+        {
+            return Err(EbpfError::ProgramLoad("eBPF is only supported on Linux".into()));
+        }
+
+        #[cfg(target_os = "linux")]
+        {
+            tracing::info!(pid = self.target_pid, "loading exec tracepoint BPF programs");
+            let mut bpf = aya::Ebpf::load(crate::AA_EXEC_BPF).map_err(|e| EbpfError::ProgramLoad(e.to_string()))?;
+
+            // Insert the target PID into the exec PID filter map.
+            let mut pid_filter: aya::maps::HashMap<_, u32, u8> = aya::maps::HashMap::try_from(
+                bpf.map_mut("EXEC_PID_FILTER")
+                    .ok_or_else(|| EbpfError::ProgramLoad("EXEC_PID_FILTER map not found".into()))?,
+            )
+            .map_err(|e| EbpfError::ProgramLoad(e.to_string()))?;
+
+            pid_filter
+                .insert(self.target_pid, 1, 0)
+                .map_err(|e| EbpfError::ProgramLoad(e.to_string()))?;
+
+            self.bpf = Some(bpf);
+            Ok(())
+        }
+    }
+
+    /// Attach the `sched_process_exec` and `sched_process_exit` tracepoints.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EbpfError::ProbeAttach`] if any tracepoint fails to attach.
+    pub fn attach_tracepoints(&mut self) -> Result<(), EbpfError> {
+        #[cfg(not(target_os = "linux"))]
+        {
+            return Err(EbpfError::ProbeAttach("eBPF is only supported on Linux".into()));
+        }
+
+        #[cfg(target_os = "linux")]
+        {
+            let bpf = self
+                .bpf
+                .as_mut()
+                .ok_or_else(|| EbpfError::ProbeAttach("BPF not loaded — call load() first".into()))?;
+
+            crate::tracepoint::TracepointManager::attach(bpf)?;
+            Ok(())
+        }
+    }
+
+    /// Return a reference to the process lineage tracker.
+    pub fn lineage(&self) -> &ProcessLineageTracker {
+        &self.lineage
+    }
+
+    /// Return a mutable reference to the process lineage tracker.
+    pub fn lineage_mut(&mut self) -> &mut ProcessLineageTracker {
+        &mut self.lineage
+    }
+
+    /// Return a reference to the shell injection detector.
+    pub fn detector(&self) -> &ShellDetector {
+        &self.detector
+    }
+
+    /// Return the target PID.
+    pub fn target_pid(&self) -> u32 {
+        self.target_pid
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -388,5 +498,47 @@ mod tests {
         }];
         let err = loader.update_path_filter(&patterns).unwrap_err();
         assert!(matches!(err, EbpfError::MapUpdate(_)));
+    }
+
+    #[test]
+    fn exec_loader_new_stores_target_pid() {
+        let loader = ExecLoader::new(5678);
+        assert_eq!(loader.target_pid(), 5678);
+    }
+
+    #[test]
+    fn exec_loader_lineage_starts_empty() {
+        let loader = ExecLoader::new(1);
+        assert!(loader.lineage().is_empty());
+    }
+
+    #[test]
+    fn exec_loader_lineage_mut_allows_insert() {
+        let mut loader = ExecLoader::new(1);
+        loader.lineage_mut().insert(100, 1, "/bin/agent".into(), 1000);
+        assert_eq!(loader.lineage().len(), 1);
+    }
+
+    #[test]
+    fn exec_loader_detector_works() {
+        let loader = ExecLoader::new(1);
+        assert!(loader.detector().check("/bin/bash").is_some());
+        assert!(loader.detector().check("/usr/bin/ls").is_none());
+    }
+
+    #[test]
+    #[cfg(not(target_os = "linux"))]
+    fn exec_loader_load_returns_error_on_non_linux() {
+        let mut loader = ExecLoader::new(1);
+        let err = loader.load().unwrap_err();
+        assert!(matches!(err, EbpfError::ProgramLoad(_)));
+    }
+
+    #[test]
+    #[cfg(not(target_os = "linux"))]
+    fn exec_loader_attach_returns_error_on_non_linux() {
+        let mut loader = ExecLoader::new(1);
+        let err = loader.attach_tracepoints().unwrap_err();
+        assert!(matches!(err, EbpfError::ProbeAttach(_)));
     }
 }
