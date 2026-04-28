@@ -159,6 +159,38 @@ impl ApprovalQueue {
             })
             .collect()
     }
+
+    /// Apply an [`ApprovalDecision`] to the request identified by `id`.
+    ///
+    /// Returns `Err(ApprovalError::NotFound)` if no pending request exists for
+    /// `id` (already resolved, timed out, or never submitted).
+    pub fn decide(
+        &self,
+        id: ApprovalRequestId,
+        decision: ApprovalDecision,
+    ) -> Result<(), ApprovalError> {
+        if self.resolve(id, decision) {
+            Ok(())
+        } else {
+            Err(ApprovalError::NotFound)
+        }
+    }
+
+    /// Remove and settle the request identified by `id`.
+    ///
+    /// Returns `true` if the entry existed and the sender was consumed, `false`
+    /// if the entry was already gone (idempotent — a second call for the same
+    /// `id` is a safe no-op).
+    fn resolve(&self, id: ApprovalRequestId, decision: ApprovalDecision) -> bool {
+        if let Some((_key, (_req, tx))) = self.pending.remove(&id) {
+            // Ignore send errors: the receiver may have been dropped (caller
+            // gave up waiting), which is not a failure on our side.
+            let _ = tx.send(decision);
+            true
+        } else {
+            false
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -277,5 +309,20 @@ mod tests {
     fn new_queue_list_is_empty() {
         let q = ApprovalQueue::new();
         assert!(q.list().is_empty());
+    }
+
+    // --- ApprovalQueue::decide (no pending entry) ---
+
+    #[test]
+    fn decide_unknown_id_returns_not_found() {
+        let q = ApprovalQueue::new();
+        let result = q.decide(
+            Uuid::new_v4(),
+            ApprovalDecision::Approved {
+                by: "alice".to_string(),
+                reason: None,
+            },
+        );
+        assert_eq!(result, Err(ApprovalError::NotFound));
     }
 }
