@@ -377,6 +377,34 @@ mod tests {
         assert_eq!(dp.sensitive_patterns.len(), 1);
     }
 
+    // ── Budget validation ───────────────────────────────────────────────────
+
+    #[test]
+    fn budget_zero_daily_limit_is_an_error() {
+        let yaml = "budget:\n  daily_limit_usd: 0.0\n";
+        let result = PolicyValidator::from_yaml(yaml);
+        assert!(result.is_err());
+        let errs = result.unwrap_err();
+        assert!(errs.iter().any(|e| e.field == "budget.daily_limit_usd"));
+    }
+
+    #[test]
+    fn budget_negative_daily_limit_is_an_error() {
+        let yaml = "budget:\n  daily_limit_usd: -1.0\n";
+        let result = PolicyValidator::from_yaml(yaml);
+        assert!(result.is_err());
+        let errs = result.unwrap_err();
+        assert!(errs.iter().any(|e| e.field == "budget.daily_limit_usd"));
+    }
+
+    #[test]
+    fn budget_valid_daily_limit_round_trips() {
+        let yaml = "budget:\n  daily_limit_usd: 50.0\n";
+        let out = PolicyValidator::from_yaml(yaml).unwrap();
+        let bp = out.document.budget.unwrap();
+        assert_eq!(bp.daily_limit_usd, Some(50.0));
+    }
+
     // ── Malformed YAML ──────────────────────────────────────────────────────
 
     #[test]
