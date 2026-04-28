@@ -72,8 +72,10 @@ pub mod error;
 pub mod events;
 pub mod lineage;
 pub mod loader;
+pub mod maps;
 pub mod syscall;
 
 pub use error::EbpfError;
 pub use events::FileIoEvent;
+pub use maps::{PathPattern, PathVerdict, MAX_PATH_LEN, MAX_PATH_PATTERNS};
 pub use syscall::SyscallKind;
