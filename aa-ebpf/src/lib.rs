@@ -66,6 +66,7 @@ pub static AA_FILE_IO_BPF: &[u8] = aya::include_bytes_aligned!(concat!(
     "/aa-ebpf-probes/bpfel-unknown-none/release/aa-file-io"
 ));
 
+pub mod alert;
 pub mod error;
 pub mod events;
 pub mod kprobes;
@@ -74,6 +75,7 @@ pub mod loader;
 pub mod maps;
 pub mod syscall;
 
+pub use alert::SensitivePathDetector;
 pub use error::EbpfError;
 pub use events::FileIoEvent;
 pub use loader::EbpfLoader;
