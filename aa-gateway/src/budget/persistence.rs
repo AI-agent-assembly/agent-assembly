@@ -32,6 +32,12 @@ impl std::fmt::Display for PersistenceError {
 
 impl std::error::Error for PersistenceError {}
 
+/// Returns `~/.aa/budget.json` (uses `$HOME` env var; falls back to `.`).
+pub fn default_budget_path() -> std::path::PathBuf {
+    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+    std::path::PathBuf::from(home).join(".aa").join("budget.json")
+}
+
 pub fn agent_id_to_hex(id: &aa_core::AgentId) -> String {
     id.as_bytes().iter().map(|b| format!("{:02x}", b)).collect()
 }
@@ -70,6 +76,12 @@ mod tests {
             state: BudgetState::new_today(),
         };
         assert_eq!(entry.agent_id_hex, "aabbcc");
+    }
+
+    #[test]
+    fn default_budget_path_ends_with_budget_json() {
+        let p = default_budget_path();
+        assert!(p.to_string_lossy().ends_with("budget.json"));
     }
 
     #[test]
