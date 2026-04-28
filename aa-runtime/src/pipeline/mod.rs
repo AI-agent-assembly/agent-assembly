@@ -53,7 +53,7 @@ impl PipelineConfig {
 ///
 /// Returns when `token` is cancelled — flushing any pending batch first.
 pub async fn run(
-    mut rx: mpsc::Receiver<IpcFrame>,
+    mut rx: mpsc::Receiver<(u64, IpcFrame)>,
     broadcast_tx: broadcast::Sender<EnrichedEvent>,
     config: PipelineConfig,
     metrics: Arc<PipelineMetrics>,
@@ -77,9 +77,9 @@ pub async fn run(
                 break;
             }
 
-            Some(frame) = rx.recv() => {
+            Some((connection_id, frame)) = rx.recv() => {
                 if let IpcFrame::EventReport(event) = frame {
-                    let enriched = enrich(event, &config.agent_id, 0); // connection_id wired in commit 4
+                    let enriched = enrich(event, &config.agent_id, connection_id);
                     metrics.record_processed(1);
                     ::metrics::counter!("aa_events_received_total").increment(1);
                     if is_policy_violation(&enriched, &policy) {
@@ -322,7 +322,7 @@ mod tests {
     #[tokio::test]
     async fn batch_flushes_on_size_threshold() {
         let config = test_config(3, 10_000); // batch_size=3, very long interval (won't fire)
-        let (tx, rx) = mpsc::channel::<IpcFrame>(64);
+        let (tx, rx) = mpsc::channel::<(u64, IpcFrame)>(64);
         let (broadcast_tx, mut broadcast_rx) = broadcast::channel::<EnrichedEvent>(64);
         let metrics = Arc::new(PipelineMetrics::default());
         let token = CancellationToken::new();
@@ -339,7 +339,7 @@ mod tests {
 
         // Send 3 events — batch threshold reached, should flush before interval
         for _ in 0..3 {
-            tx.send(IpcFrame::EventReport(normal_event())).await.unwrap();
+            tx.send((0, IpcFrame::EventReport(normal_event()))).await.unwrap();
         }
 
         // All 3 events should arrive within a short time
@@ -356,7 +356,7 @@ mod tests {
     #[tokio::test]
     async fn batch_flushes_on_interval() {
         let config = test_config(100, 50); // batch_size=100 (won't reach), interval=50ms
-        let (tx, rx) = mpsc::channel::<IpcFrame>(64);
+        let (tx, rx) = mpsc::channel::<(u64, IpcFrame)>(64);
         let (broadcast_tx, mut broadcast_rx) = broadcast::channel::<EnrichedEvent>(64);
         let metrics = Arc::new(PipelineMetrics::default());
         let token = CancellationToken::new();
@@ -373,7 +373,7 @@ mod tests {
 
         // Send 5 events (less than batch_size=100) — should arrive after interval flush
         for _ in 0..5 {
-            tx.send(IpcFrame::EventReport(normal_event())).await.unwrap();
+            tx.send((0, IpcFrame::EventReport(normal_event()))).await.unwrap();
         }
 
         for _ in 0..5 {
@@ -390,7 +390,7 @@ mod tests {
     async fn policy_violation_bypasses_batch() {
         // batch_size=100, very long interval — only a violation should arrive
         let config = test_config(100, 10_000);
-        let (tx, rx) = mpsc::channel::<IpcFrame>(64);
+        let (tx, rx) = mpsc::channel::<(u64, IpcFrame)>(64);
         let (broadcast_tx, mut broadcast_rx) = broadcast::channel::<EnrichedEvent>(64);
         let metrics = Arc::new(PipelineMetrics::default());
         let token = CancellationToken::new();
@@ -406,7 +406,7 @@ mod tests {
         ));
 
         // Send a violation — should arrive immediately, bypassing batch
-        tx.send(IpcFrame::EventReport(violation_event())).await.unwrap();
+        tx.send((0, IpcFrame::EventReport(violation_event()))).await.unwrap();
 
         let event = tokio::time::timeout(Duration::from_millis(200), broadcast_rx.recv())
             .await
@@ -421,7 +421,7 @@ mod tests {
     #[tokio::test]
     async fn cancellation_flushes_pending_batch() {
         let config = test_config(100, 10_000); // large batch, long interval
-        let (tx, rx) = mpsc::channel::<IpcFrame>(64);
+        let (tx, rx) = mpsc::channel::<(u64, IpcFrame)>(64);
         let (broadcast_tx, mut broadcast_rx) = broadcast::channel::<EnrichedEvent>(64);
         let metrics = Arc::new(PipelineMetrics::default());
         let token = CancellationToken::new();
@@ -438,7 +438,7 @@ mod tests {
 
         // Send 5 events (batch won't flush yet)
         for _ in 0..5 {
-            tx.send(IpcFrame::EventReport(normal_event())).await.unwrap();
+            tx.send((0, IpcFrame::EventReport(normal_event()))).await.unwrap();
         }
 
         // Wait until the run loop has processed all 5 events before cancelling,
@@ -473,7 +473,7 @@ mod tests {
     #[tokio::test]
     async fn non_event_frames_ignored() {
         let config = test_config(100, 50);
-        let (tx, rx) = mpsc::channel::<IpcFrame>(64);
+        let (tx, rx) = mpsc::channel::<(u64, IpcFrame)>(64);
         let (broadcast_tx, _broadcast_rx) = broadcast::channel::<EnrichedEvent>(64);
         let metrics = Arc::new(PipelineMetrics::default());
         let token = CancellationToken::new();
@@ -489,7 +489,7 @@ mod tests {
         ));
 
         // Send non-event frames
-        tx.send(IpcFrame::Heartbeat).await.unwrap();
+        tx.send((0, IpcFrame::Heartbeat)).await.unwrap();
 
         // Give run loop a moment to process
         tokio::time::sleep(Duration::from_millis(20)).await;
@@ -514,7 +514,7 @@ mod tests {
 
         // batch_size=100, very long interval — only a rule-matched event should arrive immediately
         let config = test_config(100, 10_000);
-        let (tx, rx) = mpsc::channel::<IpcFrame>(64);
+        let (tx, rx) = mpsc::channel::<(u64, IpcFrame)>(64);
         let (broadcast_tx, mut broadcast_rx) = broadcast::channel::<EnrichedEvent>(64);
         let metrics = Arc::new(PipelineMetrics::default());
         let token = CancellationToken::new();
@@ -526,7 +526,7 @@ mod tests {
             action_type: ActionType::FileOperation as i32,
             ..Default::default()
         };
-        tx.send(IpcFrame::EventReport(event)).await.unwrap();
+        tx.send((0, IpcFrame::EventReport(event))).await.unwrap();
 
         // Should arrive immediately (before flush interval)
         let received = tokio::time::timeout(Duration::from_millis(200), broadcast_rx.recv())
@@ -554,7 +554,7 @@ mod tests {
 
         // batch_size=100, very long interval — event should NOT arrive before timeout
         let config = test_config(100, 10_000);
-        let (tx, rx) = mpsc::channel::<IpcFrame>(64);
+        let (tx, rx) = mpsc::channel::<(u64, IpcFrame)>(64);
         let (broadcast_tx, mut broadcast_rx) = broadcast::channel::<EnrichedEvent>(64);
         let metrics = Arc::new(PipelineMetrics::default());
         let token = CancellationToken::new();
@@ -570,7 +570,7 @@ mod tests {
             action_type: ActionType::ToolCall as i32,
             ..Default::default()
         };
-        tx.send(IpcFrame::EventReport(event)).await.unwrap();
+        tx.send((0, IpcFrame::EventReport(event))).await.unwrap();
 
         // Should NOT arrive before the flush interval (100ms timeout)
         let result = tokio::time::timeout(Duration::from_millis(100), broadcast_rx.recv()).await;
@@ -589,7 +589,7 @@ mod tests {
         const EVENT_COUNT: u64 = 100_000;
 
         let config = test_config(100, 10);
-        let (tx, rx) = mpsc::channel::<IpcFrame>(10_000);
+        let (tx, rx) = mpsc::channel::<(u64, IpcFrame)>(10_000);
         let (broadcast_tx, mut broadcast_rx) = broadcast::channel::<EnrichedEvent>(10_000);
         let metrics = Arc::new(PipelineMetrics::default());
         let token = CancellationToken::new();
@@ -610,7 +610,7 @@ mod tests {
         let start = std::time::Instant::now();
 
         for _ in 0..EVENT_COUNT {
-            tx.send(IpcFrame::EventReport(normal_event())).await.unwrap();
+            tx.send((0, IpcFrame::EventReport(normal_event()))).await.unwrap();
         }
 
         // Wait until all events are processed

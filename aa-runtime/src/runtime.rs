@@ -70,7 +70,7 @@ pub async fn run(config: RuntimeConfig) {
 
     // Build pipeline config and create the inbound channel at the configured depth.
     let pipeline_config = crate::pipeline::PipelineConfig::from_runtime_config(&config);
-    let (inbound_tx, inbound_rx) = tokio::sync::mpsc::channel::<crate::ipc::IpcFrame>(pipeline_config.input_buffer);
+    let (inbound_tx, inbound_rx) = tokio::sync::mpsc::channel::<(u64, crate::ipc::IpcFrame)>(pipeline_config.input_buffer);
 
     // Create the broadcast channel for fan-out to downstream subscribers.
     // The leading `_broadcast_rx` keeps the channel alive until real subscribers

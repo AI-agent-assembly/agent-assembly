@@ -79,7 +79,7 @@ impl IpcServer {
         self,
         tracker: TaskTracker,
         token: CancellationToken,
-        inbound_tx: mpsc::Sender<IpcFrame>,
+        inbound_tx: mpsc::Sender<(u64, IpcFrame)>,
         active_connections: Arc<AtomicI64>,
         response_router: ResponseRouter,
     ) {
@@ -168,7 +168,7 @@ impl IpcServer {
 pub(super) fn spawn_connection(
     tracker: &TaskTracker,
     stream: tokio::net::UnixStream,
-    frame_tx: mpsc::Sender<IpcFrame>,
+    frame_tx: mpsc::Sender<(u64, IpcFrame)>,
     resp_tx: mpsc::Sender<IpcResponse>,
     resp_rx: mpsc::Receiver<IpcResponse>,
     token: CancellationToken,
@@ -198,7 +198,7 @@ pub(super) fn spawn_connection(
 /// Reader task: reads frames from the socket and sends them to the inbound channel.
 pub(super) async fn run_reader(
     mut stream: tokio::net::unix::OwnedReadHalf,
-    frame_tx: mpsc::Sender<IpcFrame>,
+    frame_tx: mpsc::Sender<(u64, IpcFrame)>,
     token: CancellationToken,
     active_connections: Arc<AtomicI64>,
     connection_id: u64,
@@ -213,7 +213,7 @@ pub(super) async fn run_reader(
             result = super::codec::read_frame(&mut stream) => {
                 match result {
                     Ok(frame) => {
-                        if frame_tx.send(frame).await.is_err() {
+                        if frame_tx.send((connection_id, frame)).await.is_err() {
                             tracing::debug!("inbound channel closed — reader exiting");
                             break;
                         }
@@ -302,7 +302,7 @@ mod tests {
         socket_path: std::path::PathBuf,
         token: CancellationToken,
         active_connections: Arc<AtomicI64>,
-    ) -> (mpsc::Receiver<IpcFrame>, crate::ipc::ResponseRouter) {
+    ) -> (mpsc::Receiver<(u64, IpcFrame)>, crate::ipc::ResponseRouter) {
         let config = IpcServerConfig {
             socket_path,
             max_connections: 64,
@@ -355,7 +355,7 @@ mod tests {
         write_half.write_u8(TAG_HEARTBEAT).await.unwrap();
         write_half.flush().await.unwrap();
 
-        let frame = tokio::time::timeout(Duration::from_secs(2), rx.recv())
+        let (_conn_id, frame) = tokio::time::timeout(Duration::from_secs(2), rx.recv())
             .await
             .expect("timed out waiting for frame")
             .expect("channel closed");
@@ -381,7 +381,7 @@ mod tests {
         let payload = request.encode_to_vec();
         write_raw_frame(&mut write_half, TAG_POLICY_QUERY, &payload).await;
 
-        let frame = tokio::time::timeout(Duration::from_secs(2), rx.recv())
+        let (_conn_id, frame) = tokio::time::timeout(Duration::from_secs(2), rx.recv())
             .await
             .expect("timed out")
             .expect("channel closed");
@@ -410,7 +410,7 @@ mod tests {
         let payload = event.encode_to_vec();
         write_raw_frame(&mut write_half, TAG_EVENT_REPORT, &payload).await;
 
-        let frame = tokio::time::timeout(Duration::from_secs(2), rx.recv())
+        let (_conn_id, frame) = tokio::time::timeout(Duration::from_secs(2), rx.recv())
             .await
             .expect("timed out")
             .expect("channel closed");
@@ -462,7 +462,7 @@ mod tests {
             tokio::time::timeout(Duration::from_millis(100), rx.recv())
                 .await
                 .expect("timed out")
-                .expect("channel closed");
+                .expect("channel closed"); // returns (conn_id, frame) — result unused in latency test
         }
 
         let elapsed = start.elapsed();
