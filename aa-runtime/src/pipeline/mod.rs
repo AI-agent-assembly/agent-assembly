@@ -253,12 +253,7 @@ async fn handle_policy_query(
         match guard.check_action(req.clone()).await {
             Ok(resp) => {
                 tracing::debug!(connection_id, decision = resp.decision, "gateway responded");
-                send_ipc_response(
-                    connection_id,
-                    IpcResponse::PolicyResponse(resp),
-                    response_router,
-                )
-                .await;
+                send_ipc_response(connection_id, IpcResponse::PolicyResponse(resp), response_router).await;
                 return;
             }
             Err(e) => {

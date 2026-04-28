@@ -159,9 +159,7 @@ impl RuntimeConfig {
             Ok(v) => Some(PathBuf::from(v)),
         };
 
-        let gateway_endpoint = std::env::var("AA_GATEWAY_ENDPOINT")
-            .ok()
-            .filter(|v| !v.is_empty());
+        let gateway_endpoint = std::env::var("AA_GATEWAY_ENDPOINT").ok().filter(|v| !v.is_empty());
 
         Ok(Self {
             agent_id,
@@ -562,10 +560,7 @@ mod tests {
 
         let config = RuntimeConfig::from_env().unwrap();
 
-        assert_eq!(
-            config.gateway_endpoint,
-            Some("http://127.0.0.1:50051".to_string())
-        );
+        assert_eq!(config.gateway_endpoint, Some("http://127.0.0.1:50051".to_string()));
 
         std::env::remove_var("AA_AGENT_ID");
         std::env::remove_var("AA_GATEWAY_ENDPOINT");

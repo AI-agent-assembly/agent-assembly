@@ -43,9 +43,7 @@ fn hash_to_16(s: &str) -> [u8; 16] {
 
 /// Convert a [`CheckActionRequest`] into the core domain pair
 /// ([`AgentContext`], [`GovernanceAction`]).
-pub fn request_to_core(
-    req: &CheckActionRequest,
-) -> Result<(AgentContext, GovernanceAction), ConvertError> {
+pub fn request_to_core(req: &CheckActionRequest) -> Result<(AgentContext, GovernanceAction), ConvertError> {
     // --- Agent context ---
     let proto_agent = req.agent_id.as_ref().ok_or(ConvertError::MissingAgentId)?;
     let agent_id = AgentId::from_bytes(hash_to_16(&proto_agent.agent_id));
@@ -134,11 +132,7 @@ pub fn request_to_core(
 ///
 /// When the engine detected credential/PII findings and produced a redacted payload,
 /// the response uses `Decision::Redact` with the redacted field paths.
-pub fn eval_result_to_response(
-    eval: &EvaluationResult,
-    latency_us: i64,
-    policy_rule: &str,
-) -> CheckActionResponse {
+pub fn eval_result_to_response(eval: &EvaluationResult, latency_us: i64, policy_rule: &str) -> CheckActionResponse {
     // If the scanner produced redaction findings, return REDACT with instructions.
     if !eval.credential_findings.is_empty() {
         let rules: Vec<RedactRule> = eval
@@ -191,11 +185,7 @@ pub fn eval_result_to_response(
 ///
 /// Convenience wrapper for tests and callers that only have a `PolicyResult`
 /// (no redaction findings).
-pub fn result_to_response(
-    result: &PolicyResult,
-    latency_us: i64,
-    policy_rule: &str,
-) -> CheckActionResponse {
+pub fn result_to_response(result: &PolicyResult, latency_us: i64, policy_rule: &str) -> CheckActionResponse {
     let eval = EvaluationResult {
         decision: result.clone(),
         redacted_payload: None,

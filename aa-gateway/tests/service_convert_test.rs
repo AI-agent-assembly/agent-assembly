@@ -4,8 +4,8 @@ use aa_core::{FileMode, GovernanceAction, PolicyResult};
 use aa_gateway::service::convert::{request_to_core, result_to_response, ConvertError};
 use aa_proto::assembly::common::v1::{ActionType, AgentId as ProtoAgentId, Decision};
 use aa_proto::assembly::policy::v1::{
-    action_context::Action, ActionContext, CheckActionRequest, FileOpContext, LlmCallContext,
-    NetworkCallContext, ProcessExecContext, ToolCallContext,
+    action_context::Action, ActionContext, CheckActionRequest, FileOpContext, LlmCallContext, NetworkCallContext,
+    ProcessExecContext, ToolCallContext,
 };
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -21,9 +21,7 @@ fn base_request(action: Action) -> CheckActionRequest {
         trace_id: "trace-1".into(),
         span_id: "span-1".into(),
         action_type: ActionType::ToolCall as i32,
-        context: Some(ActionContext {
-            action: Some(action),
-        }),
+        context: Some(ActionContext { action: Some(action) }),
     }
 }
 

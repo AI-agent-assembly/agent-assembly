@@ -24,10 +24,7 @@ impl GatewayClient {
     }
 
     /// Forward a `CheckActionRequest` to the gateway and return the response.
-    pub async fn check_action(
-        &mut self,
-        req: CheckActionRequest,
-    ) -> Result<CheckActionResponse, tonic::Status> {
+    pub async fn check_action(&mut self, req: CheckActionRequest) -> Result<CheckActionResponse, tonic::Status> {
         let resp = self.client.check_action(req).await?;
         Ok(resp.into_inner())
     }

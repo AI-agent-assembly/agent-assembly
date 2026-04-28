@@ -6,9 +6,7 @@ use std::time::Instant;
 use tonic::{Request, Response, Status};
 
 use aa_proto::assembly::policy::v1::policy_service_server::PolicyService;
-use aa_proto::assembly::policy::v1::{
-    BatchCheckRequest, BatchCheckResponse, CheckActionRequest, CheckActionResponse,
-};
+use aa_proto::assembly::policy::v1::{BatchCheckRequest, BatchCheckResponse, CheckActionRequest, CheckActionResponse};
 
 use crate::engine::PolicyEngine;
 use crate::service::convert;
@@ -82,10 +80,7 @@ impl PolicyService for PolicyServiceImpl {
         Ok(Response::new(response))
     }
 
-    async fn batch_check(
-        &self,
-        request: Request<BatchCheckRequest>,
-    ) -> Result<Response<BatchCheckResponse>, Status> {
+    async fn batch_check(&self, request: Request<BatchCheckRequest>) -> Result<Response<BatchCheckResponse>, Status> {
         let batch = request.into_inner();
         let mut responses = Vec::with_capacity(batch.requests.len());
 

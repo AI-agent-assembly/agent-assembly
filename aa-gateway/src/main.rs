@@ -35,16 +35,13 @@ struct Cli {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialise tracing (respects RUST_LOG env var, defaults to info).
     tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
-        )
+        .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))
         .init();
 
     let cli = Cli::parse();
 
     tracing::info!(policy = %cli.policy.display(), "loading policy");
-    let engine = PolicyEngine::load_from_file(&cli.policy)
-        .map_err(|e| format!("failed to load policy: {e:?}"))?;
+    let engine = PolicyEngine::load_from_file(&cli.policy).map_err(|e| format!("failed to load policy: {e:?}"))?;
     let service = PolicyServiceImpl::new(Arc::new(engine));
 
     if let Some(socket_path) = &cli.socket {

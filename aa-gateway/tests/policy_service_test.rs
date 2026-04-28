@@ -7,8 +7,8 @@ use std::io::Write;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use aa_gateway::PolicyEngine;
 use aa_gateway::service::PolicyServiceImpl;
+use aa_gateway::PolicyEngine;
 use aa_proto::assembly::common::v1::{ActionType, AgentId as ProtoAgentId, Decision};
 use aa_proto::assembly::policy::v1::policy_service_client::PolicyServiceClient;
 use aa_proto::assembly::policy::v1::policy_service_server::PolicyServiceServer;
@@ -84,9 +84,7 @@ tools:
     )
     .await;
 
-    let mut client = PolicyServiceClient::connect(format!("http://{addr}"))
-        .await
-        .unwrap();
+    let mut client = PolicyServiceClient::connect(format!("http://{addr}")).await.unwrap();
 
     let resp = client
         .check_action(tool_call_request("web_search"))
@@ -109,9 +107,7 @@ tools:
     )
     .await;
 
-    let mut client = PolicyServiceClient::connect(format!("http://{addr}"))
-        .await
-        .unwrap();
+    let mut client = PolicyServiceClient::connect(format!("http://{addr}")).await.unwrap();
 
     let resp = client
         .check_action(tool_call_request("dangerous"))
@@ -127,9 +123,7 @@ tools:
 async fn check_action_returns_invalid_argument_on_missing_context() {
     let addr = start_server("version: \"1\"\n").await;
 
-    let mut client = PolicyServiceClient::connect(format!("http://{addr}"))
-        .await
-        .unwrap();
+    let mut client = PolicyServiceClient::connect(format!("http://{addr}")).await.unwrap();
 
     let bad_req = CheckActionRequest {
         agent_id: Some(ProtoAgentId {
@@ -148,9 +142,7 @@ async fn check_action_returns_invalid_argument_on_missing_context() {
 async fn check_action_populates_latency_us() {
     let addr = start_server("version: \"1\"\n").await;
 
-    let mut client = PolicyServiceClient::connect(format!("http://{addr}"))
-        .await
-        .unwrap();
+    let mut client = PolicyServiceClient::connect(format!("http://{addr}")).await.unwrap();
 
     let resp = client
         .check_action(tool_call_request("any"))
@@ -178,9 +170,7 @@ tools:
     )
     .await;
 
-    let mut client = PolicyServiceClient::connect(format!("http://{addr}"))
-        .await
-        .unwrap();
+    let mut client = PolicyServiceClient::connect(format!("http://{addr}")).await.unwrap();
 
     let batch = BatchCheckRequest {
         requests: vec![
