@@ -1,0 +1,14 @@
+[package]
+name = "aa-ebpf-common"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Shared no_std types between eBPF kernel probes and userspace loader"
+
+[features]
+default = []
+user = []
+
+[lints]
+workspace = true
