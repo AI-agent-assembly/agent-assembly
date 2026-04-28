@@ -405,6 +405,41 @@ mod tests {
         assert_eq!(bp.daily_limit_usd, Some(50.0));
     }
 
+    // ── Schedule active_hours validation ───────────────────────────────────
+
+    #[test]
+    fn schedule_invalid_start_format_is_an_error() {
+        let yaml =
+            "schedule:\n  active_hours:\n    start: \"9:00\"\n    end: \"18:00\"\n    timezone: \"UTC\"\n";
+        let result = PolicyValidator::from_yaml(yaml);
+        assert!(result.is_err());
+        let errs = result.unwrap_err();
+        assert!(errs
+            .iter()
+            .any(|e| e.field == "schedule.active_hours.start"));
+    }
+
+    #[test]
+    fn schedule_end_not_after_start_is_an_error() {
+        let yaml =
+            "schedule:\n  active_hours:\n    start: \"18:00\"\n    end: \"09:00\"\n    timezone: \"UTC\"\n";
+        let result = PolicyValidator::from_yaml(yaml);
+        assert!(result.is_err());
+        let errs = result.unwrap_err();
+        assert!(errs.iter().any(|e| e.field == "schedule.active_hours"));
+    }
+
+    #[test]
+    fn schedule_valid_active_hours_round_trips() {
+        let yaml = "schedule:\n  active_hours:\n    start: \"09:00\"\n    end: \"18:00\"\n    timezone: \"Asia/Taipei\"\n";
+        let out = PolicyValidator::from_yaml(yaml).unwrap();
+        let sp = out.document.schedule.unwrap();
+        let ah = sp.active_hours.unwrap();
+        assert_eq!(ah.start, "09:00");
+        assert_eq!(ah.end, "18:00");
+        assert_eq!(ah.timezone, "Asia/Taipei");
+    }
+
     // ── Malformed YAML ──────────────────────────────────────────────────────
 
     #[test]
