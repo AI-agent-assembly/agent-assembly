@@ -19,7 +19,6 @@ const ALERT_CHANNEL_CAPACITY: usize = 64;
 const ALERT_PCT_HIGH: u8 = 95;
 const ALERT_PCT_LOW: u8 = 80;
 
-#[allow(dead_code)]
 fn compute_status(spent: Decimal, limit: Decimal) -> BudgetStatus {
     if spent >= limit {
         return BudgetStatus::LimitExceeded;
@@ -95,6 +94,58 @@ impl BudgetTracker {
     pub fn subscribe_alerts(&self) -> broadcast::Receiver<BudgetAlert> {
         self.alert_tx.subscribe()
     }
+
+    /// Record token usage and return the resulting [`BudgetStatus`].
+    pub fn record_usage(
+        &self,
+        agent_id: AgentId,
+        provider: crate::budget::types::Provider,
+        model: crate::budget::types::Model,
+        input_tokens: u64,
+        output_tokens: u64,
+    ) -> BudgetStatus {
+        let cost = self.pricing.cost_usd(provider, model, input_tokens, output_tokens);
+
+        self.per_agent
+            .entry(agent_id)
+            .and_modify(|s| {
+                s.maybe_reset();
+                s.spent_usd += cost;
+            })
+            .or_insert_with(|| {
+                let mut s = BudgetState::new_today();
+                s.spent_usd += cost;
+                s
+            });
+
+        let spent = self.per_agent.get(&agent_id).map(|s| s.spent_usd).unwrap_or(cost);
+
+        if let Ok(mut g) = self.global.lock() {
+            g.maybe_reset();
+            g.spent_usd += cost;
+        }
+
+        let status = match self.daily_limit_usd {
+            None => BudgetStatus::WithinBudget {
+                spent_usd: spent.to_f64().unwrap_or(0.0),
+                remaining_usd: f64::INFINITY,
+            },
+            Some(limit) => compute_status(spent, limit),
+        };
+
+        if let Some(limit) = self.daily_limit_usd {
+            if let BudgetStatus::ThresholdAlert { pct } = &status {
+                let _ = self.alert_tx.send(BudgetAlert {
+                    agent_id,
+                    threshold_pct: *pct,
+                    spent_usd: spent.to_f64().unwrap_or(0.0),
+                    limit_usd: limit.to_f64().unwrap_or(0.0),
+                });
+            }
+        }
+
+        status
+    }
 }
 
 #[cfg(test)]
@@ -105,6 +156,14 @@ mod tests {
 
     fn new_tracker() -> BudgetTracker {
         BudgetTracker::new(PricingTable::default_table(), None)
+    }
+
+    fn agent(b: u8) -> AgentId {
+        AgentId::from_bytes([b; 16])
+    }
+
+    fn tracker_with_limit(s: &str) -> BudgetTracker {
+        BudgetTracker::new(PricingTable::default_table(), Some(s.parse().unwrap()))
     }
 
     #[test]
@@ -151,6 +210,46 @@ mod tests {
         }
         assert_eq!(compute_status(d("10.00"), d("10.00")), BudgetStatus::LimitExceeded);
         assert_eq!(compute_status(d("11.00"), d("10.00")), BudgetStatus::LimitExceeded);
+    }
+
+    #[test]
+    fn record_usage_no_limit_returns_within_budget() {
+        use crate::budget::types::{BudgetStatus, Model, Provider};
+        let t = new_tracker();
+        let s = t.record_usage(agent(1), Provider::OpenAi, Model::Gpt4o, 100, 100);
+        assert!(matches!(s, BudgetStatus::WithinBudget { .. }));
+    }
+
+    #[test]
+    fn record_usage_over_limit_returns_limit_exceeded() {
+        use crate::budget::types::{BudgetStatus, Model, Provider};
+        // GPT-4o: 100k input=$0.50 + 40k output=$0.60 = $1.10 > $1.00 limit
+        let t = tracker_with_limit("1.00");
+        let s = t.record_usage(agent(2), Provider::OpenAi, Model::Gpt4o, 100_000, 40_000);
+        assert_eq!(s, BudgetStatus::LimitExceeded);
+    }
+
+    #[test]
+    fn record_usage_alert_at_80_pct() {
+        use crate::budget::types::{BudgetStatus, Model, Provider};
+        // 100k input=$0.50 + 20k output=$0.30 = $0.80 = 80% of $1.00
+        let t = tracker_with_limit("1.00");
+        let s = t.record_usage(agent(3), Provider::OpenAi, Model::Gpt4o, 100_000, 20_000);
+        assert_eq!(s, BudgetStatus::ThresholdAlert { pct: 80 });
+    }
+
+    #[test]
+    fn record_usage_resets_on_old_date() {
+        use crate::budget::types::{BudgetStatus, Model, Provider};
+        let t = tracker_with_limit("1.00");
+        let id = agent(4);
+        t.record_usage(id, Provider::OpenAi, Model::Gpt4o, 100_000, 30_000); // $0.95
+        t.per_agent.alter(&id, |_, mut s| {
+            s.date = chrono::Utc::now().date_naive() - chrono::Duration::days(1);
+            s
+        });
+        let s = t.record_usage(id, Provider::OpenAi, Model::Gpt4o, 100, 0);
+        assert!(matches!(s, BudgetStatus::WithinBudget { .. }));
     }
 
     #[test]
