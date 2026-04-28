@@ -119,14 +119,19 @@ fn try_sched_process_exec(ctx: &TracePointContext) -> Result<u32, i64> {
         (*event_ptr).args = [0u8; MAX_ARGS_LEN];
 
         // Read the current task's comm into the args buffer as a fallback.
+        // ctx.command() returns [u8; 16] — already raw bytes, not a string.
         let comm = ctx.command().map_err(|_| -1i64)?;
-        let comm_bytes = comm.as_bytes();
-        let copy_len = if comm_bytes.len() > MAX_ARGS_LEN {
-            MAX_ARGS_LEN
-        } else {
-            comm_bytes.len()
-        };
-        (*event_ptr).args[..copy_len].copy_from_slice(&comm_bytes[..copy_len]);
+        // Copy comm bytes (up to 16) into the args buffer byte by byte.
+        // Using a fixed-bound loop to satisfy the BPF verifier.
+        let max_copy = if 16 > MAX_ARGS_LEN { MAX_ARGS_LEN } else { 16 };
+        let mut i: usize = 0;
+        while i < max_copy {
+            if comm[i] == 0 {
+                break;
+            }
+            (*event_ptr).args[i] = comm[i];
+            i += 1;
+        }
     }
 
     entry.submit(0);
