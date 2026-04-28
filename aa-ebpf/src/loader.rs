@@ -1,5 +1,6 @@
 //! Userspace eBPF program loader and lifecycle manager.
 
+use crate::alert::SensitivePathDetector;
 use crate::error::EbpfError;
 use crate::events::FileIoEvent;
 use crate::maps::PathPattern;
@@ -186,6 +187,43 @@ impl EbpfLoader {
                 }
             });
         }
+
+        Ok(rx)
+    }
+
+    /// Start reading events with userspace-side sensitive path detection.
+    ///
+    /// Wraps [`start_event_reader`] and applies the [`SensitivePathDetector`]
+    /// to each event, setting `is_sensitive = true` if either the BPF-side
+    /// blocklist flagged it or the userspace detector matches.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EbpfError::EventParse`] if the perf array cannot be opened.
+    #[cfg(target_os = "linux")]
+    pub fn start_event_reader_with_alerts(
+        &mut self,
+        detector: SensitivePathDetector,
+    ) -> Result<tokio::sync::mpsc::Receiver<FileIoEvent>, EbpfError> {
+        let mut inner_rx = self.start_event_reader()?;
+        let (tx, rx) = tokio::sync::mpsc::channel::<FileIoEvent>(256);
+
+        tokio::spawn(async move {
+            while let Some(mut event) = inner_rx.recv().await {
+                if !event.is_sensitive && detector.is_sensitive(&event) {
+                    event.is_sensitive = true;
+                }
+                if event.is_sensitive {
+                    tracing::warn!(
+                        pid = event.pid,
+                        path = %event.path,
+                        syscall = %event.syscall,
+                        "sensitive path access detected"
+                    );
+                }
+                let _ = tx.send(event).await;
+            }
+        });
 
         Ok(rx)
     }
