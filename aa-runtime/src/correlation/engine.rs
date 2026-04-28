@@ -179,7 +179,7 @@ impl CorrelationEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::correlation::event::IntentEvent;
+    use crate::correlation::event::{ActionEvent, IntentEvent};
     use uuid::Uuid;
 
     #[test]
@@ -247,5 +247,142 @@ mod tests {
     #[test]
     fn syscall_to_keyword_returns_none_for_unknown() {
         assert_eq!(syscall_to_keyword("unknown_syscall"), None);
+    }
+
+    #[test]
+    fn correlate_matches_intent_to_action_same_pid() {
+        let mut engine = CorrelationEngine::new(CorrelationConfig::default());
+        let intent_id = Uuid::new_v4();
+        let action_id = Uuid::new_v4();
+
+        engine.ingest(CorrelationEvent::Intent(IntentEvent {
+            event_id: intent_id,
+            timestamp_ms: 1000,
+            pid: 1,
+            intent_text: "delete /tmp/foo".to_string(),
+            action_keyword: "file_delete".to_string(),
+        }));
+        engine.ingest(CorrelationEvent::Action(ActionEvent {
+            event_id: action_id,
+            timestamp_ms: 1500,
+            pid: 1,
+            syscall: "unlink".to_string(),
+            details: "/tmp/foo".to_string(),
+        }));
+
+        let outcomes = engine.correlate();
+        assert_eq!(outcomes.len(), 1);
+        match &outcomes[0] {
+            CorrelationOutcome::Matched(c) => {
+                assert_eq!(c.intent_event_id, intent_id);
+                assert_eq!(c.action_event_id, action_id);
+                assert_eq!(c.time_delta_ms, 500);
+                assert!(c.correlation_strength > 0.0);
+                assert!(c.correlation_strength <= 1.0);
+            }
+            other => panic!("expected Matched, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn correlate_matches_intent_to_action_via_pid_lineage() {
+        let mut engine = CorrelationEngine::new(CorrelationConfig::default());
+        // PID 100 is a child of PID 1.
+        engine.register_pid(100, 1);
+
+        let intent_id = Uuid::new_v4();
+        let action_id = Uuid::new_v4();
+
+        engine.ingest(CorrelationEvent::Intent(IntentEvent {
+            event_id: intent_id,
+            timestamp_ms: 1000,
+            pid: 1,
+            intent_text: "exec /bin/ls".to_string(),
+            action_keyword: "process_exec".to_string(),
+        }));
+        engine.ingest(CorrelationEvent::Action(ActionEvent {
+            event_id: action_id,
+            timestamp_ms: 1200,
+            pid: 100,
+            syscall: "execve".to_string(),
+            details: "/bin/ls".to_string(),
+        }));
+
+        let outcomes = engine.correlate();
+        assert_eq!(outcomes.len(), 1);
+        assert!(matches!(&outcomes[0], CorrelationOutcome::Matched(c) if c.intent_event_id == intent_id));
+    }
+
+    #[test]
+    fn correlate_picks_closest_intent() {
+        let mut engine = CorrelationEngine::new(CorrelationConfig::default());
+        let far_intent_id = Uuid::new_v4();
+        let near_intent_id = Uuid::new_v4();
+        let action_id = Uuid::new_v4();
+
+        engine.ingest(CorrelationEvent::Intent(IntentEvent {
+            event_id: far_intent_id,
+            timestamp_ms: 1000,
+            pid: 1,
+            intent_text: "delete file".to_string(),
+            action_keyword: "file_delete".to_string(),
+        }));
+        engine.ingest(CorrelationEvent::Intent(IntentEvent {
+            event_id: near_intent_id,
+            timestamp_ms: 1800,
+            pid: 1,
+            intent_text: "delete file".to_string(),
+            action_keyword: "file_delete".to_string(),
+        }));
+        engine.ingest(CorrelationEvent::Action(ActionEvent {
+            event_id: action_id,
+            timestamp_ms: 2000,
+            pid: 1,
+            syscall: "unlink".to_string(),
+            details: "/tmp/foo".to_string(),
+        }));
+
+        let outcomes = engine.correlate();
+        // Should match the near intent (delta=200) not the far one (delta=1000).
+        let matched: Vec<_> = outcomes
+            .iter()
+            .filter(|o| matches!(o, CorrelationOutcome::Matched(_)))
+            .collect();
+        assert_eq!(matched.len(), 1);
+        match &matched[0] {
+            CorrelationOutcome::Matched(c) => {
+                assert_eq!(c.intent_event_id, near_intent_id);
+                assert_eq!(c.time_delta_ms, 200);
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn correlate_strength_decays_with_time_delta() {
+        let mut engine = CorrelationEngine::new(CorrelationConfig::default());
+
+        engine.ingest(CorrelationEvent::Intent(IntentEvent {
+            event_id: Uuid::new_v4(),
+            timestamp_ms: 1000,
+            pid: 1,
+            intent_text: "delete".to_string(),
+            action_keyword: "file_delete".to_string(),
+        }));
+        engine.ingest(CorrelationEvent::Action(ActionEvent {
+            event_id: Uuid::new_v4(),
+            timestamp_ms: 3500, // delta = 2500, window = 5000 → strength = 0.5
+            pid: 1,
+            syscall: "unlink".to_string(),
+            details: "/tmp/foo".to_string(),
+        }));
+
+        let outcomes = engine.correlate();
+        match &outcomes[0] {
+            CorrelationOutcome::Matched(c) => {
+                assert!((c.correlation_strength - 0.5).abs() < 0.01);
+            }
+            other => panic!("expected Matched, got {:?}", other),
+        }
     }
 }
