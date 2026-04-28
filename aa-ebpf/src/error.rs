@@ -5,16 +5,15 @@ use thiserror::Error;
 /// Errors that can occur while loading, attaching, or reading eBPF programs.
 #[derive(Debug, Error)]
 pub enum EbpfError {
+    // ── aya-native variants (Linux only, used by uprobe/ringbuf) ────────
     /// Failed to load the eBPF program ELF object.
     #[cfg(target_os = "linux")]
     #[error("failed to load eBPF object: {0}")]
     Load(#[from] aya::EbpfError),
-
     /// An eBPF map operation failed (e.g. writing to a PID filter map).
     #[cfg(target_os = "linux")]
     #[error("eBPF map operation failed: {0}")]
     Map(#[from] aya::maps::MapError),
-
     /// An eBPF program operation failed (e.g. load or attach).
     #[cfg(target_os = "linux")]
     #[error("eBPF program operation failed: {0}")]
@@ -56,4 +55,64 @@ pub enum EbpfError {
     /// An I/O error occurred during async ring-buffer polling or /proc parsing.
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
+
+    // ── string-based variants (used by file I/O loader, cross-platform) ─
+    /// Failed to load the compiled eBPF bytecode into the kernel.
+    #[error("eBPF program load failed: {0}")]
+    ProgramLoad(String),
+
+    /// Failed to attach a kprobe to the target syscall.
+    #[error("kprobe attach failed: {0}")]
+    ProbeAttach(String),
+
+    /// Failed to update a BPF map from userspace.
+    #[error("BPF map update failed: {0}")]
+    MapUpdate(String),
+
+    /// Failed to parse an event received from the BPF perf event array.
+    #[error("event parse failed: {0}")]
+    EventParse(String),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn display_program_load() {
+        let err = EbpfError::ProgramLoad("missing privileges".into());
+        assert_eq!(err.to_string(), "eBPF program load failed: missing privileges");
+    }
+
+    #[test]
+    fn display_probe_attach() {
+        let err = EbpfError::ProbeAttach("sys_openat not found".into());
+        assert_eq!(err.to_string(), "kprobe attach failed: sys_openat not found");
+    }
+
+    #[test]
+    fn display_map_update() {
+        let err = EbpfError::MapUpdate("map full".into());
+        assert_eq!(err.to_string(), "BPF map update failed: map full");
+    }
+
+    #[test]
+    fn display_event_parse() {
+        let err = EbpfError::EventParse("truncated buffer".into());
+        assert_eq!(err.to_string(), "event parse failed: truncated buffer");
+    }
+
+    #[test]
+    fn display_map_not_found() {
+        let err = EbpfError::MapNotFound {
+            name: "PID_FILTER".into(),
+        };
+        assert_eq!(err.to_string(), "eBPF map `PID_FILTER` not found in object");
+    }
+
+    #[test]
+    fn implements_std_error() {
+        let err = EbpfError::ProgramLoad("test".into());
+        let _: &dyn std::error::Error = &err;
+    }
 }

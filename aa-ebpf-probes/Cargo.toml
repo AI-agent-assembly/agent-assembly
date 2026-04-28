@@ -11,7 +11,7 @@ aa-ebpf-common = { path = "../aa-ebpf-common" }
 
 # BPF programs are no_std binaries; there is no std or test harness.
 [[bin]]
-name = "aa-hello"
+name = "aa-file-io"
 path = "src/main.rs"
 
 [[bin]]

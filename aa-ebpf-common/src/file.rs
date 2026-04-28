@@ -1,39 +1,67 @@
 //! Shared types for file I/O kprobe events (AAASM-38).
 //!
-//! Emitted by `openat`, `write`, and `unlink` kprobes in `aa-ebpf-programs`
-//! and consumed by the userspace ring-buffer reader in `aa-ebpf`.
+//! Emitted by `openat`, `read`, `write`, `unlink`, and `rename` kprobes in
+//! `aa-ebpf-probes` and consumed by the userspace loader in `aa-ebpf`.
 
-/// Maximum file path bytes captured per event.
+/// Maximum byte length of a file path stored in a BPF event or map entry.
 pub const MAX_PATH_LEN: usize = 256;
 
-/// File operation kind intercepted at the kernel level.
-#[repr(u8)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum FileOp {
-    /// `openat` — file open attempt.
-    Open = 0,
-    /// `write` — data written to a file descriptor.
-    Write = 1,
-    /// `unlink` / `unlinkat` — file deletion attempt.
-    Unlink = 2,
+/// Maximum number of events buffered in the perf event array.
+pub const MAX_ENTRIES: u32 = 1024;
+
+/// Maximum number of path patterns in the blocklist/allowlist BPF map.
+pub const MAX_PATH_PATTERNS: u32 = 256;
+
+/// Identifies which file-related syscall was intercepted.
+///
+/// Uses `#[repr(u32)]` for BPF compatibility (BPF maps require 4-byte alignment).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u32)]
+pub enum SyscallType {
+    /// `sys_openat` — open or create a file.
+    Openat = 0,
+    /// `sys_read` — read from a file descriptor.
+    Read = 1,
+    /// `sys_write` — write to a file descriptor.
+    Write = 2,
+    /// `sys_unlink` — delete a file.
+    Unlink = 3,
+    /// `sys_rename` — rename or move a file.
+    Rename = 4,
 }
 
-/// A single file I/O kprobe event emitted from kernel-space.
-#[repr(C)]
+/// A file I/O event emitted by a kprobe, in BPF-compatible layout.
+///
+/// This struct is written by BPF programs into a `PerfEventArray` and read
+/// by the userspace loader. Both sides must agree on this exact layout.
 #[derive(Clone, Copy, Debug)]
-pub struct FileEvent {
-    /// Monotonic kernel timestamp (nanoseconds).
-    pub timestamp_ns: u64,
-    /// Process ID of the monitored agent.
+#[repr(C)]
+pub struct FileIoEventRaw {
+    /// Process ID of the intercepted syscall.
     pub pid: u32,
-    /// Thread ID within the process.
+    /// Thread ID of the intercepted syscall.
     pub tid: u32,
-    /// File descriptor involved (−1 if not applicable).
-    pub fd: i32,
-    /// Operation that triggered this event.
-    pub op: FileOp,
-    /// Padding for alignment.
-    pub _pad: [u8; 3],
-    /// Null-terminated file path (up to [`MAX_PATH_LEN`] bytes).
+    /// Kernel timestamp in nanoseconds (from `bpf_ktime_get_ns`).
+    pub timestamp_ns: u64,
+    /// Which syscall was intercepted.
+    pub syscall: SyscallType,
+    /// Syscall-specific flags (e.g., `O_RDONLY` for `openat`).
+    pub flags: u32,
+    /// Syscall return code.
+    pub return_code: i64,
+    /// File path as a null-terminated byte array.
     pub path: [u8; MAX_PATH_LEN],
+}
+
+unsafe impl Send for FileIoEventRaw {}
+unsafe impl Sync for FileIoEventRaw {}
+
+/// Key for the fd-to-path BPF hash map: (pid, fd).
+#[derive(Clone, Copy)]
+#[repr(C)]
+pub struct FdPathKey {
+    /// Process ID that opened the file.
+    pub pid: u32,
+    /// File descriptor number returned by `openat`.
+    pub fd: u64,
 }

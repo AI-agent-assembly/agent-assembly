@@ -1,8 +1,11 @@
-//! eBPF object loader: parses and loads the compiled eBPF ELF into the kernel.
+//! Userspace eBPF program loaders and lifecycle managers.
 
+#[cfg(target_os = "linux")]
 use aya::Ebpf;
 
 use crate::error::EbpfError;
+
+// ── TLS uprobe loader (AAASM-37) ────────────────────────────────────────
 
 /// Loads the compiled `aa-ebpf-probes` TLS uprobe ELF object into the Linux kernel.
 ///
@@ -28,7 +31,362 @@ impl EbpfLoader {
     ///
     /// Requires Linux 5.8+ with BTF enabled (`CONFIG_DEBUG_INFO_BTF=y`) and
     /// `CAP_BPF` + `CAP_PERFMON` capabilities.
+    #[cfg(target_os = "linux")]
     pub fn load() -> Result<Ebpf, EbpfError> {
         Ok(Ebpf::load(crate::AA_TLS_BPF)?)
+    }
+}
+
+// ── File I/O kprobe loader (AAASM-38) ───────────────────────────────────
+
+use crate::alert::SensitivePathDetector;
+use crate::events::FileIoEvent;
+use crate::maps::PathPattern;
+
+/// Manages the lifecycle of file I/O eBPF programs: loading bytecode,
+/// attaching kprobes, and updating BPF maps at runtime.
+///
+/// The file I/O loader is the primary entry point for userspace interaction
+/// with the file I/O kprobe subsystem. It is only functional on Linux; on
+/// other platforms it returns [`EbpfError::ProgramLoad`] immediately.
+pub struct FileIoLoader {
+    /// Target PID to monitor (and its descendants).
+    target_pid: u32,
+    /// Loaded BPF object handle (Linux only).
+    #[cfg(target_os = "linux")]
+    bpf: Option<aya::Ebpf>,
+}
+
+impl FileIoLoader {
+    /// Create a new loader targeting the given PID and its descendants.
+    pub fn new(target_pid: u32) -> Self {
+        Self {
+            target_pid,
+            #[cfg(target_os = "linux")]
+            bpf: None,
+        }
+    }
+
+    /// Load the compiled eBPF bytecode into the kernel.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EbpfError::ProgramLoad`] if the bytecode cannot be loaded
+    /// (e.g., missing privileges, unsupported kernel, or non-Linux platform).
+    pub fn load(&mut self) -> Result<(), EbpfError> {
+        #[cfg(not(target_os = "linux"))]
+        {
+            return Err(EbpfError::ProgramLoad("eBPF is only supported on Linux".into()));
+        }
+
+        #[cfg(target_os = "linux")]
+        {
+            tracing::info!(pid = self.target_pid, "loading eBPF programs");
+            let mut bpf = aya::Ebpf::load(crate::AA_FILE_IO_BPF).map_err(|e| EbpfError::ProgramLoad(e.to_string()))?;
+
+            // Insert the target PID into the PID filter map.
+            let mut pid_filter: aya::maps::HashMap<_, u32, u8> = aya::maps::HashMap::try_from(
+                bpf.map_mut("PID_FILTER")
+                    .ok_or_else(|| EbpfError::ProgramLoad("PID_FILTER map not found".into()))?,
+            )
+            .map_err(|e| EbpfError::ProgramLoad(e.to_string()))?;
+
+            pid_filter
+                .insert(self.target_pid, 1, 0)
+                .map_err(|e| EbpfError::ProgramLoad(e.to_string()))?;
+
+            self.bpf = Some(bpf);
+            Ok(())
+        }
+    }
+
+    /// Attach all file I/O kprobes to the running kernel.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EbpfError::ProbeAttach`] if any kprobe fails to attach.
+    pub fn attach_kprobes(&mut self) -> Result<(), EbpfError> {
+        #[cfg(not(target_os = "linux"))]
+        {
+            return Err(EbpfError::ProbeAttach("eBPF is only supported on Linux".into()));
+        }
+
+        #[cfg(target_os = "linux")]
+        {
+            use aya::programs::KProbe;
+
+            let bpf = self
+                .bpf
+                .as_mut()
+                .ok_or_else(|| EbpfError::ProbeAttach("BPF not loaded — call load() first".into()))?;
+
+            let probes: &[(&str, &str)] = &[
+                ("aa_sys_openat", "__x64_sys_openat"),
+                ("aa_sys_openat_ret", "__x64_sys_openat"),
+                ("aa_sys_read", "__x64_sys_read"),
+                ("aa_sys_write", "__x64_sys_write"),
+                ("aa_sys_unlink", "__x64_sys_unlinkat"),
+                ("aa_sys_rename", "__x64_sys_renameat2"),
+            ];
+
+            for (prog_name, fn_name) in probes {
+                let program: &mut KProbe = bpf
+                    .program_mut(prog_name)
+                    .ok_or_else(|| EbpfError::ProbeAttach(format!("{prog_name} program not found")))?
+                    .try_into()
+                    .map_err(|e: aya::programs::ProgramError| EbpfError::ProbeAttach(e.to_string()))?;
+
+                program.load().map_err(|e| EbpfError::ProbeAttach(e.to_string()))?;
+                program
+                    .attach(fn_name, 0)
+                    .map_err(|e| EbpfError::ProbeAttach(e.to_string()))?;
+
+                tracing::info!(program = prog_name, function = fn_name, "kprobe attached");
+            }
+
+            Ok(())
+        }
+    }
+
+    /// Start reading events from the BPF perf event array.
+    ///
+    /// Spawns a tokio task per online CPU that reads from the `EVENTS`
+    /// perf array and sends parsed [`FileIoEvent`]s through the returned
+    /// channel.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EbpfError::EventParse`] if the perf array cannot be opened.
+    #[cfg(target_os = "linux")]
+    pub fn start_event_reader(&mut self) -> Result<tokio::sync::mpsc::Receiver<FileIoEvent>, EbpfError> {
+        use aa_ebpf_common::file::FileIoEventRaw;
+        use aya::maps::perf::AsyncPerfEventArray;
+        use aya::util::online_cpus;
+        use bytes::BytesMut;
+
+        let bpf = self
+            .bpf
+            .as_mut()
+            .ok_or_else(|| EbpfError::EventParse("BPF not loaded — call load() first".into()))?;
+
+        // take_map returns an owned Map so the perf array (and its
+        // buffers) are not tied to the `&mut self` lifetime — required
+        // because buffers are moved into tokio::spawn('static).
+        let mut perf_array = AsyncPerfEventArray::try_from(
+            bpf.take_map("EVENTS")
+                .ok_or_else(|| EbpfError::EventParse("EVENTS map not found".into()))?,
+        )
+        .map_err(|e| EbpfError::EventParse(e.to_string()))?;
+
+        let (tx, rx) = tokio::sync::mpsc::channel::<FileIoEvent>(256);
+
+        let cpus = online_cpus().map_err(|(_, e)| EbpfError::EventParse(e.to_string()))?;
+        for cpu_id in cpus {
+            let mut buf = perf_array
+                .open(cpu_id, None)
+                .map_err(|e| EbpfError::EventParse(e.to_string()))?;
+            let tx = tx.clone();
+
+            tokio::spawn(async move {
+                let mut buffers = (0..10)
+                    .map(|_| BytesMut::with_capacity(core::mem::size_of::<FileIoEventRaw>()))
+                    .collect::<Vec<_>>();
+
+                loop {
+                    let events = match buf.read_events(&mut buffers).await {
+                        Ok(events) => events,
+                        Err(e) => {
+                            tracing::warn!(cpu = cpu_id, error = %e, "perf read error");
+                            continue;
+                        }
+                    };
+
+                    for i in 0..events.read {
+                        let buf = &buffers[i];
+                        if buf.len() < core::mem::size_of::<FileIoEventRaw>() {
+                            continue;
+                        }
+                        let raw = unsafe { &*(buf.as_ptr() as *const FileIoEventRaw) };
+                        match FileIoEvent::from_raw(raw) {
+                            Ok(event) => {
+                                let _ = tx.send(event).await;
+                            }
+                            Err(e) => {
+                                tracing::warn!(error = %e, "failed to parse BPF event");
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        Ok(rx)
+    }
+
+    /// Start reading events with userspace-side sensitive path detection.
+    ///
+    /// Wraps [`start_event_reader`](Self::start_event_reader) and applies
+    /// the [`SensitivePathDetector`] to each event, setting
+    /// `is_sensitive = true` if either the BPF-side blocklist flagged it or
+    /// the userspace detector matches.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EbpfError::EventParse`] if the perf array cannot be opened.
+    #[cfg(target_os = "linux")]
+    pub fn start_event_reader_with_alerts(
+        &mut self,
+        detector: SensitivePathDetector,
+    ) -> Result<tokio::sync::mpsc::Receiver<FileIoEvent>, EbpfError> {
+        let mut inner_rx = self.start_event_reader()?;
+        let (tx, rx) = tokio::sync::mpsc::channel::<FileIoEvent>(256);
+
+        tokio::spawn(async move {
+            while let Some(mut event) = inner_rx.recv().await {
+                if !event.is_sensitive && detector.is_sensitive(&event) {
+                    event.is_sensitive = true;
+                }
+                if event.is_sensitive {
+                    tracing::warn!(
+                        pid = event.pid,
+                        path = %event.path,
+                        syscall = %event.syscall,
+                        "sensitive path access detected"
+                    );
+                }
+                let _ = tx.send(event).await;
+            }
+        });
+
+        Ok(rx)
+    }
+
+    /// Update the path filter BPF map with new patterns.
+    ///
+    /// This can be called at runtime without reloading the eBPF programs.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EbpfError::MapUpdate`] if the map update fails.
+    pub fn update_path_filter(&mut self, patterns: &[PathPattern]) -> Result<(), EbpfError> {
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = patterns;
+            return Err(EbpfError::MapUpdate("eBPF is only supported on Linux".into()));
+        }
+
+        #[cfg(target_os = "linux")]
+        {
+            use crate::maps::PathVerdict;
+
+            let bpf = self
+                .bpf
+                .as_mut()
+                .ok_or_else(|| EbpfError::MapUpdate("BPF not loaded — call load() first".into()))?;
+
+            // Collect deny and allow patterns separately before borrowing maps.
+            let mut deny_keys = Vec::new();
+            let mut allow_keys = Vec::new();
+            for pat in patterns {
+                let mut key = [0u8; aa_ebpf_common::file::MAX_PATH_LEN];
+                let bytes = pat.pattern.as_bytes();
+                let len = bytes.len().min(aa_ebpf_common::file::MAX_PATH_LEN);
+                key[..len].copy_from_slice(&bytes[..len]);
+
+                match pat.verdict {
+                    PathVerdict::Deny => deny_keys.push(key),
+                    PathVerdict::Allow => allow_keys.push(key),
+                }
+            }
+
+            // Update blocklist map (scoped to drop borrow before allowlist).
+            {
+                let mut blocklist: aya::maps::HashMap<_, [u8; aa_ebpf_common::file::MAX_PATH_LEN], u8> =
+                    aya::maps::HashMap::try_from(
+                        bpf.map_mut("PATH_BLOCKLIST")
+                            .ok_or_else(|| EbpfError::MapUpdate("PATH_BLOCKLIST map not found".into()))?,
+                    )
+                    .map_err(|e| EbpfError::MapUpdate(e.to_string()))?;
+
+                let existing_keys: Vec<[u8; aa_ebpf_common::file::MAX_PATH_LEN]> =
+                    blocklist.keys().filter_map(|k| k.ok()).collect();
+                for key in &existing_keys {
+                    let _ = blocklist.remove(key);
+                }
+                for key in &deny_keys {
+                    blocklist
+                        .insert(*key, 1, 0)
+                        .map_err(|e| EbpfError::MapUpdate(e.to_string()))?;
+                }
+            }
+
+            // Update allowlist map.
+            {
+                let mut allowlist: aya::maps::HashMap<_, [u8; aa_ebpf_common::file::MAX_PATH_LEN], u8> =
+                    aya::maps::HashMap::try_from(
+                        bpf.map_mut("PATH_ALLOWLIST")
+                            .ok_or_else(|| EbpfError::MapUpdate("PATH_ALLOWLIST map not found".into()))?,
+                    )
+                    .map_err(|e| EbpfError::MapUpdate(e.to_string()))?;
+
+                let existing_keys: Vec<[u8; aa_ebpf_common::file::MAX_PATH_LEN]> =
+                    allowlist.keys().filter_map(|k| k.ok()).collect();
+                for key in &existing_keys {
+                    let _ = allowlist.remove(key);
+                }
+                for key in &allow_keys {
+                    allowlist
+                        .insert(*key, 1, 0)
+                        .map_err(|e| EbpfError::MapUpdate(e.to_string()))?;
+                }
+            }
+
+            let deny_count = deny_keys.len();
+            let allow_count = allow_keys.len();
+
+            tracing::info!(deny = deny_count, allow = allow_count, "updated path filters");
+            Ok(())
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new_stores_target_pid() {
+        let loader = FileIoLoader::new(1234);
+        assert_eq!(loader.target_pid, 1234);
+    }
+
+    #[test]
+    #[cfg(not(target_os = "linux"))]
+    fn load_returns_error_on_non_linux() {
+        let mut loader = FileIoLoader::new(1);
+        let err = loader.load().unwrap_err();
+        assert!(matches!(err, EbpfError::ProgramLoad(_)));
+    }
+
+    #[test]
+    #[cfg(not(target_os = "linux"))]
+    fn attach_kprobes_returns_error_on_non_linux() {
+        let mut loader = FileIoLoader::new(1);
+        let err = loader.attach_kprobes().unwrap_err();
+        assert!(matches!(err, EbpfError::ProbeAttach(_)));
+    }
+
+    #[test]
+    #[cfg(not(target_os = "linux"))]
+    fn update_path_filter_returns_error_on_non_linux() {
+        use crate::maps::PathVerdict;
+
+        let mut loader = FileIoLoader::new(1);
+        let patterns = vec![PathPattern {
+            pattern: "/etc/shadow".into(),
+            verdict: PathVerdict::Deny,
+        }];
+        let err = loader.update_path_filter(&patterns).unwrap_err();
+        assert!(matches!(err, EbpfError::MapUpdate(_)));
     }
 }

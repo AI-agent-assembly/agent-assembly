@@ -35,21 +35,23 @@
 //! ## Platform support
 //!
 //! eBPF is Linux-only. On macOS, this crate compiles but all aya-dependent
-//! modules (`loader`, `uprobe`, `kprobe`, `tracepoint`, `ringbuf`) are gated
-//! with `#[cfg(target_os = "linux")]`.  The `events` and `lineage` modules
-//! are unconditional and available on all platforms.
+//! modules (`uprobe`, `kprobe`, `tracepoint`, `ringbuf`) are gated with
+//! `#[cfg(target_os = "linux")]`.  Cross-platform modules (`events`, `lineage`,
+//! `alert`, `error`, `loader`, `maps`, `syscall`) are available on all platforms.
 
-// Shared event type re-exports — unconditional (no aya dependency).
+// Cross-platform modules (no aya dependency).
+pub mod alert;
+pub mod error;
 pub mod events;
+pub mod kprobes;
 pub mod lineage;
+pub mod loader;
+pub mod maps;
+pub mod syscall;
 
 // aya-dependent modules — Linux only.
 #[cfg(target_os = "linux")]
-pub mod error;
-#[cfg(target_os = "linux")]
 pub mod kprobe;
-#[cfg(target_os = "linux")]
-pub mod loader;
 #[cfg(target_os = "linux")]
 pub mod ringbuf;
 #[cfg(target_os = "linux")]
@@ -57,25 +59,27 @@ pub mod tracepoint;
 #[cfg(target_os = "linux")]
 pub mod uprobe;
 
-#[cfg(target_os = "linux")]
+pub use alert::SensitivePathDetector;
 pub use error::EbpfError;
+pub use events::FileIoEvent;
+pub use loader::{EbpfLoader, FileIoLoader};
+pub use maps::{PathPattern, PathVerdict, MAX_PATH_LEN, MAX_PATH_PATTERNS};
 #[cfg(target_os = "linux")]
 pub use ringbuf::EbpfEvent;
+pub use syscall::SyscallKind;
 
-/// Compiled BPF bytecode for the `aa-hello` probe program.
+/// Compiled BPF bytecode for the file I/O probe program.
 ///
 /// Embedded from `aa-ebpf-probes/src/main.rs` at build time via `aya-build`.
+/// Contains kprobes for openat, read, write, unlink, and rename syscalls.
 /// Pass this slice to [`aya::Ebpf::load`] to obtain a handle to all programs
 /// in the probe crate.
 ///
 /// Only meaningful on Linux — on other platforms this constant is absent.
 #[cfg(target_os = "linux")]
-pub static AA_HELLO_BPF: &[u8] = aya::include_bytes_aligned!(concat!(
+pub static AA_FILE_IO_BPF: &[u8] = aya::include_bytes_aligned!(concat!(
     env!("OUT_DIR"),
-    // Path layout: OUT_DIR/<package-name>/<target>/release/<binary-name>
-    // Package name is "aa-ebpf-probes" (from Cargo.toml [package].name).
-    // Binary name is "aa-hello" (from Cargo.toml [[bin]].name).
-    "/aa-ebpf-probes/bpfel-unknown-none/release/aa-hello"
+    "/aa-ebpf-probes/bpfel-unknown-none/release/aa-file-io"
 ));
 
 /// Compiled BPF bytecode for the TLS uprobe programs (AAASM-37).

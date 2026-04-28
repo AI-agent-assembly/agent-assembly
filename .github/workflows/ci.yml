@@ -282,7 +282,7 @@ jobs:
         # `test` crate — unavailable on the no_std bpfel-unknown-none target.
         # --bins lints only the BPF program binaries.
         run: cargo clippy --bins -- -D warnings
-      - name: Integration test — load and attach aa-hello kprobe
+      - name: Integration test — load and attach aa-file-io kprobe
         # Runs from the workspace root so cargo can resolve the aa-ebpf package.
         # BPF loading requires CAP_BPF + CAP_PERFMON (root). sudo -E preserves
         # CARGO_HOME, RUSTUP_HOME, and PATH so cargo uses the already-installed

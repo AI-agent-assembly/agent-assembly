@@ -6,7 +6,7 @@
 
 use std::mem;
 
-use aa_ebpf_common::{exec::ExecEvent, file::FileEvent, tls::TlsCaptureEvent};
+use aa_ebpf_common::{exec::ExecEvent, file::FileIoEventRaw, tls::TlsCaptureEvent};
 use aya::{
     maps::{MapData, RingBuf},
     Ebpf,
@@ -21,7 +21,7 @@ pub enum EbpfEvent {
     /// TLS plaintext capture (AAASM-37).
     Tls(Box<TlsCaptureEvent>),
     /// File I/O operation (AAASM-38).
-    File(Box<FileEvent>),
+    File(Box<FileIoEventRaw>),
     /// Process exec (AAASM-39).
     Exec(Box<ExecEvent>),
 }
@@ -92,12 +92,12 @@ impl RingBufReader {
 ///
 /// Sizes (from `#[repr(C)]` layout):
 /// - [`TlsCaptureEvent`]: 8 + 4 + 4 + 4 + 4 + 1 + 7 + 4096 = 4128 bytes
-/// - [`FileEvent`]:  8 + 4 + 4 + 4 + 1 + 3 + 256 = 280 bytes
+/// - [`FileIoEventRaw`]:  see struct for exact layout
 /// - [`ExecEvent`]:  8 + 4 + 4 + 4 + 4 + 256 + 512 = 792 bytes
 fn parse_event(bytes: &[u8]) -> Result<EbpfEvent, EbpfError> {
     match bytes.len() {
         n if n == mem::size_of::<TlsCaptureEvent>() => Ok(EbpfEvent::Tls(Box::new(bytes_to::<TlsCaptureEvent>(bytes)))),
-        n if n == mem::size_of::<FileEvent>() => Ok(EbpfEvent::File(Box::new(bytes_to::<FileEvent>(bytes)))),
+        n if n == mem::size_of::<FileIoEventRaw>() => Ok(EbpfEvent::File(Box::new(bytes_to::<FileIoEventRaw>(bytes)))),
         n if n == mem::size_of::<ExecEvent>() => Ok(EbpfEvent::Exec(Box::new(bytes_to::<ExecEvent>(bytes)))),
         got => Err(EbpfError::EventSize {
             expected: mem::size_of::<TlsCaptureEvent>(),

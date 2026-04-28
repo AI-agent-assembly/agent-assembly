@@ -12,7 +12,7 @@
 //! | Module | Event type | Task |
 //! |--------|-----------|------|
 //! | [`tls`] | [`tls::TlsCaptureEvent`] | AAASM-37 — OpenSSL uprobe |
-//! | [`file`] | [`file::FileEvent`] | AAASM-38 — file I/O kprobes |
+//! | [`file`] | [`file::FileIoEventRaw`] | AAASM-38 — file I/O kprobes |
 //! | [`exec`] | [`exec::ProcessSpawnEvent`] | AAASM-39 — exec tracepoints |
 
 #![no_std]
