@@ -30,5 +30,8 @@
 #[cfg(target_os = "linux")]
 pub static AA_HELLO_BPF: &[u8] = aya::include_bytes_aligned!(concat!(
     env!("OUT_DIR"),
-    "/aa-hello/bpfel-unknown-none/release/aa-hello"
+    // Path layout: OUT_DIR/<package-name>/<target>/release/<binary-name>
+    // Package name is "aa-ebpf-probes" (from Cargo.toml [package].name).
+    // Binary name is "aa-hello" (from Cargo.toml [[bin]].name).
+    "/aa-ebpf-probes/bpfel-unknown-none/release/aa-hello"
 ));

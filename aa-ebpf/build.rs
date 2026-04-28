@@ -11,7 +11,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(target_os = "linux")]
     aya_build::build_ebpf(
         [aya_build::Package {
-            name: "aa-hello",
+            // Must match the [package] name in aa-ebpf-probes/Cargo.toml.
+            // aya-build passes this as `cargo build --package <name>` and uses
+            // it as the subdirectory under OUT_DIR for the compiled artifacts.
+            name: "aa-ebpf-probes",
             root_dir: "../aa-ebpf-probes",
             no_default_features: false,
             features: &[],
