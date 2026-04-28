@@ -37,6 +37,8 @@ message EnvelopedEvent {
     AgentStatusChanged            agent_status     = 13;
     // A budget or rate-limit threshold has been reached.
     BudgetThresholdHit            budget_alert     = 14;
+    // Sensitive data was detected and redacted by the policy scanner.
+    DataLeakEvent                 data_leak        = 15;
   }
 }
 
@@ -96,6 +98,26 @@ message BudgetThresholdHit {
   double                     budget_limit  = 3;
   // Percentage of the budget consumed (0-100+).
   int32                      percent_used  = 4;
+}
+
+// DataLeakEvent is emitted when the policy scanner detects and redacts sensitive data.
+//
+// Security invariant: this message MUST NOT carry the matched secret or the
+// un-redacted payload. Only metadata safe for audit logging is included.
+message DataLeakEvent {
+  // Agent whose action triggered the sensitive-data detection.
+  string          agent_id         = 1;
+  // Session in which the action was intercepted.
+  string          session_id       = 2;
+  // Wall-clock time of detection, in Unix nanoseconds.
+  uint64          timestamp_ns     = 3;
+  // Total number of credential or PII matches redacted from the payload.
+  uint32          finding_count    = 4;
+  // CredentialKind discriminant string for each finding (e.g. "OpenAiKey", "Custom").
+  // Does not include the matched value.
+  repeated string credential_kinds = 5;
+  // Policy version string that triggered this scan, or "unknown" if absent.
+  string          policy_name      = 6;
 }
 
 // ApprovalDecision is sent by the SDK to the runtime when a human reviewer

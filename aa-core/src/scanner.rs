@@ -113,6 +113,9 @@ pub enum CredentialKind {
     // Generic
     /// High-entropy token (Shannon entropy > 4.5 bits/char, length 20–64 bytes).
     GenericHighEntropy,
+    // Policy-defined
+    /// A pattern defined in the policy document's `data.sensitive_patterns` field.
+    Custom,
 }
 
 impl CredentialKind {
@@ -141,6 +144,7 @@ impl CredentialKind {
             Self::SlackOAuthToken => "SlackOAuthToken",
             Self::SlackUserToken => "SlackUserToken",
             Self::SsnPattern => "SsnPattern",
+            Self::Custom => "Custom",
         }
     }
 }
@@ -175,6 +179,14 @@ impl CredentialFinding {
             matched: label,
             end,
         }
+    }
+
+    /// Construct a finding for a match produced by a policy-defined regex pattern.
+    ///
+    /// Used by `aa-gateway` when custom `data.sensitive_patterns` regexes match.
+    /// The `offset` and `end` are byte positions returned by the regex engine.
+    pub fn from_regex_match(offset: usize, end: usize) -> Self {
+        Self::new(CredentialKind::Custom, offset, end)
     }
 }
 
@@ -771,6 +783,21 @@ mod tests {
     fn is_clean_true_for_benign_text() {
         let scanner = CredentialScanner::new();
         assert!(scanner.scan("Hello, world! No secrets here.").is_clean());
+    }
+
+    // --- CredentialKind::Custom and CredentialFinding::from_regex_match ---
+
+    #[test]
+    fn custom_kind_as_str_returns_custom() {
+        assert_eq!(CredentialKind::Custom.as_str(), "Custom");
+    }
+
+    #[test]
+    fn from_regex_match_creates_custom_finding() {
+        let finding = CredentialFinding::from_regex_match(5, 20);
+        assert_eq!(finding.kind, CredentialKind::Custom);
+        assert_eq!(finding.offset, 5);
+        assert_eq!(finding.matched, "[REDACTED:Custom]");
     }
 
     // --- False-positive corpus ---

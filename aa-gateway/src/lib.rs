@@ -9,4 +9,4 @@ pub mod engine;
 pub mod policy;
 pub mod simulation;
 
-pub use engine::{PolicyEngine, PolicyLoadError};
+pub use engine::{EvaluationResult, PolicyEngine, PolicyLoadError};

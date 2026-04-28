@@ -15,10 +15,34 @@ use std::{
 
 use crate::policy::{PolicyDocument, PolicyValidator};
 
+/// The outcome of a [`PolicyEngine::evaluate`] call.
+///
+/// Carries the governance decision alongside any credential or PII findings
+/// produced by the scanner pass. If `credential_findings` is non-empty the
+/// original payload was redacted; `redacted_payload` holds the sanitised text.
+///
+/// Security invariant: `credential_findings` stores only the kind and byte
+/// offset of each finding — never the matched secret or the raw payload.
+pub struct EvaluationResult {
+    /// Governance decision: `Allow`, `Deny`, or `RequiresApproval`.
+    pub decision: aa_core::PolicyResult,
+    /// Redacted version of the action payload when one or more findings were
+    /// detected. `None` when the payload was clean.
+    pub redacted_payload: Option<String>,
+    /// All credential and PII findings detected during the scanner pass.
+    /// Empty when the payload was clean.
+    pub credential_findings: Vec<aa_core::CredentialFinding>,
+}
+
 /// Assembled policy engine that evaluates governance actions through a 7-step pipeline.
 pub struct PolicyEngine {
     policy: Arc<ArcSwap<PolicyDocument>>,
-    /// Pre-compiled regex patterns from the policy's data section.
+    /// Pre-compiled Aho-Corasick credential scanner (built-in patterns).
+    ///
+    /// Built once at construction time from [`aa_core::CredentialScanner`].
+    /// Always active — scans every action payload regardless of policy data section.
+    scanner: aa_core::CredentialScanner,
+    /// Pre-compiled regex patterns from the policy's `data.sensitive_patterns`.
     ///
     /// Compiled once at load time to avoid re-compiling on every `evaluate()` call.
     // TODO: recompile on hot-reload — currently these patterns reflect the policy at engine
@@ -60,6 +84,7 @@ impl PolicyEngine {
         let watcher = crate::engine::watcher::start_watcher(path, policy_arc.clone()).ok();
         Ok(PolicyEngine {
             policy: policy_arc,
+            scanner: aa_core::CredentialScanner::new(),
             compiled_patterns,
             rate_state: DashMap::new(),
             budget: crate::engine::budget::BudgetTracker::new(),
@@ -93,7 +118,9 @@ impl PolicyEngine {
     /// Evaluate a governance action through the 7-step pipeline.
     ///
     /// Stages are evaluated in order; the first `Deny` short-circuits the pipeline.
-    pub fn evaluate(&self, ctx: &aa_core::AgentContext, action: &aa_core::GovernanceAction) -> aa_core::PolicyResult {
+    /// Stage 6 (credential scan) does not deny — it redacts the payload in-memory
+    /// and records findings in the returned [`EvaluationResult`].
+    pub fn evaluate(&self, ctx: &aa_core::AgentContext, action: &aa_core::GovernanceAction) -> EvaluationResult {
         let policy = self.policy.load();
 
         // Stage 1 — Schedule: check active hours window.
@@ -104,8 +131,12 @@ impl PolicyEngine {
                 let now = chrono::Utc::now().with_timezone(&tz);
                 let current_hhmm = format!("{:02}:{:02}", now.hour(), now.minute());
                 if current_hhmm < ah.start || current_hhmm >= ah.end {
-                    return aa_core::PolicyResult::Deny {
-                        reason: "outside active hours".into(),
+                    return EvaluationResult {
+                        decision: aa_core::PolicyResult::Deny {
+                            reason: "outside active hours".into(),
+                        },
+                        redacted_payload: None,
+                        credential_findings: vec![],
                     };
                 }
             }
@@ -123,8 +154,12 @@ impl PolicyEngine {
                         .next()
                         .unwrap_or("");
                     if !np.allowlist.iter().any(|entry| entry == host) {
-                        return aa_core::PolicyResult::Deny {
-                            reason: "host not in network allowlist".into(),
+                        return EvaluationResult {
+                            decision: aa_core::PolicyResult::Deny {
+                                reason: "host not in network allowlist".into(),
+                            },
+                            redacted_payload: None,
+                            credential_findings: vec![],
                         };
                     }
                 }
@@ -135,8 +170,12 @@ impl PolicyEngine {
         if let aa_core::GovernanceAction::ToolCall { name, .. } = action {
             if let Some(tp) = policy.tools.get(name) {
                 if !tp.allow {
-                    return aa_core::PolicyResult::Deny {
-                        reason: "tool denied by policy".into(),
+                    return EvaluationResult {
+                        decision: aa_core::PolicyResult::Deny {
+                            reason: "tool denied by policy".into(),
+                        },
+                        redacted_payload: None,
+                        credential_findings: vec![],
                     };
                 }
             }
@@ -152,8 +191,12 @@ impl PolicyEngine {
                         .or_insert_with(|| Mutex::new(rate_limit::TokenBucket::new(limit)));
                     let mut bucket = entry.lock().unwrap_or_else(|e| e.into_inner());
                     if !bucket.try_consume() {
-                        return aa_core::PolicyResult::Deny {
-                            reason: "rate limit exceeded".into(),
+                        return EvaluationResult {
+                            decision: aa_core::PolicyResult::Deny {
+                                reason: "rate limit exceeded".into(),
+                            },
+                            redacted_payload: None,
+                            credential_findings: vec![],
                         };
                     }
                 }
@@ -165,41 +208,84 @@ impl PolicyEngine {
             if let Some(tp) = policy.tools.get(name) {
                 if let Some(expr) = &tp.requires_approval_if {
                     if !expr.is_empty() && crate::policy::expr::evaluate(expr, action) {
-                        return aa_core::PolicyResult::RequiresApproval { timeout_secs: 30 };
+                        return EvaluationResult {
+                            decision: aa_core::PolicyResult::RequiresApproval { timeout_secs: 30 },
+                            redacted_payload: None,
+                            credential_findings: vec![],
+                        };
                     }
                 }
             }
         }
 
-        // Stage 6 — Data pattern scan (uses pre-compiled regexes from load time).
-        if !self.compiled_patterns.is_empty() {
-            let text = match action {
-                aa_core::GovernanceAction::ToolCall { args, .. } => args.as_str(),
-                aa_core::GovernanceAction::FileAccess { path, .. } => path.as_str(),
-                aa_core::GovernanceAction::NetworkRequest { url, .. } => url.as_str(),
-                aa_core::GovernanceAction::ProcessExec { command } => command.as_str(),
-            };
-            for re in &self.compiled_patterns {
-                if re.is_match(text) {
-                    return aa_core::PolicyResult::Deny {
-                        reason: "sensitive data pattern matched".into(),
-                    };
-                }
+        // Stage 6 — Credential scan + custom pattern scan: redact in-memory, never deny.
+        //
+        // Pass 1: Aho-Corasick built-in scan (18+ patterns via aa-core::CredentialScanner).
+        // Pass 2: Policy-defined regex patterns from data.sensitive_patterns.
+        // Both passes contribute to the same findings list. The merged ScanResult is used
+        // to redact the payload once; the redacted text propagates — the original is dropped.
+        let text = match action {
+            aa_core::GovernanceAction::ToolCall { args, .. } => args.as_str(),
+            aa_core::GovernanceAction::FileAccess { path, .. } => path.as_str(),
+            aa_core::GovernanceAction::NetworkRequest { url, .. } => url.as_str(),
+            aa_core::GovernanceAction::ProcessExec { command } => command.as_str(),
+        };
+
+        let scan = self.scanner.scan(text);
+        let mut all_findings = scan.findings;
+
+        // Pass 2: policy-defined regex patterns.
+        for re in &self.compiled_patterns {
+            for m in re.find_iter(text) {
+                all_findings.push(aa_core::CredentialFinding::from_regex_match(m.start(), m.end()));
             }
         }
+
+        let (redacted_payload, credential_findings) = if all_findings.is_empty() {
+            (None, vec![])
+        } else {
+            // Sort by offset for deterministic redaction order.
+            all_findings.sort_by_key(|f| f.offset);
+            let merged = aa_core::ScanResult {
+                findings: all_findings.clone(),
+            };
+            let redacted = merged.redact(text);
+            // TODO(AAASM-31): wrap in EnrichedEvent::DataLeak(DataLeakEvent { ... }) and
+            // send on the broadcast_tx once AAASM-31 adds the DataLeak variant to EnrichedEvent.
+            // DataLeakEvent fields are available here:
+            //   agent_id:         ctx.agent_id
+            //   session_id:       ctx.session_id
+            //   timestamp_ns:     <now>
+            //   finding_count:    all_findings.len()
+            //   credential_kinds: all_findings.iter().map(|f| f.kind.as_str())
+            //   policy_name:      policy.version.as_deref().unwrap_or("unknown")
+            tracing::warn!(
+                finding_count = all_findings.len(),
+                "DataLeakEvent emission pending AAASM-31 EnrichedEvent::DataLeak variant"
+            );
+            (Some(redacted), all_findings)
+        };
 
         // Stage 7 — Budget check.
         if let Some(bp) = &policy.budget {
             if let Some(limit) = bp.daily_limit_usd {
                 if self.budget.is_exceeded(ctx.agent_id.as_bytes(), limit) {
-                    return aa_core::PolicyResult::Deny {
-                        reason: "daily budget exceeded".into(),
+                    return EvaluationResult {
+                        decision: aa_core::PolicyResult::Deny {
+                            reason: "daily budget exceeded".into(),
+                        },
+                        redacted_payload,
+                        credential_findings,
                     };
                 }
             }
         }
 
-        aa_core::PolicyResult::Allow
+        EvaluationResult {
+            decision: aa_core::PolicyResult::Allow,
+            redacted_payload,
+            credential_findings,
+        }
     }
 
     /// Record a spend amount for an agent after an action completes.
@@ -217,7 +303,7 @@ impl PolicyEngine {
 /// Use [`PolicyEngine::load_from_file`] to construct and reload a live engine.
 impl aa_core::PolicyEvaluator for PolicyEngine {
     fn evaluate(&self, ctx: &aa_core::AgentContext, action: &aa_core::GovernanceAction) -> aa_core::PolicyResult {
-        PolicyEngine::evaluate(self, ctx, action)
+        PolicyEngine::evaluate(self, ctx, action).decision
     }
 
     fn load_policy(&mut self, _policy: &aa_core::PolicyDocument) -> Result<(), aa_core::PolicyError> {
@@ -278,6 +364,7 @@ mod tests {
             .unwrap_or_default();
         PolicyEngine {
             policy: Arc::new(ArcSwap::new(Arc::new(doc))),
+            scanner: aa_core::CredentialScanner::new(),
             compiled_patterns,
             rate_state: DashMap::new(),
             budget: budget::BudgetTracker::new(),
@@ -306,7 +393,7 @@ mod tests {
         let engine = make_engine(empty_doc());
         let ctx = make_ctx();
         let action = tool_call("any", "");
-        assert_eq!(engine.evaluate(&ctx, &action), PolicyResult::Allow);
+        assert_eq!(engine.evaluate(&ctx, &action).decision, PolicyResult::Allow);
     }
 
     #[test]
@@ -326,7 +413,7 @@ mod tests {
         let result = engine.evaluate(&ctx, &action);
         // This window is 1 minute wide; unless tests run exactly at midnight, it's Deny.
         // Accept either Deny or Allow (if tests run in the 00:00–00:01 window).
-        match result {
+        match result.decision {
             PolicyResult::Deny { reason } => {
                 assert_eq!(reason, "outside active hours");
             }
@@ -351,8 +438,7 @@ mod tests {
         let ctx = make_ctx();
         let action = tool_call("any", "");
         // 00:00–23:59 covers almost the whole day — should Allow.
-        let result = engine.evaluate(&ctx, &action);
-        assert_eq!(result, PolicyResult::Allow);
+        assert_eq!(engine.evaluate(&ctx, &action).decision, PolicyResult::Allow);
     }
 
     #[test]
@@ -365,7 +451,7 @@ mod tests {
         let ctx = make_ctx();
         let action = network_req("https://evil.com/path");
         assert_eq!(
-            engine.evaluate(&ctx, &action),
+            engine.evaluate(&ctx, &action).decision,
             PolicyResult::Deny {
                 reason: "host not in network allowlist".into()
             }
@@ -381,7 +467,7 @@ mod tests {
         let engine = make_engine(doc);
         let ctx = make_ctx();
         let action = network_req("https://api.openai.com/v1");
-        assert_eq!(engine.evaluate(&ctx, &action), PolicyResult::Allow);
+        assert_eq!(engine.evaluate(&ctx, &action).decision, PolicyResult::Allow);
     }
 
     #[test]
@@ -399,7 +485,7 @@ mod tests {
         let ctx = make_ctx();
         let action = tool_call("ls", "");
         assert_eq!(
-            engine.evaluate(&ctx, &action),
+            engine.evaluate(&ctx, &action).decision,
             PolicyResult::Deny {
                 reason: "tool denied by policy".into()
             }
@@ -420,7 +506,7 @@ mod tests {
         let engine = make_engine(doc);
         let ctx = make_ctx();
         let action = tool_call("ls", "");
-        assert_eq!(engine.evaluate(&ctx, &action), PolicyResult::Allow);
+        assert_eq!(engine.evaluate(&ctx, &action).decision, PolicyResult::Allow);
     }
 
     #[test]
@@ -439,10 +525,10 @@ mod tests {
         let action = tool_call("search", "");
 
         // First call should succeed.
-        assert_eq!(engine.evaluate(&ctx, &action), PolicyResult::Allow);
+        assert_eq!(engine.evaluate(&ctx, &action).decision, PolicyResult::Allow);
         // Second call should be rate-limited.
         assert_eq!(
-            engine.evaluate(&ctx, &action),
+            engine.evaluate(&ctx, &action).decision,
             PolicyResult::Deny {
                 reason: "rate limit exceeded".into()
             }
@@ -464,13 +550,14 @@ mod tests {
         let ctx = make_ctx();
         let action = tool_call("search", "");
         assert_eq!(
-            engine.evaluate(&ctx, &action),
+            engine.evaluate(&ctx, &action).decision,
             PolicyResult::RequiresApproval { timeout_secs: 30 }
         );
     }
 
     #[test]
-    fn data_pattern_denies_sensitive_match() {
+    fn data_pattern_redacts_on_custom_match() {
+        // Stage 6 no longer denies — it redacts in-memory and sets credential_findings.
         let mut doc = empty_doc();
         doc.data = Some(DataPolicy {
             sensitive_patterns: vec![r"password=\w+".to_string()],
@@ -478,12 +565,14 @@ mod tests {
         let engine = make_engine(doc);
         let ctx = make_ctx();
         let action = tool_call("any", "password=secret");
-        assert_eq!(
-            engine.evaluate(&ctx, &action),
-            PolicyResult::Deny {
-                reason: "sensitive data pattern matched".into()
-            }
-        );
+        let result = engine.evaluate(&ctx, &action);
+        assert_eq!(result.decision, PolicyResult::Allow);
+        assert!(!result.credential_findings.is_empty());
+        assert!(result.redacted_payload.is_some());
+        // Raw value must not appear in the redacted payload.
+        let redacted = result.redacted_payload.unwrap();
+        assert!(!redacted.contains("secret"), "raw secret leaked into redacted payload");
+        assert!(redacted.contains("[REDACTED:Custom]"));
     }
 
     #[test]
@@ -499,7 +588,7 @@ mod tests {
 
         let action = tool_call("any", "");
         assert_eq!(
-            engine.evaluate(&ctx, &action),
+            engine.evaluate(&ctx, &action).decision,
             PolicyResult::Deny {
                 reason: "daily budget exceeded".into()
             }
@@ -508,7 +597,7 @@ mod tests {
 
     #[test]
     fn short_circuit_stops_at_first_deny() {
-        // Tool deny should fire before data pattern stage.
+        // Tool deny (Stage 3) fires before the credential scan (Stage 6).
         let mut doc = empty_doc();
         doc.tools.insert(
             "ls".to_string(),
@@ -525,7 +614,7 @@ mod tests {
         let ctx = make_ctx();
         let action = tool_call("ls", "anything");
         assert_eq!(
-            engine.evaluate(&ctx, &action),
+            engine.evaluate(&ctx, &action).decision,
             PolicyResult::Deny {
                 reason: "tool denied by policy".into()
             }
@@ -550,9 +639,10 @@ mod tests {
         let engine = make_engine(empty_doc());
         let ctx = make_ctx();
         let action = tool_call("any", "");
-        // Call via the trait — result must match the inherent method.
+        // Trait returns aa_core::PolicyResult; inherent returns EvaluationResult.
+        // Both must agree on the decision for clean payloads.
         let via_trait = <PolicyEngine as PolicyEvaluator>::evaluate(&engine, &ctx, &action);
-        let via_inherent = engine.evaluate(&ctx, &action);
+        let via_inherent = engine.evaluate(&ctx, &action).decision;
         assert_eq!(via_trait, via_inherent);
     }
 
@@ -580,6 +670,114 @@ mod tests {
         };
         let result = engine.validate_policy(&stub);
         assert_eq!(result, Err(vec![aa_core::PolicyError::InvalidDocument]));
+    }
+
+    // ── Stage 6 scanner integration tests ────────────────────────────────────
+
+    #[test]
+    fn stage6_builtin_openai_key_redacted_not_denied() {
+        // A payload containing an OpenAI API key must be redacted, not denied.
+        let engine = make_engine(empty_doc());
+        let ctx = make_ctx();
+        let action = tool_call("any", "call openai with key sk-abc123xyz");
+        let result = engine.evaluate(&ctx, &action);
+        assert_eq!(result.decision, PolicyResult::Allow);
+        assert!(!result.credential_findings.is_empty());
+        let kinds: Vec<_> = result.credential_findings.iter().map(|f| f.kind.clone()).collect();
+        assert!(
+            kinds.contains(&aa_core::CredentialKind::OpenAiKey),
+            "expected OpenAiKey finding, got: {:?}",
+            kinds
+        );
+        let redacted = result.redacted_payload.expect("redacted_payload must be Some");
+        assert!(
+            !redacted.contains("sk-abc123xyz"),
+            "raw key leaked into redacted payload"
+        );
+        assert!(redacted.contains("[REDACTED:OpenAiKey]"));
+    }
+
+    #[test]
+    fn stage6_builtin_findings_not_in_redacted_payload() {
+        // Raw secret must be absent from the payload that propagates downstream.
+        let engine = make_engine(empty_doc());
+        let ctx = make_ctx();
+        let raw_key = "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ123456";
+        let action = tool_call("any", &format!("token={raw_key}"));
+        let result = engine.evaluate(&ctx, &action);
+        assert_eq!(result.decision, PolicyResult::Allow);
+        let redacted = result.redacted_payload.expect("redacted_payload must be Some");
+        assert!(!redacted.contains(raw_key), "raw token leaked into redacted payload");
+        assert!(redacted.contains("[REDACTED:GitHubPat]"));
+    }
+
+    #[test]
+    fn stage6_custom_pattern_produces_custom_finding() {
+        // A policy-defined regex pattern must produce a CredentialKind::Custom finding.
+        let mut doc = empty_doc();
+        doc.data = Some(DataPolicy {
+            sensitive_patterns: vec![r"api_key=[A-Za-z0-9]+".to_string()],
+        });
+        let engine = make_engine(doc);
+        let ctx = make_ctx();
+        let action = tool_call("any", "config: api_key=supersecret123");
+        let result = engine.evaluate(&ctx, &action);
+        assert_eq!(result.decision, PolicyResult::Allow);
+        let kinds: Vec<_> = result.credential_findings.iter().map(|f| f.kind.clone()).collect();
+        assert!(
+            kinds.contains(&aa_core::CredentialKind::Custom),
+            "expected Custom finding, got: {:?}",
+            kinds
+        );
+        let redacted = result.redacted_payload.expect("redacted_payload must be Some");
+        assert!(
+            !redacted.contains("supersecret123"),
+            "raw value leaked into redacted payload"
+        );
+    }
+
+    #[test]
+    fn stage6_clean_payload_has_no_findings() {
+        // A payload with no credentials must produce empty findings and None redacted_payload.
+        let engine = make_engine(empty_doc());
+        let ctx = make_ctx();
+        let action = tool_call("any", "list files in /home/user");
+        let result = engine.evaluate(&ctx, &action);
+        assert_eq!(result.decision, PolicyResult::Allow);
+        assert!(result.credential_findings.is_empty());
+        assert!(result.redacted_payload.is_none());
+    }
+
+    #[test]
+    fn scan_100kb_payload_within_ci_time_bound() {
+        // Ticket AC (Technical Details): "scanning must not add > 2ms to the hot path for
+        // payloads < 100KB". The 2ms budget is enforced on release builds; debug builds use a
+        // looser bound because the Aho-Corasick automaton is not optimised in debug mode.
+        use std::time::Instant;
+
+        #[cfg(debug_assertions)]
+        let budget_ms: u128 = 50; // debug: correctness only, not a perf gate
+        #[cfg(not(debug_assertions))]
+        let budget_ms: u128 = 2; // release: enforces the AC
+
+        let engine = make_engine(empty_doc());
+        let ctx = make_ctx();
+        // Build a ~100 KB payload of benign repeated text (no credentials).
+        let payload = "the quick brown fox jumps over the lazy dog ".repeat(2_500); // ~110 KB
+        let action = tool_call("any", &payload);
+
+        let start = Instant::now();
+        let result = engine.evaluate(&ctx, &action);
+        let elapsed = start.elapsed();
+
+        assert_eq!(result.decision, PolicyResult::Allow);
+        assert!(result.credential_findings.is_empty());
+        assert!(
+            elapsed.as_millis() < budget_ms,
+            "scan took {}ms — exceeds {}ms budget",
+            elapsed.as_millis(),
+            budget_ms,
+        );
     }
 
     // ── apply_yaml integration ──────────────────────────────────────────────
