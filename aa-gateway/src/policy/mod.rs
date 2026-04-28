@@ -6,3 +6,10 @@ pub mod document;
 pub mod error;
 pub mod raw;
 pub mod validator;
+
+pub use document::{
+    ActiveHours, BudgetPolicy, DataPolicy, NetworkPolicy, PolicyDocument, SchedulePolicy,
+    ToolPolicy,
+};
+pub use error::{ValidationError, ValidationWarning};
+pub use validator::{PolicyValidator, PolicyValidatorOutput};
