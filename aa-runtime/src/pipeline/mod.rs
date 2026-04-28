@@ -11,6 +11,7 @@ use crate::ipc::{IpcFrame, IpcResponse, ResponseRouter};
 use crate::policy::PolicyRules;
 use aa_proto::assembly::audit::v1::{audit_event::Detail, AuditEvent, PolicyViolation};
 use aa_proto::assembly::common::v1::ActionType;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{broadcast, mpsc};
@@ -61,6 +62,7 @@ pub async fn run(
     policy: Arc<PolicyRules>,
     response_router: ResponseRouter,
 ) {
+    let seq = AtomicU64::new(0);
     let mut batch: Vec<EnrichedEvent> = Vec::with_capacity(config.batch_size);
     let mut ticker = tokio::time::interval(config.flush_interval);
     ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
@@ -79,7 +81,8 @@ pub async fn run(
 
             Some((connection_id, frame)) = rx.recv() => {
                 if let IpcFrame::EventReport(event) = frame {
-                    let enriched = enrich(event, &config.agent_id, connection_id);
+                    let enriched = enrich(event, &config.agent_id, connection_id, &seq);
+                    tracing::debug!(sequence_number = enriched.sequence_number, connection_id, "event enriched");
                     metrics.record_processed(1);
                     ::metrics::counter!("aa_events_received_total").increment(1);
                     if is_policy_violation(&enriched, &policy) {
@@ -109,18 +112,20 @@ pub async fn run(
 }
 
 /// Enrich a raw [`AuditEvent`] with runtime-side metadata.
-fn enrich(event: AuditEvent, agent_id: &str, connection_id: u64) -> EnrichedEvent {
+fn enrich(event: AuditEvent, agent_id: &str, connection_id: u64, seq: &AtomicU64) -> EnrichedEvent {
     use std::time::{SystemTime, UNIX_EPOCH};
     let received_at_ms = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or(Duration::ZERO)
         .as_millis() as i64;
+    let sequence_number = seq.fetch_add(1, Ordering::Relaxed);
     EnrichedEvent {
         inner: event,
         received_at_ms,
         source: EventSource::Sdk,
         agent_id: agent_id.to_string(),
         connection_id,
+        sequence_number,
     }
 }
 
@@ -224,35 +229,40 @@ mod tests {
     #[test]
     fn enrich_sets_agent_id() {
         let event = make_audit_event();
-        let enriched = enrich(event, "my-agent", 0);
+        let seq = AtomicU64::new(0);
+        let enriched = enrich(event, "my-agent", 0, &seq);
         assert_eq!(enriched.agent_id, "my-agent");
     }
 
     #[test]
     fn enrich_sets_received_at_ms_positive() {
         let event = make_audit_event();
-        let enriched = enrich(event, "agent", 0);
+        let seq = AtomicU64::new(0);
+        let enriched = enrich(event, "agent", 0, &seq);
         assert!(enriched.received_at_ms > 0);
     }
 
     #[test]
     fn enrich_sets_source_to_sdk() {
         let event = make_audit_event();
-        let enriched = enrich(event, "agent", 0);
+        let seq = AtomicU64::new(0);
+        let enriched = enrich(event, "agent", 0, &seq);
         assert_eq!(enriched.source, EventSource::Sdk);
     }
 
     #[test]
     fn is_policy_violation_true_for_violation_detail() {
         let event = make_policy_violation_event();
-        let enriched = enrich(event, "agent", 0);
+        let seq = AtomicU64::new(0);
+        let enriched = enrich(event, "agent", 0, &seq);
         assert!(is_policy_violation(&enriched, &PolicyRules::default()));
     }
 
     #[test]
     fn is_policy_violation_false_for_normal_event() {
         let event = make_audit_event(); // detail = None
-        let enriched = enrich(event, "agent", 0);
+        let seq = AtomicU64::new(0);
+        let enriched = enrich(event, "agent", 0, &seq);
         assert!(!is_policy_violation(&enriched, &PolicyRules::default()));
     }
 
@@ -270,7 +280,11 @@ mod tests {
     fn flush_broadcasts_all_events_and_records_batch_size() {
         let (tx, mut rx) = broadcast::channel::<EnrichedEvent>(16);
         let metrics = PipelineMetrics::default();
-        let mut batch = vec![enrich(make_audit_event(), "a", 0), enrich(make_audit_event(), "b", 0)];
+        let seq = AtomicU64::new(0);
+        let mut batch = vec![
+            enrich(make_audit_event(), "a", 0, &seq),
+            enrich(make_audit_event(), "b", 0, &seq),
+        ];
         flush(&mut batch, &tx, &metrics);
         assert!(batch.is_empty());
         assert_eq!(metrics.last_batch_size(), 2);
@@ -633,6 +647,107 @@ mod tests {
             "non-matching event should stay in batch, not arrive immediately"
         );
 
+        token.cancel();
+    }
+
+    #[tokio::test]
+    async fn sequence_numbers_are_consecutive_within_a_batch() {
+        // batch_size=3 so we get a single flush of 3 events and can check ordering.
+        let config = test_config(3, 10_000);
+        let (tx, rx) = mpsc::channel::<(u64, IpcFrame)>(64);
+        let (broadcast_tx, mut broadcast_rx) = broadcast::channel::<EnrichedEvent>(64);
+        let metrics = Arc::new(PipelineMetrics::default());
+        let token = CancellationToken::new();
+
+        tokio::spawn(run(
+            rx,
+            broadcast_tx,
+            config,
+            metrics.clone(),
+            token.clone(),
+            Arc::new(PolicyRules::default()),
+            crate::ipc::new_response_router(),
+        ));
+
+        for _ in 0..3 {
+            tx.send((0, IpcFrame::EventReport(normal_event()))).await.unwrap();
+        }
+
+        let mut seq_numbers = Vec::new();
+        for _ in 0..3 {
+            let event = tokio::time::timeout(Duration::from_millis(500), broadcast_rx.recv())
+                .await
+                .expect("timed out waiting for event")
+                .expect("broadcast error");
+            seq_numbers.push(event.sequence_number);
+        }
+
+        // Sequence numbers must be strictly monotonically increasing, starting at 0.
+        assert_eq!(
+            seq_numbers,
+            vec![0, 1, 2],
+            "expected consecutive sequence numbers 0, 1, 2"
+        );
+        token.cancel();
+    }
+
+    #[tokio::test]
+    async fn sequence_numbers_are_monotonic_across_batches() {
+        // Two separate batch flushes — sequence counter must not reset between them.
+        let config = test_config(2, 10_000); // batch_size=2
+        let (tx, rx) = mpsc::channel::<(u64, IpcFrame)>(64);
+        let (broadcast_tx, mut broadcast_rx) = broadcast::channel::<EnrichedEvent>(64);
+        let metrics = Arc::new(PipelineMetrics::default());
+        let token = CancellationToken::new();
+
+        tokio::spawn(run(
+            rx,
+            broadcast_tx,
+            config,
+            metrics.clone(),
+            token.clone(),
+            Arc::new(PolicyRules::default()),
+            crate::ipc::new_response_router(),
+        ));
+
+        // First batch of 2
+        for _ in 0..2 {
+            tx.send((0, IpcFrame::EventReport(normal_event()))).await.unwrap();
+        }
+        let first_batch: Vec<u64> = {
+            let mut v = Vec::new();
+            for _ in 0..2 {
+                let e = tokio::time::timeout(Duration::from_millis(500), broadcast_rx.recv())
+                    .await
+                    .expect("timed out waiting for first batch")
+                    .expect("broadcast error");
+                v.push(e.sequence_number);
+            }
+            v
+        };
+
+        // Second batch of 2
+        for _ in 0..2 {
+            tx.send((0, IpcFrame::EventReport(normal_event()))).await.unwrap();
+        }
+        let second_batch: Vec<u64> = {
+            let mut v = Vec::new();
+            for _ in 0..2 {
+                let e = tokio::time::timeout(Duration::from_millis(500), broadcast_rx.recv())
+                    .await
+                    .expect("timed out waiting for second batch")
+                    .expect("broadcast error");
+                v.push(e.sequence_number);
+            }
+            v
+        };
+
+        assert_eq!(first_batch, vec![0, 1]);
+        assert_eq!(
+            second_batch,
+            vec![2, 3],
+            "sequence counter must not reset between batches"
+        );
         token.cancel();
     }
 
