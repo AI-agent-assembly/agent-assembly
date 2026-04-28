@@ -3,3 +3,4 @@
 //! Entry point: [`validator::PolicyValidator::from_yaml`].
 
 pub mod error;
+pub mod raw;
