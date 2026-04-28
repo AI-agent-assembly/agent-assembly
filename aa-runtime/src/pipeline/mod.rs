@@ -7,7 +7,7 @@ pub use event::{EnrichedEvent, EventSource};
 pub use metrics::PipelineMetrics;
 
 use crate::config::RuntimeConfig;
-use crate::ipc::IpcFrame;
+use crate::ipc::{IpcFrame, ResponseRouter};
 use crate::policy::PolicyRules;
 use aa_proto::assembly::audit::v1::{audit_event::Detail, AuditEvent};
 use aa_proto::assembly::common::v1::ActionType;
@@ -59,6 +59,7 @@ pub async fn run(
     metrics: Arc<PipelineMetrics>,
     token: CancellationToken,
     policy: Arc<PolicyRules>,
+    _response_router: ResponseRouter, // wired in commit 6
 ) {
     let mut batch: Vec<EnrichedEvent> = Vec::with_capacity(config.batch_size);
     let mut ticker = tokio::time::interval(config.flush_interval);
@@ -333,6 +334,7 @@ mod tests {
             metrics.clone(),
             token.clone(),
             Arc::new(PolicyRules::default()),
+            crate::ipc::new_response_router(),
         ));
 
         // Send 3 events — batch threshold reached, should flush before interval
@@ -366,6 +368,7 @@ mod tests {
             metrics.clone(),
             token.clone(),
             Arc::new(PolicyRules::default()),
+            crate::ipc::new_response_router(),
         ));
 
         // Send 5 events (less than batch_size=100) — should arrive after interval flush
@@ -399,6 +402,7 @@ mod tests {
             metrics.clone(),
             token.clone(),
             Arc::new(PolicyRules::default()),
+            crate::ipc::new_response_router(),
         ));
 
         // Send a violation — should arrive immediately, bypassing batch
@@ -429,6 +433,7 @@ mod tests {
             metrics.clone(),
             token.clone(),
             Arc::new(PolicyRules::default()),
+            crate::ipc::new_response_router(),
         ));
 
         // Send 5 events (batch won't flush yet)
@@ -480,6 +485,7 @@ mod tests {
             metrics.clone(),
             token.clone(),
             Arc::new(PolicyRules::default()),
+            crate::ipc::new_response_router(),
         ));
 
         // Send non-event frames
@@ -513,7 +519,7 @@ mod tests {
         let metrics = Arc::new(PipelineMetrics::default());
         let token = CancellationToken::new();
 
-        tokio::spawn(run(rx, broadcast_tx, config, metrics.clone(), token.clone(), policy));
+        tokio::spawn(run(rx, broadcast_tx, config, metrics.clone(), token.clone(), policy, crate::ipc::new_response_router()));
 
         // Build an AuditEvent with action_type = FILE_OPERATION
         let event = AuditEvent {
@@ -553,7 +559,7 @@ mod tests {
         let metrics = Arc::new(PipelineMetrics::default());
         let token = CancellationToken::new();
 
-        tokio::spawn(run(rx, broadcast_tx, config, metrics.clone(), token.clone(), policy));
+        tokio::spawn(run(rx, broadcast_tx, config, metrics.clone(), token.clone(), policy, crate::ipc::new_response_router()));
 
         // Yield briefly so the pipeline's interval fires its immediate first tick
         // (tokio::time::interval ticks once immediately on creation).
@@ -595,6 +601,7 @@ mod tests {
             metrics.clone(),
             token.clone(),
             Arc::new(PolicyRules::default()),
+            crate::ipc::new_response_router(),
         ));
 
         // Spawn a receiver that drains the broadcast channel

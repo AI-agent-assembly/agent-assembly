@@ -14,6 +14,7 @@ use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
 use crate::ipc::message::{IpcFrame, IpcResponse};
+use crate::ipc::ResponseRouter;
 
 /// Configuration for the IPC server.
 #[derive(Debug, Clone)]
@@ -80,6 +81,7 @@ impl IpcServer {
         token: CancellationToken,
         inbound_tx: mpsc::Sender<IpcFrame>,
         active_connections: Arc<AtomicI64>,
+        _response_router: ResponseRouter, // wired in commit 3
     ) {
         let semaphore = Arc::new(Semaphore::new(self.config.max_connections));
         let listener = self.listener;
@@ -298,7 +300,7 @@ mod tests {
         let tracker = TaskTracker::new();
         let tracker_clone = tracker.clone();
         tracker.spawn(async move {
-            server.run(tracker_clone, token, tx, active_connections).await;
+            server.run(tracker_clone, token, tx, active_connections, crate::ipc::new_response_router()).await;
         });
         rx
     }
