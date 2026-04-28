@@ -29,7 +29,15 @@ impl PolicyValidator {
     pub fn from_yaml(yaml_str: &str) -> Result<PolicyValidatorOutput, Vec<ValidationError>> {
         // Step 1 — parse raw YAML
         let raw: RawPolicyDocument = serde_yaml::from_str(yaml_str)
-            .map_err(|e| vec![ValidationError::new("(document)", format!("YAML parse error: {}", e))])?;
+            .map_err(|e| {
+                let line = e.location().map(|l| l.line() as u32);
+                let mut err =
+                    ValidationError::new("(document)", format!("YAML parse error: {}", e));
+                if let Some(l) = line {
+                    err = err.with_line(l);
+                }
+                vec![err]
+            })?;
 
         let mut errors: Vec<ValidationError> = Vec::new();
         let mut warnings: Vec<ValidationWarning> = Vec::new();
@@ -499,6 +507,16 @@ data:
         let errs = result.unwrap_err();
         assert_eq!(errs[0].field, "(document)");
         assert!(errs[0].message.contains("YAML parse error"));
+    }
+
+    #[test]
+    fn malformed_yaml_error_includes_line_number() {
+        // serde_yaml reports location for parse errors when available.
+        let yaml = "network:\n  allowlist:\n    - [unclosed\n";
+        let result = PolicyValidator::from_yaml(yaml);
+        assert!(result.is_err());
+        let errs = result.unwrap_err();
+        assert!(errs[0].line.is_some(), "expected line number in parse error");
     }
 
     #[test]
