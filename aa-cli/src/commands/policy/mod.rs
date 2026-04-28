@@ -1,5 +1,7 @@
 //! Policy management subcommands (`aasm policy ...`).
 
+use std::process::ExitCode;
+
 use clap::{Args, Subcommand};
 
 pub mod simulate;
@@ -19,7 +21,7 @@ pub enum PolicyCommands {
 }
 
 /// Dispatch a policy subcommand.
-pub fn dispatch(args: PolicyArgs) {
+pub fn dispatch(args: PolicyArgs) -> ExitCode {
     match args.command {
         PolicyCommands::Simulate(sim_args) => simulate::run(sim_args),
     }

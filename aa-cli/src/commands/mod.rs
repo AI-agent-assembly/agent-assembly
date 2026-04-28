@@ -1,5 +1,7 @@
 //! Top-level CLI subcommand definitions and dispatch.
 
+use std::process::ExitCode;
+
 use clap::Subcommand;
 
 pub mod policy;
@@ -12,7 +14,7 @@ pub enum Commands {
 }
 
 /// Dispatch the parsed CLI command to the appropriate handler.
-pub fn dispatch(cmd: Commands) {
+pub fn dispatch(cmd: Commands) -> ExitCode {
     match cmd {
         Commands::Policy(args) => policy::dispatch(args),
     }

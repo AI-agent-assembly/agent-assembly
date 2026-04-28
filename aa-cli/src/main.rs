@@ -3,6 +3,8 @@
 //! Provides commands for managing agents, policies, and the governance
 //! gateway from the terminal.
 
+use std::process::ExitCode;
+
 use clap::Parser;
 
 mod commands;
@@ -15,7 +17,7 @@ struct Cli {
     command: commands::Commands,
 }
 
-fn main() {
+fn main() -> ExitCode {
     let cli = Cli::parse();
-    commands::dispatch(cli.command);
+    commands::dispatch(cli.command)
 }

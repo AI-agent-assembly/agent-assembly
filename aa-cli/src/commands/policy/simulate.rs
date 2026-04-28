@@ -1,6 +1,7 @@
 //! `aasm policy simulate` — dry-run policy evaluation.
 
 use std::path::PathBuf;
+use std::process::ExitCode;
 
 use clap::Args;
 
@@ -33,6 +34,10 @@ pub struct SimulateArgs {
 }
 
 /// Execute the simulate command.
-pub fn run(_args: SimulateArgs) {
+///
+/// Returns [`ExitCode::SUCCESS`] if no violations were found,
+/// or [`ExitCode::FAILURE`] if the simulation detected policy violations.
+/// This allows CI pipelines to gate on `aasm policy simulate` exit status.
+pub fn run(_args: SimulateArgs) -> ExitCode {
     todo!("AAASM-73: implement policy simulation CLI handler")
 }
