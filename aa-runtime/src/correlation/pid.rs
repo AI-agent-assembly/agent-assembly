@@ -4,7 +4,7 @@
 //! can determine whether two processes belong to the same causal group
 //! (i.e., the SDK process and all of its descendants).
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// Tracks PID-to-parent relationships for causal group membership.
 ///
@@ -31,8 +31,49 @@ impl PidLineage {
 
     /// Returns `true` if `pid_a` and `pid_b` belong to the same causal group
     /// (i.e., one is an ancestor of the other, or they share a common ancestor).
-    pub fn is_same_family(&self, _pid_a: u32, _pid_b: u32) -> bool {
-        todo!("implement ancestor walk using parent_map")
+    ///
+    /// Walks the ancestor chain of `pid_a` up to `max_depth` steps, collecting
+    /// all ancestors into a set, then walks `pid_b`'s chain checking for overlap.
+    /// A cycle guard (`max_depth`) prevents infinite loops in malformed data.
+    pub fn is_same_family(&self, pid_a: u32, pid_b: u32) -> bool {
+        if pid_a == pid_b {
+            return true;
+        }
+
+        const MAX_DEPTH: usize = 64;
+
+        // Collect all ancestors of pid_a (including pid_a itself).
+        let mut ancestors_a = HashSet::new();
+        ancestors_a.insert(pid_a);
+        let mut current = pid_a;
+        for _ in 0..MAX_DEPTH {
+            match self.parent_map.get(&current) {
+                Some(&parent) if !ancestors_a.contains(&parent) => {
+                    ancestors_a.insert(parent);
+                    current = parent;
+                }
+                _ => break,
+            }
+        }
+
+        // Walk pid_b's ancestor chain, checking for overlap with ancestors_a.
+        if ancestors_a.contains(&pid_b) {
+            return true;
+        }
+        current = pid_b;
+        for _ in 0..MAX_DEPTH {
+            match self.parent_map.get(&current) {
+                Some(&parent) => {
+                    if ancestors_a.contains(&parent) {
+                        return true;
+                    }
+                    current = parent;
+                }
+                None => break,
+            }
+        }
+
+        false
     }
 
     /// Remove a PID from the lineage tracker (e.g., after process exit).
