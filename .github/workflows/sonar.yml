@@ -30,12 +30,22 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
         with:
-          components: clippy
+          components: clippy,llvm-tools-preview
 
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
 
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@3f7f2bd74f95d407a45d96b106f26d4f6c238fab # cargo-llvm-cov
+
       - name: Generate Clippy report
-        run: cargo clippy --all-targets --all-features --message-format=json 2>&1 | tee clippy-report.json || true
+        # aa-ebpf build.rs invokes nightly (not installed here) — exclude it.
+        # The SonarCloud Rust plugin also re-runs clippy internally; the same
+        # exclusion is applied via sonar.exclusions so aa-ebpf sources are skipped.
+        run: cargo clippy --all-targets --all-features --exclude aa-ebpf --message-format=json 2>&1 | tee clippy-report.json || true
+
+      - name: Generate coverage report (LCOV for SonarCloud)
+        # aa-ebpf requires nightly and has no testable userspace logic — excluded.
+        run: cargo llvm-cov --all-features --workspace --exclude aa-ebpf --lcov --output-path lcov.info
 
       - name: SonarCloud scan
         uses: SonarSource/sonarqube-scan-action@2f77a1ec69fb1d595b06f35ab27e97605bdef703 # v5
