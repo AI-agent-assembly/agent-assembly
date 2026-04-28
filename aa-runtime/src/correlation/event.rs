@@ -42,3 +42,32 @@ pub struct ActionEvent {
     /// (e.g., the file path for unlink, the address for connect).
     pub details: String,
 }
+
+/// A correlation event — either an intent from the LLM or an action from the kernel.
+///
+/// This is the unified input type ingested by the [`super::SlidingWindow`].
+#[derive(Debug, Clone)]
+pub enum CorrelationEvent {
+    /// An LLM response intent.
+    Intent(IntentEvent),
+    /// A kernel-level syscall action.
+    Action(ActionEvent),
+}
+
+impl CorrelationEvent {
+    /// Returns the timestamp (in milliseconds) of the underlying event.
+    pub fn timestamp_ms(&self) -> u64 {
+        match self {
+            Self::Intent(e) => e.timestamp_ms,
+            Self::Action(e) => e.timestamp_ms,
+        }
+    }
+
+    /// Returns the PID of the process that produced the event.
+    pub fn pid(&self) -> u32 {
+        match self {
+            Self::Intent(e) => e.pid,
+            Self::Action(e) => e.pid,
+        }
+    }
+}
