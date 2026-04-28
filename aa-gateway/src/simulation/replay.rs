@@ -34,4 +34,9 @@ impl HistoricalReplay {
     pub fn from_file(_path: &Path) -> Result<Self, SimulationError> {
         todo!("AAASM-73: read JSONL file and deserialize lines into SimulationEvent")
     }
+
+    /// Returns a slice of all parsed simulation events.
+    pub fn events(&self) -> &[SimulationEvent] {
+        &self.events
+    }
 }
