@@ -6,5 +6,6 @@
 
 pub mod engine;
 pub mod policy;
+pub mod budget;
 
 pub use engine::{PolicyEngine, PolicyLoadError};
