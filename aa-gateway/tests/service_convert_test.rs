@@ -1,7 +1,8 @@
 //! Unit tests for `aa_gateway::service::convert` — proto ↔ core type conversions.
 
 use aa_core::{FileMode, GovernanceAction, PolicyResult};
-use aa_gateway::service::convert::{request_to_core, result_to_response, ConvertError};
+use aa_gateway::engine::EvaluationResult;
+use aa_gateway::service::convert::{eval_result_to_response, request_to_core, result_to_response, ConvertError};
 use aa_proto::assembly::common::v1::{ActionType, AgentId as ProtoAgentId, Decision};
 use aa_proto::assembly::policy::v1::{
     action_context::Action, ActionContext, CheckActionRequest, FileOpContext, LlmCallContext, NetworkCallContext,
@@ -171,7 +172,129 @@ fn missing_context_returns_error() {
     assert!(matches!(err, ConvertError::MissingContext));
 }
 
+// ── Additional inbound conversion tests ─────────────────────────────────────
+
+#[test]
+fn file_op_create_maps_to_write_mode() {
+    let req = base_request(Action::FileOp(FileOpContext {
+        operation: "create".into(),
+        path: "/tmp/new.txt".into(),
+        is_sensitive_path: false,
+    }));
+    let (_, action) = request_to_core(&req).unwrap();
+    match action {
+        GovernanceAction::FileAccess { mode, .. } => assert_eq!(mode, FileMode::Write),
+        other => panic!("expected FileAccess, got {:?}", other),
+    }
+}
+
+#[test]
+fn file_op_append_converts_to_append_mode() {
+    let req = base_request(Action::FileOp(FileOpContext {
+        operation: "append".into(),
+        path: "/var/log/app.log".into(),
+        is_sensitive_path: false,
+    }));
+    let (_, action) = request_to_core(&req).unwrap();
+    match action {
+        GovernanceAction::FileAccess { mode, .. } => assert_eq!(mode, FileMode::Append),
+        other => panic!("expected FileAccess, got {:?}", other),
+    }
+}
+
+#[test]
+fn unknown_file_op_returns_error() {
+    let req = base_request(Action::FileOp(FileOpContext {
+        operation: "chmod".into(),
+        path: "/tmp/f".into(),
+        is_sensitive_path: false,
+    }));
+    let err = request_to_core(&req).unwrap_err();
+    assert!(matches!(err, ConvertError::UnknownFileOp(ref s) if s == "chmod"));
+}
+
+#[test]
+fn process_exec_with_empty_args_uses_command_only() {
+    let req = base_request(Action::ProcessExec(ProcessExecContext {
+        command: "whoami".into(),
+        args: vec![],
+    }));
+    let (_, action) = request_to_core(&req).unwrap();
+    match action {
+        GovernanceAction::ProcessExec { command } => assert_eq!(command, "whoami"),
+        other => panic!("expected ProcessExec, got {:?}", other),
+    }
+}
+
+#[test]
+fn missing_action_oneof_returns_missing_context() {
+    let req = CheckActionRequest {
+        agent_id: Some(ProtoAgentId {
+            agent_id: "a".into(),
+            ..Default::default()
+        }),
+        context: Some(ActionContext { action: None }),
+        ..Default::default()
+    };
+    let err = request_to_core(&req).unwrap_err();
+    assert!(matches!(err, ConvertError::MissingContext));
+}
+
+#[test]
+fn metadata_populated_from_org_team_credential_span() {
+    let req = base_request(Action::ToolCall(ToolCallContext {
+        tool_name: "t".into(),
+        ..Default::default()
+    }));
+    let (ctx, _) = request_to_core(&req).unwrap();
+    assert_eq!(ctx.metadata.get("org_id").unwrap(), "org-1");
+    assert_eq!(ctx.metadata.get("team_id").unwrap(), "team-a");
+    assert_eq!(ctx.metadata.get("credential_token").unwrap(), "tok");
+    assert_eq!(ctx.metadata.get("span_id").unwrap(), "span-1");
+}
+
+#[test]
+fn empty_metadata_fields_are_omitted() {
+    let req = CheckActionRequest {
+        agent_id: Some(ProtoAgentId {
+            agent_id: "a".into(),
+            org_id: String::new(),
+            team_id: String::new(),
+        }),
+        credential_token: String::new(),
+        trace_id: "t".into(),
+        span_id: String::new(),
+        action_type: ActionType::ToolCall as i32,
+        context: Some(ActionContext {
+            action: Some(Action::ToolCall(ToolCallContext {
+                tool_name: "t".into(),
+                ..Default::default()
+            })),
+        }),
+    };
+    let (ctx, _) = request_to_core(&req).unwrap();
+    assert!(ctx.metadata.is_empty());
+}
+
 // ── Outbound conversion tests ────────────────────────────────────────────────
+
+#[test]
+fn eval_result_with_credential_findings_returns_redact() {
+    let eval = EvaluationResult {
+        decision: PolicyResult::Allow,
+        redacted_payload: Some("redacted text".into()),
+        credential_findings: vec![aa_core::CredentialFinding::from_regex_match(0, 10)],
+    };
+    let resp = eval_result_to_response(&eval, 77, "");
+    assert_eq!(resp.decision, Decision::Redact as i32);
+    assert_eq!(resp.reason, "sensitive data detected");
+    assert_eq!(resp.policy_rule, "data_pattern_scan");
+    assert!(resp.redact.is_some());
+    let redact = resp.redact.unwrap();
+    assert_eq!(redact.rules.len(), 1);
+    assert_eq!(redact.rules[0].replacement, "[REDACTED]");
+    assert_eq!(resp.decision_latency_us, 77);
+}
 
 #[test]
 fn allow_result_to_response() {
