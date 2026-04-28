@@ -65,6 +65,17 @@ pub struct RuntimeConfig {
     /// - Non-empty string → `Some(<value>)`
     /// - Empty string → `None` (policy enforcement disabled)
     pub policy_path: Option<PathBuf>,
+
+    /// Optional gRPC endpoint for the governance gateway.
+    ///
+    /// Read from `AA_GATEWAY_ENDPOINT`.
+    /// - Not set or empty → `None` (local policy evaluation)
+    /// - Non-empty string → `Some(<value>)` (forward policy checks to gateway)
+    ///
+    /// When set, `handle_policy_query` forwards `CheckActionRequest` to the
+    /// gateway via [`crate::gateway_client::GatewayClient`] instead of
+    /// evaluating locally with [`crate::policy::PolicyRules`].
+    pub gateway_endpoint: Option<String>,
 }
 
 impl RuntimeConfig {
@@ -88,6 +99,7 @@ impl RuntimeConfig {
     /// | `AA_PIPELINE_BROADCAST_CAPACITY` | `usize` | `1_024` |
     /// | `AA_METRICS_ADDR` | `String` | `"0.0.0.0:8080"` |
     /// | `AA_POLICY_PATH` | `Option<PathBuf>` | `Some("/etc/aa/policy.toml")` |
+    /// | `AA_GATEWAY_ENDPOINT` | `Option<String>` | `None` |
     pub fn from_env() -> Result<Self, String> {
         let agent_id = std::env::var("AA_AGENT_ID").map_err(|_| "AA_AGENT_ID is required but not set".to_string())?;
 
@@ -147,6 +159,10 @@ impl RuntimeConfig {
             Ok(v) => Some(PathBuf::from(v)),
         };
 
+        let gateway_endpoint = std::env::var("AA_GATEWAY_ENDPOINT")
+            .ok()
+            .filter(|v| !v.is_empty());
+
         Ok(Self {
             agent_id,
             worker_threads,
@@ -158,6 +174,7 @@ impl RuntimeConfig {
             pipeline_broadcast_capacity,
             metrics_addr,
             policy_path,
+            gateway_endpoint,
         })
     }
 }
@@ -508,5 +525,49 @@ mod tests {
 
         std::env::remove_var("AA_AGENT_ID");
         std::env::remove_var("AA_POLICY_PATH");
+    }
+
+    #[test]
+    fn gateway_endpoint_none_when_unset() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        std::env::set_var("AA_AGENT_ID", "agent-gw-default");
+        std::env::remove_var("AA_GATEWAY_ENDPOINT");
+
+        let config = RuntimeConfig::from_env().unwrap();
+
+        assert_eq!(config.gateway_endpoint, None);
+
+        std::env::remove_var("AA_AGENT_ID");
+    }
+
+    #[test]
+    fn gateway_endpoint_none_when_empty() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        std::env::set_var("AA_AGENT_ID", "agent-gw-empty");
+        std::env::set_var("AA_GATEWAY_ENDPOINT", "");
+
+        let config = RuntimeConfig::from_env().unwrap();
+
+        assert_eq!(config.gateway_endpoint, None);
+
+        std::env::remove_var("AA_AGENT_ID");
+        std::env::remove_var("AA_GATEWAY_ENDPOINT");
+    }
+
+    #[test]
+    fn gateway_endpoint_reads_from_env() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        std::env::set_var("AA_AGENT_ID", "agent-gw-custom");
+        std::env::set_var("AA_GATEWAY_ENDPOINT", "http://127.0.0.1:50051");
+
+        let config = RuntimeConfig::from_env().unwrap();
+
+        assert_eq!(
+            config.gateway_endpoint,
+            Some("http://127.0.0.1:50051".to_string())
+        );
+
+        std::env::remove_var("AA_AGENT_ID");
+        std::env::remove_var("AA_GATEWAY_ENDPOINT");
     }
 }

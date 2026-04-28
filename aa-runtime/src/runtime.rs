@@ -134,6 +134,7 @@ pub async fn run(config: RuntimeConfig) {
                 pipeline_policy,
                 pipeline_router,
                 pipeline_approval_queue,
+                None,
             )
             .await;
         });
