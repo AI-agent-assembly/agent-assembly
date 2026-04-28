@@ -42,7 +42,6 @@ fn compute_status(spent: Decimal, limit: Decimal) -> BudgetStatus {
 }
 
 /// Per-agent and global budget tracker. All methods take `&self` — safe to share via `Arc`.
-#[allow(dead_code)]
 pub struct BudgetTracker {
     /// Per-agent daily spend. `pub(crate)` for test date manipulation.
     pub(crate) per_agent: DashMap<AgentId, BudgetState>,
@@ -153,6 +152,22 @@ impl BudgetTracker {
             .lock()
             .map(|g| g.clone())
             .unwrap_or_else(|_| BudgetState::new_today())
+    }
+
+    /// Snapshot the full tracker state for disk persistence.
+    pub fn snapshot(&self) -> crate::budget::persistence::PersistedBudget {
+        let per_agent = self
+            .per_agent
+            .iter()
+            .map(|entry| crate::budget::persistence::PersistedAgentEntry {
+                agent_id_hex: crate::budget::persistence::agent_id_to_hex(entry.key()),
+                state: entry.value().clone(),
+            })
+            .collect();
+        crate::budget::persistence::PersistedBudget {
+            per_agent,
+            global: self.global_state(),
+        }
     }
 }
 
@@ -284,6 +299,17 @@ mod tests {
         let t = BudgetTracker::with_state(PricingTable::default_table(), None, persisted);
         let entry = t.per_agent.get(&id).unwrap();
         assert_eq!(entry.spent_usd, state.spent_usd);
+    }
+
+    #[test]
+    fn snapshot_includes_per_agent_and_global() {
+        use crate::budget::types::{Model, Provider};
+        let t = new_tracker();
+        let id = agent(7);
+        t.record_usage(id, Provider::OpenAi, Model::Gpt4o, 1_000, 0);
+        let snap = t.snapshot();
+        assert_eq!(snap.per_agent.len(), 1);
+        assert_eq!(snap.global.spent_usd, snap.per_agent[0].state.spent_usd);
     }
 
     #[test]
