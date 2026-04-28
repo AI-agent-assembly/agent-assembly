@@ -67,3 +67,45 @@ impl CorrelationEngine {
         &self.config
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::correlation::event::IntentEvent;
+    use uuid::Uuid;
+
+    #[test]
+    fn engine_constructs_with_default_config() {
+        let engine = CorrelationEngine::new(CorrelationConfig::default());
+        assert_eq!(engine.config().window_ms, 5_000);
+    }
+
+    #[test]
+    fn ingest_adds_event_to_window() {
+        let mut engine = CorrelationEngine::new(CorrelationConfig::default());
+        let event = CorrelationEvent::Intent(IntentEvent {
+            event_id: Uuid::new_v4(),
+            timestamp_ms: 1000,
+            pid: 1,
+            intent_text: "test".to_string(),
+            action_keyword: "test".to_string(),
+        });
+        engine.ingest(event);
+        // Window is not directly accessible, but we can verify no panic occurred
+        // and eviction works after ingest.
+        engine.evict(2000);
+    }
+
+    #[test]
+    fn register_pid_does_not_panic() {
+        let mut engine = CorrelationEngine::new(CorrelationConfig::default());
+        engine.register_pid(100, 1);
+        engine.register_pid(200, 100);
+    }
+
+    #[test]
+    fn evict_on_empty_engine_does_not_panic() {
+        let mut engine = CorrelationEngine::new(CorrelationConfig::default());
+        engine.evict(10_000);
+    }
+}

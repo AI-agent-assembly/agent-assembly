@@ -25,3 +25,23 @@ impl Default for CorrelationConfig {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_config_has_expected_values() {
+        let config = CorrelationConfig::default();
+        assert_eq!(config.window_ms, 5_000);
+        assert_eq!(config.max_window_size, 10_000);
+        assert_eq!(config.eviction_interval_ms, 1_000);
+    }
+
+    #[test]
+    fn config_is_clone() {
+        let config = CorrelationConfig::default();
+        let cloned = config.clone();
+        assert_eq!(cloned.window_ms, config.window_ms);
+    }
+}

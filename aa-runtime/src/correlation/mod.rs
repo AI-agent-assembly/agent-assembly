@@ -13,3 +13,9 @@ pub mod outcome;
 pub mod pid;
 pub mod window;
 
+pub use config::CorrelationConfig;
+pub use engine::CorrelationEngine;
+pub use event::{ActionEvent, CorrelationEvent, IntentEvent};
+pub use outcome::{CausalCorrelation, CorrelationOutcome};
+pub use pid::PidLineage;
+pub use window::SlidingWindow;

@@ -40,3 +40,29 @@ impl PidLineage {
         self.parent_map.remove(&pid);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new_lineage_is_empty() {
+        let lineage = PidLineage::new();
+        assert!(lineage.parent_map.is_empty());
+    }
+
+    #[test]
+    fn register_adds_entry() {
+        let mut lineage = PidLineage::new();
+        lineage.register(100, 1);
+        assert_eq!(lineage.parent_map.get(&100), Some(&1));
+    }
+
+    #[test]
+    fn remove_deletes_entry() {
+        let mut lineage = PidLineage::new();
+        lineage.register(100, 1);
+        lineage.remove(100);
+        assert!(lineage.parent_map.get(&100).is_none());
+    }
+}

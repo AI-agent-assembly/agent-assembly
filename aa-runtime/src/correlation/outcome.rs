@@ -43,3 +43,48 @@ pub enum CorrelationOutcome {
         intent_event_id: Uuid,
     },
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn causal_correlation_fields_accessible() {
+        let corr = CausalCorrelation {
+            intent_event_id: Uuid::new_v4(),
+            action_event_id: Uuid::new_v4(),
+            correlation_strength: 0.85,
+            time_delta_ms: 120,
+        };
+        assert!(corr.correlation_strength > 0.0);
+        assert_eq!(corr.time_delta_ms, 120);
+    }
+
+    #[test]
+    fn outcome_matched_variant() {
+        let corr = CausalCorrelation {
+            intent_event_id: Uuid::new_v4(),
+            action_event_id: Uuid::new_v4(),
+            correlation_strength: 1.0,
+            time_delta_ms: 50,
+        };
+        let outcome = CorrelationOutcome::Matched(corr);
+        assert!(matches!(outcome, CorrelationOutcome::Matched(_)));
+    }
+
+    #[test]
+    fn outcome_unexpected_action_variant() {
+        let outcome = CorrelationOutcome::UnexpectedAction {
+            action_event_id: Uuid::new_v4(),
+        };
+        assert!(matches!(outcome, CorrelationOutcome::UnexpectedAction { .. }));
+    }
+
+    #[test]
+    fn outcome_intent_without_action_variant() {
+        let outcome = CorrelationOutcome::IntentWithoutAction {
+            intent_event_id: Uuid::new_v4(),
+        };
+        assert!(matches!(outcome, CorrelationOutcome::IntentWithoutAction { .. }));
+    }
+}

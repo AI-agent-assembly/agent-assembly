@@ -62,3 +62,72 @@ impl SlidingWindow {
         self.max_size
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::correlation::event::{ActionEvent, IntentEvent};
+    use uuid::Uuid;
+
+    fn make_intent_event(ts: u64) -> CorrelationEvent {
+        CorrelationEvent::Intent(IntentEvent {
+            event_id: Uuid::new_v4(),
+            timestamp_ms: ts,
+            pid: 1,
+            intent_text: "test".to_string(),
+            action_keyword: "test".to_string(),
+        })
+    }
+
+    fn make_action_event(ts: u64) -> CorrelationEvent {
+        CorrelationEvent::Action(ActionEvent {
+            event_id: Uuid::new_v4(),
+            timestamp_ms: ts,
+            pid: 1,
+            syscall: "unlink".to_string(),
+            details: "/tmp/foo".to_string(),
+        })
+    }
+
+    #[test]
+    fn new_window_is_empty() {
+        let w = SlidingWindow::new(5000, 100);
+        assert!(w.is_empty());
+        assert_eq!(w.len(), 0);
+    }
+
+    #[test]
+    fn insert_increases_len() {
+        let mut w = SlidingWindow::new(5000, 100);
+        w.insert(make_intent_event(1000));
+        assert_eq!(w.len(), 1);
+        w.insert(make_action_event(1000));
+        assert_eq!(w.len(), 2);
+    }
+
+    #[test]
+    fn evict_removes_old_events() {
+        let mut w = SlidingWindow::new(5000, 100);
+        w.insert(make_intent_event(1000));
+        w.insert(make_action_event(7000));
+        // now_ms=7000, window=5000 → cutoff=2000 → event at 1000 evicted
+        w.evict(7000);
+        assert_eq!(w.len(), 1);
+    }
+
+    #[test]
+    fn evict_keeps_events_within_window() {
+        let mut w = SlidingWindow::new(5000, 100);
+        w.insert(make_intent_event(3000));
+        w.insert(make_action_event(4000));
+        // now_ms=7000, window=5000 → cutoff=2000 → both kept
+        w.evict(7000);
+        assert_eq!(w.len(), 2);
+    }
+
+    #[test]
+    fn max_size_returns_configured_value() {
+        let w = SlidingWindow::new(5000, 42);
+        assert_eq!(w.max_size(), 42);
+    }
+}

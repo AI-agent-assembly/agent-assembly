@@ -71,3 +71,58 @@ impl CorrelationEvent {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_intent(ts: u64, pid: u32) -> IntentEvent {
+        IntentEvent {
+            event_id: Uuid::new_v4(),
+            timestamp_ms: ts,
+            pid,
+            intent_text: "delete file".to_string(),
+            action_keyword: "file_delete".to_string(),
+        }
+    }
+
+    fn make_action(ts: u64, pid: u32) -> ActionEvent {
+        ActionEvent {
+            event_id: Uuid::new_v4(),
+            timestamp_ms: ts,
+            pid,
+            syscall: "unlink".to_string(),
+            details: "/tmp/foo".to_string(),
+        }
+    }
+
+    #[test]
+    fn intent_event_fields_accessible() {
+        let intent = make_intent(1000, 42);
+        assert_eq!(intent.timestamp_ms, 1000);
+        assert_eq!(intent.pid, 42);
+    }
+
+    #[test]
+    fn action_event_fields_accessible() {
+        let action = make_action(2000, 99);
+        assert_eq!(action.timestamp_ms, 2000);
+        assert_eq!(action.pid, 99);
+    }
+
+    #[test]
+    fn correlation_event_timestamp_delegates_to_inner() {
+        let intent = CorrelationEvent::Intent(make_intent(1000, 1));
+        let action = CorrelationEvent::Action(make_action(2000, 2));
+        assert_eq!(intent.timestamp_ms(), 1000);
+        assert_eq!(action.timestamp_ms(), 2000);
+    }
+
+    #[test]
+    fn correlation_event_pid_delegates_to_inner() {
+        let intent = CorrelationEvent::Intent(make_intent(1000, 10));
+        let action = CorrelationEvent::Action(make_action(2000, 20));
+        assert_eq!(intent.pid(), 10);
+        assert_eq!(action.pid(), 20);
+    }
+}
