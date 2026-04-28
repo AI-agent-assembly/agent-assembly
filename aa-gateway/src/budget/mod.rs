@@ -9,6 +9,7 @@ pub mod pricing;
 pub use pricing::{PricingEntry, PricingLoadError, PricingTable};
 
 pub mod persistence;
+pub use persistence::PersistedAgentEntry;
 
 pub mod tracker;
 pub use tracker::BudgetTracker;

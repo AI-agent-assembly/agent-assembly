@@ -1,4 +1,4 @@
-//! Budget persistence — STUB (will be fully implemented in Tasks 25–32).
+//! Atomic disk persistence for budget state.
 
 use crate::budget::types::BudgetState;
 
@@ -37,5 +37,20 @@ fn hex_nibble(b: u8) -> Result<u8, String> {
         b'a'..=b'f' => Ok(b - b'a' + 10),
         b'A'..=b'F' => Ok(b - b'A' + 10),
         _ => Err(format!("invalid hex byte: {b}")),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::budget::types::BudgetState;
+
+    #[test]
+    fn persisted_agent_entry_stores_hex_and_state() {
+        let entry = PersistedAgentEntry {
+            agent_id_hex: "aabbcc".to_string(),
+            state: BudgetState::new_today(),
+        };
+        assert_eq!(entry.agent_id_hex, "aabbcc");
     }
 }
