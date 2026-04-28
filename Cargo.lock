@@ -79,6 +79,7 @@ dependencies = [
  "aa-proto",
  "aa-runtime",
  "arc-swap",
+ "async-trait",
  "chrono",
  "chrono-tz",
  "dashmap",
