@@ -74,8 +74,43 @@ impl EbpfLoader {
 
         #[cfg(target_os = "linux")]
         {
-            tracing::info!("attaching file I/O kprobes");
-            // TODO: attach kprobes for openat, read, write, unlink, rename
+            use aya::programs::KProbe;
+
+            let bpf = self
+                .bpf
+                .as_mut()
+                .ok_or_else(|| EbpfError::ProbeAttach("BPF not loaded — call load() first".into()))?;
+
+            let probes: &[(&str, &str)] = &[
+                ("aa_sys_openat", "__x64_sys_openat"),
+                ("aa_sys_openat_ret", "__x64_sys_openat"),
+                ("aa_sys_read", "__x64_sys_read"),
+                ("aa_sys_write", "__x64_sys_write"),
+                ("aa_sys_unlink", "__x64_sys_unlinkat"),
+                ("aa_sys_rename", "__x64_sys_renameat2"),
+            ];
+
+            for (prog_name, fn_name) in probes {
+                let program: &mut KProbe = bpf
+                    .program_mut(prog_name)
+                    .ok_or_else(|| {
+                        EbpfError::ProbeAttach(format!("{prog_name} program not found"))
+                    })?
+                    .try_into()
+                    .map_err(|e: aya::programs::ProgramError| {
+                        EbpfError::ProbeAttach(e.to_string())
+                    })?;
+
+                program
+                    .load()
+                    .map_err(|e| EbpfError::ProbeAttach(e.to_string()))?;
+                program
+                    .attach(fn_name, 0)
+                    .map_err(|e| EbpfError::ProbeAttach(e.to_string()))?;
+
+                tracing::info!(program = prog_name, function = fn_name, "kprobe attached");
+            }
+
             Ok(())
         }
     }
