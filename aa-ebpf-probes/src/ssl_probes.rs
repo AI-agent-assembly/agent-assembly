@@ -216,7 +216,7 @@ fn try_ssl_read_exit(ctx: RetProbeContext) -> Result<u32, i64> {
 }
 
 // ---------------------------------------------------------------------------
-// Panic handler — required for no_std BPF binaries.
+// Panic handler (required for no_std binaries)
 // ---------------------------------------------------------------------------
 
 #[panic_handler]
