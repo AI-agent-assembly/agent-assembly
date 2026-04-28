@@ -440,6 +440,79 @@ mod tests {
         assert_eq!(ah.timezone, "Asia/Taipei");
     }
 
+    // ── Full-policy integration ─────────────────────────────────────────────
+
+    #[test]
+    fn full_policy_document_validates_successfully() {
+        let yaml = r#"
+version: "1.0"
+network:
+  allowlist:
+    - api.openai.com
+    - slack.com
+schedule:
+  active_hours:
+    start: "09:00"
+    end: "18:00"
+    timezone: "Asia/Taipei"
+budget:
+  daily_limit_usd: 25.0
+data:
+  sensitive_patterns:
+    - "sk-[a-zA-Z0-9]{48}"
+tools:
+  bash:
+    allow: true
+    limit_per_hour: 10
+    requires_approval_if: "amount > 100"
+  file_write:
+    allow: false
+"#;
+        let out = PolicyValidator::from_yaml(yaml).unwrap();
+        let doc = &out.document;
+
+        assert_eq!(doc.version, Some("1.0".to_string()));
+
+        let np = doc.network.as_ref().unwrap();
+        assert_eq!(np.allowlist.len(), 2);
+
+        let sp = doc.schedule.as_ref().unwrap();
+        let ah = sp.active_hours.as_ref().unwrap();
+        assert_eq!(ah.timezone, "Asia/Taipei");
+
+        let bp = doc.budget.as_ref().unwrap();
+        assert_eq!(bp.daily_limit_usd, Some(25.0));
+
+        let dp = doc.data.as_ref().unwrap();
+        assert_eq!(dp.sensitive_patterns.len(), 1);
+
+        assert!(doc.tools["bash"].allow);
+        assert_eq!(doc.tools["bash"].limit_per_hour, Some(10));
+        assert!(!doc.tools["file_write"].allow);
+
+        assert!(out.warnings.is_empty());
+    }
+
+    #[test]
+    fn full_policy_with_multiple_errors_collects_all() {
+        let yaml = r#"
+network:
+  allowlist:
+    - ""
+budget:
+  daily_limit_usd: 0.0
+data:
+  sensitive_patterns:
+    - "[bad"
+"#;
+        let result = PolicyValidator::from_yaml(yaml);
+        assert!(result.is_err());
+        let errs = result.unwrap_err();
+        assert!(errs.iter().any(|e| e.field == "network.allowlist[0]"));
+        assert!(errs.iter().any(|e| e.field == "budget.daily_limit_usd"));
+        assert!(errs.iter().any(|e| e.field == "data.sensitive_patterns[0]"));
+    }
+
     // ── Malformed YAML ──────────────────────────────────────────────────────
 
     #[test]
