@@ -1,6 +1,7 @@
 //! Userspace eBPF program loader and lifecycle manager.
 
 use crate::error::EbpfError;
+use crate::events::FileIoEvent;
 use crate::maps::PathPattern;
 
 /// Manages the lifecycle of eBPF programs: loading bytecode, attaching
@@ -113,6 +114,80 @@ impl EbpfLoader {
 
             Ok(())
         }
+    }
+
+    /// Start reading events from the BPF perf event array.
+    ///
+    /// Spawns a tokio task per online CPU that reads from the `EVENTS`
+    /// perf array and sends parsed [`FileIoEvent`]s through the returned
+    /// channel.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EbpfError::EventParse`] if the perf array cannot be opened.
+    #[cfg(target_os = "linux")]
+    pub fn start_event_reader(
+        &mut self,
+    ) -> Result<tokio::sync::mpsc::Receiver<FileIoEvent>, EbpfError> {
+        use aa_ebpf_common::FileIoEventRaw;
+        use aya::maps::perf::AsyncPerfEventArray;
+        use aya::util::online_cpus;
+        use bytes::BytesMut;
+
+        let bpf = self
+            .bpf
+            .as_mut()
+            .ok_or_else(|| EbpfError::EventParse("BPF not loaded — call load() first".into()))?;
+
+        let perf_array = AsyncPerfEventArray::try_from(
+            bpf.map_mut("EVENTS")
+                .ok_or_else(|| EbpfError::EventParse("EVENTS map not found".into()))?,
+        )
+        .map_err(|e| EbpfError::EventParse(e.to_string()))?;
+
+        let (tx, rx) = tokio::sync::mpsc::channel::<FileIoEvent>(256);
+
+        let cpus = online_cpus().map_err(|e| EbpfError::EventParse(format!("online_cpus: {e}")))?;
+        for cpu_id in cpus {
+            let mut buf = perf_array
+                .open(cpu_id, None)
+                .map_err(|e| EbpfError::EventParse(e.to_string()))?;
+            let tx = tx.clone();
+
+            tokio::spawn(async move {
+                let mut buffers = (0..10)
+                    .map(|_| BytesMut::with_capacity(core::mem::size_of::<FileIoEventRaw>()))
+                    .collect::<Vec<_>>();
+
+                loop {
+                    let events = match buf.read_events(&mut buffers).await {
+                        Ok(events) => events,
+                        Err(e) => {
+                            tracing::warn!(cpu = cpu_id, error = %e, "perf read error");
+                            continue;
+                        }
+                    };
+
+                    for i in 0..events.read {
+                        let buf = &buffers[i];
+                        if buf.len() < core::mem::size_of::<FileIoEventRaw>() {
+                            continue;
+                        }
+                        let raw = unsafe { &*(buf.as_ptr() as *const FileIoEventRaw) };
+                        match FileIoEvent::from_raw(raw) {
+                            Ok(event) => {
+                                let _ = tx.send(event).await;
+                            }
+                            Err(e) => {
+                                tracing::warn!(error = %e, "failed to parse BPF event");
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        Ok(rx)
     }
 
     /// Update the path filter BPF map with new patterns.
