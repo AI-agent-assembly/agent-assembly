@@ -4,9 +4,13 @@
 //! subsystem. It is intentionally synchronous — the caller (the Tokio event
 //! loop in aa-runtime) handles channel I/O; the engine handles pure logic.
 
+use std::collections::HashSet;
+
+use uuid::Uuid;
+
 use super::config::CorrelationConfig;
 use super::event::CorrelationEvent;
-use super::outcome::CorrelationOutcome;
+use super::outcome::{CausalCorrelation, CorrelationOutcome};
 use super::pid::PidLineage;
 use super::window::SlidingWindow;
 
@@ -66,10 +70,92 @@ impl CorrelationEngine {
 
     /// Run the correlation algorithm over the current window contents.
     ///
-    /// Returns all correlation outcomes (matched, unexpected, intent-without-action)
-    /// found in the current window state.
+    /// For each action, finds the best matching intent by:
+    /// 1. Keyword match — the intent's `action_keyword` must equal the syscall's
+    ///    canonical keyword (via [`syscall_to_keyword`]).
+    /// 2. PID lineage — the intent PID and action PID must belong to the same
+    ///    causal group (via [`PidLineage::is_same_family`]).
+    /// 3. Temporal ordering — the intent must precede the action.
+    ///
+    /// Among matching intents, the closest in time is selected (smallest delta).
+    /// Correlation strength decays linearly from 1.0 at delta=0 to 0.0 at the
+    /// window boundary.
+    ///
+    /// Returns all correlation outcomes: matched pairs, unexpected actions
+    /// (no matching intent), and intents without a subsequent action.
     pub fn correlate(&self) -> Vec<CorrelationOutcome> {
-        todo!("implement PID lineage + keyword matching correlation algorithm")
+        let intents = self.window.intents();
+        let actions = self.window.actions();
+
+        let mut results = Vec::new();
+        let mut matched_intent_ids: HashSet<Uuid> = HashSet::new();
+        let mut matched_action_ids: HashSet<Uuid> = HashSet::new();
+
+        for action in &actions {
+            let action_keyword = match syscall_to_keyword(&action.syscall) {
+                Some(kw) => kw,
+                None => continue,
+            };
+
+            let mut best_intent: Option<(&super::event::IntentEvent, u64)> = None;
+
+            for intent in &intents {
+                // Keyword must match.
+                if intent.action_keyword != action_keyword {
+                    continue;
+                }
+                // Intent must precede the action.
+                if intent.timestamp_ms >= action.timestamp_ms {
+                    continue;
+                }
+                // PIDs must be in the same causal group.
+                if !self.lineage.is_same_family(intent.pid, action.pid) {
+                    continue;
+                }
+
+                let delta = action.timestamp_ms - intent.timestamp_ms;
+                match &best_intent {
+                    Some((_, best_delta)) if delta >= *best_delta => {}
+                    _ => best_intent = Some((intent, delta)),
+                }
+            }
+
+            if let Some((intent, delta)) = best_intent {
+                let strength = 1.0
+                    - (delta as f64 / self.config.window_ms as f64).min(1.0);
+                results.push(CorrelationOutcome::Matched(CausalCorrelation {
+                    intent_event_id: intent.event_id,
+                    action_event_id: action.event_id,
+                    correlation_strength: strength,
+                    time_delta_ms: delta,
+                }));
+                matched_intent_ids.insert(intent.event_id);
+                matched_action_ids.insert(action.event_id);
+            }
+        }
+
+        // Actions with no matching intent → UnexpectedAction.
+        for action in &actions {
+            if syscall_to_keyword(&action.syscall).is_none() {
+                continue;
+            }
+            if !matched_action_ids.contains(&action.event_id) {
+                results.push(CorrelationOutcome::UnexpectedAction {
+                    action_event_id: action.event_id,
+                });
+            }
+        }
+
+        // Intents with no matching action → IntentWithoutAction.
+        for intent in &intents {
+            if !matched_intent_ids.contains(&intent.event_id) {
+                results.push(CorrelationOutcome::IntentWithoutAction {
+                    intent_event_id: intent.event_id,
+                });
+            }
+        }
+
+        results
     }
 
     /// Evict events older than the configured time window.
