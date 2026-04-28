@@ -288,7 +288,9 @@ jobs:
         working-directory: ${{ github.workspace }}
         # sudo strips PATH, so cargo (installed by rustup into ~/.cargo/bin) is not found.
         # Passing PATH explicitly via sudo env makes the rustup toolchain visible to root.
-        run: sudo env "PATH=$PATH" cargo test -p aa-ebpf --features integration-test --test load_hello -- --nocapture
+        # +nightly is required because the workspace root has no rust-toolchain.toml and
+        # no default toolchain is configured — rustup would otherwise refuse to run.
+        run: sudo env "PATH=$PATH" cargo +nightly test -p aa-ebpf --features integration-test --test load_hello -- --nocapture
 
   conformance:
     name: Rust conformance suite
