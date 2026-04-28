@@ -8,5 +8,7 @@ pub use types::{BudgetAlert, BudgetState, BudgetStatus, Model, Provider};
 pub mod pricing;
 pub use pricing::{PricingEntry, PricingLoadError, PricingTable};
 
+pub mod persistence;
+
 pub mod tracker;
 pub use tracker::BudgetTracker;

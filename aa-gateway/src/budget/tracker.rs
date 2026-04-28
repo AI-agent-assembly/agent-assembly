@@ -38,6 +38,31 @@ impl BudgetTracker {
             alert_tx,
         }
     }
+
+    /// Create a tracker pre-loaded with persisted state (call after `load_from_disk`).
+    pub fn with_state(
+        pricing: PricingTable,
+        daily_limit_usd: Option<Decimal>,
+        initial: crate::budget::persistence::PersistedBudget,
+    ) -> Self {
+        let (alert_tx, _) = broadcast::channel(ALERT_CHANNEL_CAPACITY);
+        let per_agent: DashMap<AgentId, BudgetState> = initial
+            .per_agent
+            .into_iter()
+            .filter_map(|e| {
+                crate::budget::persistence::hex_to_agent_id(&e.agent_id_hex)
+                    .ok()
+                    .map(|id| (id, e.state))
+            })
+            .collect();
+        Self {
+            per_agent,
+            global: Mutex::new(initial.global),
+            pricing,
+            daily_limit_usd,
+            alert_tx,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -54,5 +79,25 @@ mod tests {
     fn new_tracker_has_empty_per_agent_map() {
         let t = new_tracker();
         assert!(t.per_agent.is_empty());
+    }
+
+    #[test]
+    fn with_state_restores_per_agent_entries() {
+        use crate::budget::persistence::{agent_id_to_hex, PersistedAgentEntry, PersistedBudget};
+        let id = AgentId::from_bytes([42u8; 16]);
+        let state = BudgetState {
+            spent_usd: "5.00".parse::<Decimal>().unwrap(),
+            date: chrono::Utc::now().date_naive(),
+        };
+        let persisted = PersistedBudget {
+            per_agent: vec![PersistedAgentEntry {
+                agent_id_hex: agent_id_to_hex(&id),
+                state: state.clone(),
+            }],
+            global: BudgetState::new_today(),
+        };
+        let t = BudgetTracker::with_state(PricingTable::default_table(), None, persisted);
+        let entry = t.per_agent.get(&id).unwrap();
+        assert_eq!(entry.spent_usd, state.spent_usd);
     }
 }
