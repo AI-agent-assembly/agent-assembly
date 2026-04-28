@@ -80,3 +80,43 @@ impl EbpfLoader {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::maps::PathVerdict;
+
+    #[test]
+    fn new_stores_target_pid() {
+        let loader = EbpfLoader::new(1234);
+        assert_eq!(loader.target_pid, 1234);
+    }
+
+    #[test]
+    #[cfg(not(target_os = "linux"))]
+    fn load_returns_error_on_non_linux() {
+        let mut loader = EbpfLoader::new(1);
+        let err = loader.load().unwrap_err();
+        assert!(matches!(err, EbpfError::ProgramLoad(_)));
+    }
+
+    #[test]
+    #[cfg(not(target_os = "linux"))]
+    fn attach_kprobes_returns_error_on_non_linux() {
+        let mut loader = EbpfLoader::new(1);
+        let err = loader.attach_kprobes().unwrap_err();
+        assert!(matches!(err, EbpfError::ProbeAttach(_)));
+    }
+
+    #[test]
+    #[cfg(not(target_os = "linux"))]
+    fn update_path_filter_returns_error_on_non_linux() {
+        let loader = EbpfLoader::new(1);
+        let patterns = vec![PathPattern {
+            pattern: "/etc/shadow".into(),
+            verdict: PathVerdict::Deny,
+        }];
+        let err = loader.update_path_filter(&patterns).unwrap_err();
+        assert!(matches!(err, EbpfError::MapUpdate(_)));
+    }
+}
