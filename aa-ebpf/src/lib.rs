@@ -3,3 +3,5 @@
 //! This crate provides kernel-space probes that intercept system calls and
 //! network events originating from AI agent processes, feeding data into
 //! the governance pipeline without requiring code changes in agents.
+
+pub mod events;
