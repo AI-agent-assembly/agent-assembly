@@ -72,7 +72,7 @@ mod tests {
         std::thread::sleep(Duration::from_secs(1));
 
         let loaded = slot.load();
-        let current_doc: &PolicyDocument = &*loaded;
+        let current_doc: &PolicyDocument = &loaded;
         assert_ne!(
             current_doc, &initial_doc,
             "slot should have been swapped to the new policy"
@@ -107,7 +107,7 @@ mod tests {
         std::thread::sleep(Duration::from_secs(1));
 
         let loaded = slot.load();
-        let current_doc: &PolicyDocument = &*loaded;
+        let current_doc: &PolicyDocument = &loaded;
         assert_eq!(
             current_doc, &initial_doc,
             "slot should still hold the original policy after an invalid parse"
