@@ -28,9 +28,18 @@ services:
       retries: 5
       start_period: 2s
 
-  your-agent:
-    # Replace 'your-org/your-agent:latest' with your agent image.
-    image: your-org/your-agent:latest
+  agent-stub:
+    # Placeholder agent — demonstrates sidecar wiring without requiring a real agent image.
+    #
+    # The Python SDK (aa-sdk) is not yet published; a real LangChain example will be
+    # added once it ships (tracked in AAASM-55).
+    #
+    # To use your own agent:
+    #   1. Replace 'image: alpine:latest' with your agent image (or add a 'build:' key).
+    #   2. Keep the AA_AGENT_ID value identical to the aa-runtime service.
+    #   3. Keep the aa-runtime-socket volume mount at /tmp — the IPC socket lives there.
+    image: alpine:latest
+    command: ["sh", "-c", "echo 'agent-stub: replace this service with your agent (see README)' && sleep infinity"]
     restart: unless-stopped
     depends_on:
       aa-runtime:
