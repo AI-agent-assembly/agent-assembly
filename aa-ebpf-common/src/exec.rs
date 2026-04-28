@@ -38,6 +38,25 @@ pub struct ExecEvent {
 }
 
 // ---------------------------------------------------------------------------
+// ProcessExitEvent — ring-buffer event from the sched_process_exit tracepoint
+// ---------------------------------------------------------------------------
+
+/// Event emitted when a monitored process exits.
+///
+/// Used by the userspace `ProcessLineageTracker` to remove stale PIDs from
+/// the lineage map.
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct ProcessExitEvent {
+    /// Monotonic kernel timestamp (nanoseconds).
+    pub timestamp_ns: u64,
+    /// Process ID of the exiting process.
+    pub pid: u32,
+    /// Exit code of the process.
+    pub exit_code: i32,
+}
+
+// ---------------------------------------------------------------------------
 // Lineage-map and alert types (AAASM-39 ProcessLineageTracker)
 // ---------------------------------------------------------------------------
 
