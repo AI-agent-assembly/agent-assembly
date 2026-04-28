@@ -14,6 +14,16 @@ pub struct RawNetworkPolicy {
     pub unknown: HashMap<String, serde_yaml::Value>,
 }
 
+/// Raw (unvalidated) deserialization target for the `budget` policy section.
+#[derive(Debug, Deserialize)]
+pub struct RawBudgetPolicy {
+    /// Maximum USD spend per calendar day; `None` means no limit.
+    pub daily_limit_usd: Option<f64>,
+    /// Unknown keys captured for warning emission.
+    #[serde(flatten)]
+    pub unknown: HashMap<String, serde_yaml::Value>,
+}
+
 /// Raw (unvalidated) deserialization target for the `data` policy section.
 #[derive(Debug, Deserialize)]
 pub struct RawDataPolicy {
@@ -67,6 +77,22 @@ mod tests {
         let yaml = "{}\n";
         let raw: RawNetworkPolicy = serde_yaml::from_str(yaml).unwrap();
         assert_eq!(raw.allowlist, None);
+    }
+
+    // ── RawBudgetPolicy ─────────────────────────────────────────────────────
+
+    #[test]
+    fn raw_budget_deserializes_daily_limit() {
+        let yaml = "daily_limit_usd: 50.0\n";
+        let raw: RawBudgetPolicy = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(raw.daily_limit_usd, Some(50.0));
+    }
+
+    #[test]
+    fn raw_budget_absent_limit_is_none() {
+        let yaml = "{}\n";
+        let raw: RawBudgetPolicy = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(raw.daily_limit_usd, None);
     }
 
     // ── RawDataPolicy ───────────────────────────────────────────────────────
