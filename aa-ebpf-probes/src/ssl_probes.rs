@@ -51,7 +51,7 @@ static TARGET_PID: Array<u32> = Array::with_max_entries(1, 0);
 /// Returns `true` when `pid` should be traced (matches TARGET_PID or all).
 #[inline(always)]
 fn pid_allowed(pid: u32) -> bool {
-    match unsafe { TARGET_PID.get(0) } {
+    match TARGET_PID.get(0) {
         Some(target) => *target == 0 || *target == pid,
         None => true,
     }
@@ -192,7 +192,7 @@ fn emit_tls_event(pid_tgid: u64, pid: u32, buf_ptr: u64, data_len: u32, directio
         (*event_ptr).direction = direction;
         (*event_ptr)._pad = [0u8; 7];
 
-        let dest = &mut (*event_ptr).payload[..capture_len];
+        let dest = &mut (&mut (*event_ptr).payload)[..capture_len];
         if bpf_probe_read_user_buf(buf_ptr as *const u8, dest).is_err() {
             entry.discard(0);
             return Ok(0);
