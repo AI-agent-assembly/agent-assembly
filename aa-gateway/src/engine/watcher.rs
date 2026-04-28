@@ -23,6 +23,14 @@ pub(crate) fn start_watcher(
         if let Ok(event) = res {
             if matches!(event.kind, EventKind::Modify(_)) {
                 if let Ok(yaml) = std::fs::read_to_string(&path_buf) {
+                    // Skip events fired while the file is mid-truncation (0 bytes).
+                    // On Linux (inotify), a truncate+write sequence emits a Modify
+                    // event for the truncated (empty) file before the new content
+                    // arrives. An empty file is not a valid policy, so skip it to
+                    // avoid replacing the active policy with an empty document.
+                    if yaml.trim().is_empty() {
+                        return;
+                    }
                     if let Ok(output) = PolicyValidator::from_yaml(&yaml) {
                         slot.store(Arc::new(output.document));
                     }

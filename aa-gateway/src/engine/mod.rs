@@ -191,25 +191,15 @@ impl PolicyEngine {
 /// Both methods return `Err(PolicyError::InvalidDocument)` to make the limitation explicit.
 /// Use [`PolicyEngine::load_from_file`] to construct and reload a live engine.
 impl aa_core::PolicyEvaluator for PolicyEngine {
-    fn evaluate(
-        &self,
-        ctx: &aa_core::AgentContext,
-        action: &aa_core::GovernanceAction,
-    ) -> aa_core::PolicyResult {
+    fn evaluate(&self, ctx: &aa_core::AgentContext, action: &aa_core::GovernanceAction) -> aa_core::PolicyResult {
         PolicyEngine::evaluate(self, ctx, action)
     }
 
-    fn load_policy(
-        &mut self,
-        _policy: &aa_core::PolicyDocument,
-    ) -> Result<(), aa_core::PolicyError> {
+    fn load_policy(&mut self, _policy: &aa_core::PolicyDocument) -> Result<(), aa_core::PolicyError> {
         Err(aa_core::PolicyError::InvalidDocument)
     }
 
-    fn validate_policy(
-        &self,
-        _policy: &aa_core::PolicyDocument,
-    ) -> Result<(), Vec<aa_core::PolicyError>> {
+    fn validate_policy(&self, _policy: &aa_core::PolicyDocument) -> Result<(), Vec<aa_core::PolicyError>> {
         Err(vec![aa_core::PolicyError::InvalidDocument])
     }
 }
