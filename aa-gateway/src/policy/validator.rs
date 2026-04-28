@@ -331,6 +331,33 @@ mod tests {
         assert_eq!(np.allowlist, vec!["api.openai.com", "slack.com"]);
     }
 
+    // ── Tool validation ─────────────────────────────────────────────────────
+
+    #[test]
+    fn tool_empty_requires_approval_if_is_an_error() {
+        let yaml = "tools:\n  bash:\n    allow: true\n    requires_approval_if: \"   \"\n";
+        let result = PolicyValidator::from_yaml(yaml);
+        assert!(result.is_err());
+        let errs = result.unwrap_err();
+        assert!(errs
+            .iter()
+            .any(|e| e.field == "tools.bash.requires_approval_if"));
+    }
+
+    #[test]
+    fn tool_allow_defaults_to_true_when_absent() {
+        let yaml = "tools:\n  bash:\n    limit_per_hour: 5\n";
+        let out = PolicyValidator::from_yaml(yaml).unwrap();
+        assert!(out.document.tools["bash"].allow);
+    }
+
+    #[test]
+    fn tool_limit_per_hour_round_trips() {
+        let yaml = "tools:\n  bash:\n    allow: true\n    limit_per_hour: 10\n";
+        let out = PolicyValidator::from_yaml(yaml).unwrap();
+        assert_eq!(out.document.tools["bash"].limit_per_hour, Some(10));
+    }
+
     // ── Malformed YAML ──────────────────────────────────────────────────────
 
     #[test]
