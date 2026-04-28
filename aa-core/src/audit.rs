@@ -39,6 +39,8 @@ pub enum AuditEventType {
     BudgetLimitApproached = 6,
     /// The session budget has been exhausted; further actions are blocked.
     BudgetLimitExceeded = 7,
+    /// A pending human approval request expired before a decision was made.
+    ApprovalTimedOut = 8,
 }
 
 impl AuditEventType {
@@ -55,6 +57,7 @@ impl AuditEventType {
             Self::ApprovalDenied => "ApprovalDenied",
             Self::BudgetLimitApproached => "BudgetLimitApproached",
             Self::BudgetLimitExceeded => "BudgetLimitExceeded",
+            Self::ApprovalTimedOut => "ApprovalTimedOut",
         }
     }
 }
@@ -504,10 +507,11 @@ mod tests {
         assert_eq!(AuditEventType::ApprovalDenied.as_str(), "ApprovalDenied");
         assert_eq!(AuditEventType::BudgetLimitApproached.as_str(), "BudgetLimitApproached");
         assert_eq!(AuditEventType::BudgetLimitExceeded.as_str(), "BudgetLimitExceeded");
+        assert_eq!(AuditEventType::ApprovalTimedOut.as_str(), "ApprovalTimedOut");
     }
 
     #[test]
-    fn event_type_discriminants_are_0_through_7() {
+    fn event_type_discriminants_are_0_through_8() {
         assert_eq!(AuditEventType::ToolCallIntercepted as u32, 0);
         assert_eq!(AuditEventType::PolicyViolation as u32, 1);
         assert_eq!(AuditEventType::CredentialLeakBlocked as u32, 2);
@@ -516,6 +520,7 @@ mod tests {
         assert_eq!(AuditEventType::ApprovalDenied as u32, 5);
         assert_eq!(AuditEventType::BudgetLimitApproached as u32, 6);
         assert_eq!(AuditEventType::BudgetLimitExceeded as u32, 7);
+        assert_eq!(AuditEventType::ApprovalTimedOut as u32, 8);
     }
 
     #[test]
@@ -529,6 +534,7 @@ mod tests {
             AuditEventType::ApprovalDenied,
             AuditEventType::BudgetLimitApproached,
             AuditEventType::BudgetLimitExceeded,
+            AuditEventType::ApprovalTimedOut,
         ];
         for i in 0..variants.len() {
             for j in (i + 1)..variants.len() {

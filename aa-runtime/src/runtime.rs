@@ -88,6 +88,9 @@ pub async fn run(config: RuntimeConfig) {
     // Shared response router — maps connection_id → per-connection IpcResponse sender.
     let response_router = crate::ipc::new_response_router();
 
+    // Shared approval queue — holds pending human-approval requests.
+    let approval_queue = crate::approval::ApprovalQueue::new();
+
     // Clone inbound_tx for the health/metrics handler before IpcServer consumes it.
     let inbound_tx_health = inbound_tx.clone();
 
@@ -120,6 +123,7 @@ pub async fn run(config: RuntimeConfig) {
         let pm = pipeline_metrics.clone();
         let pipeline_policy = std::sync::Arc::clone(&policy);
         let pipeline_router = std::sync::Arc::clone(&response_router);
+        let pipeline_approval_queue = std::sync::Arc::clone(&approval_queue);
         tracker.spawn(async move {
             crate::pipeline::run(
                 inbound_rx,
@@ -129,6 +133,7 @@ pub async fn run(config: RuntimeConfig) {
                 pipeline_token,
                 pipeline_policy,
                 pipeline_router,
+                pipeline_approval_queue,
             )
             .await;
         });

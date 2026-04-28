@@ -2,14 +2,38 @@
 
 use serde::Deserialize;
 
-/// A single policy rule: a named set of action strings that are blocked.
+fn default_approval_timeout_secs() -> u32 {
+    300
+}
+
+/// A single policy rule: a named set of action strings that are blocked or require approval.
 #[derive(Debug, Clone, Deserialize)]
 pub struct PolicyRule {
     /// Human-readable rule name (used in violation log messages).
     pub name: String,
-    /// Action strings that this rule blocks.
-    /// Matched against `AuditEvent` action fields during pipeline evaluation.
+    /// Action strings that this rule blocks outright.
+    /// Matched against the action type string during pipeline evaluation.
     pub blocked_actions: Vec<String>,
+    /// Action strings that require human approval before proceeding.
+    /// When matched, the pipeline responds with `Decision::PENDING` and
+    /// submits the request to the [`crate::approval::ApprovalQueue`].
+    #[serde(default)]
+    pub requires_approval_actions: Vec<String>,
+    /// Seconds before an approval request times out and the fallback policy applies.
+    /// Defaults to 300 (5 minutes) when absent from the policy file.
+    #[serde(default = "default_approval_timeout_secs")]
+    pub approval_timeout_secs: u32,
+}
+
+impl Default for PolicyRule {
+    fn default() -> Self {
+        Self {
+            name: String::new(),
+            blocked_actions: Vec::new(),
+            requires_approval_actions: Vec::new(),
+            approval_timeout_secs: 300,
+        }
+    }
 }
 
 /// The full set of policy rules loaded at runtime startup.
@@ -82,6 +106,7 @@ mod tests {
             rules: vec![PolicyRule {
                 name: "test-rule".to_string(),
                 blocked_actions: vec!["dangerous_action".to_string()],
+                ..Default::default()
             }],
         };
         assert!(!rules.is_empty());
@@ -92,9 +117,21 @@ mod tests {
         let rule = PolicyRule {
             name: "block-exfil".to_string(),
             blocked_actions: vec!["send_email".to_string(), "upload_file".to_string()],
+            ..Default::default()
         };
         assert_eq!(rule.name, "block-exfil");
         assert_eq!(rule.blocked_actions.len(), 2);
+    }
+
+    #[test]
+    fn policy_rule_requires_approval_defaults_empty() {
+        let rule = PolicyRule {
+            name: "approval-rule".to_string(),
+            requires_approval_actions: vec!["TOOL_CALL".to_string()],
+            ..Default::default()
+        };
+        assert_eq!(rule.requires_approval_actions, vec!["TOOL_CALL"]);
+        assert_eq!(rule.approval_timeout_secs, 300);
     }
 
     #[test]
@@ -116,6 +153,8 @@ mod tests {
         assert_eq!(result.rules.len(), 1);
         assert_eq!(result.rules[0].name, "block-exfil");
         assert_eq!(result.rules[0].blocked_actions, vec!["send_email"]);
+        assert!(result.rules[0].requires_approval_actions.is_empty());
+        assert_eq!(result.rules[0].approval_timeout_secs, 300);
     }
 
     #[test]

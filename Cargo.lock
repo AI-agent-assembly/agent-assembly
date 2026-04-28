@@ -128,6 +128,7 @@ dependencies = [
  "aa-core",
  "aa-proto",
  "axum 0.7.9",
+ "dashmap",
  "metrics",
  "metrics-exporter-prometheus",
  "prost",
@@ -140,6 +141,7 @@ dependencies = [
  "tower 0.4.13",
  "tracing",
  "tracing-subscriber",
+ "uuid",
 ]
 
 [[package]]
@@ -3666,6 +3668,17 @@ dependencies = [
  "url",
  "utoipa",
  "zip",
+]
+
+[[package]]
+name = "uuid"
+version = "1.23.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ddd74a9687298c6858e9b88ec8935ec45d22e8fd5e6394fa1bd4e99a87789c76"
+dependencies = [
+ "getrandom 0.4.2",
+ "js-sys",
+ "wasm-bindgen",
 ]
 
 [[package]]

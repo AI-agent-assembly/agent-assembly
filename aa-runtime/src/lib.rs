@@ -4,6 +4,7 @@
 //! for Agent Assembly components. It handles runtime initialization, shutdown
 //! coordination, and lifecycle hooks.
 
+pub mod approval;
 pub mod config;
 pub mod health;
 pub mod ipc;
