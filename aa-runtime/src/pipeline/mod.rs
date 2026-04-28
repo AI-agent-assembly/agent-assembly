@@ -11,6 +11,7 @@ use crate::ipc::{IpcFrame, IpcResponse, ResponseRouter};
 use crate::policy::PolicyRules;
 use aa_proto::assembly::audit::v1::{audit_event::Detail, AuditEvent, PolicyViolation};
 use aa_proto::assembly::common::v1::ActionType;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{broadcast, mpsc};
@@ -61,6 +62,7 @@ pub async fn run(
     policy: Arc<PolicyRules>,
     response_router: ResponseRouter,
 ) {
+    let seq = AtomicU64::new(0);
     let mut batch: Vec<EnrichedEvent> = Vec::with_capacity(config.batch_size);
     let mut ticker = tokio::time::interval(config.flush_interval);
     ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
@@ -79,7 +81,8 @@ pub async fn run(
 
             Some((connection_id, frame)) = rx.recv() => {
                 if let IpcFrame::EventReport(event) = frame {
-                    let enriched = enrich(event, &config.agent_id, connection_id);
+                    let enriched = enrich(event, &config.agent_id, connection_id, &seq);
+                    tracing::debug!(sequence_number = enriched.sequence_number, connection_id, "event enriched");
                     metrics.record_processed(1);
                     ::metrics::counter!("aa_events_received_total").increment(1);
                     if is_policy_violation(&enriched, &policy) {
@@ -109,18 +112,20 @@ pub async fn run(
 }
 
 /// Enrich a raw [`AuditEvent`] with runtime-side metadata.
-fn enrich(event: AuditEvent, agent_id: &str, connection_id: u64) -> EnrichedEvent {
+fn enrich(event: AuditEvent, agent_id: &str, connection_id: u64, seq: &AtomicU64) -> EnrichedEvent {
     use std::time::{SystemTime, UNIX_EPOCH};
     let received_at_ms = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or(Duration::ZERO)
         .as_millis() as i64;
+    let sequence_number = seq.fetch_add(1, Ordering::Relaxed);
     EnrichedEvent {
         inner: event,
         received_at_ms,
         source: EventSource::Sdk,
         agent_id: agent_id.to_string(),
         connection_id,
+        sequence_number,
     }
 }
 
@@ -224,35 +229,40 @@ mod tests {
     #[test]
     fn enrich_sets_agent_id() {
         let event = make_audit_event();
-        let enriched = enrich(event, "my-agent", 0);
+        let seq = AtomicU64::new(0);
+        let enriched = enrich(event, "my-agent", 0, &seq);
         assert_eq!(enriched.agent_id, "my-agent");
     }
 
     #[test]
     fn enrich_sets_received_at_ms_positive() {
         let event = make_audit_event();
-        let enriched = enrich(event, "agent", 0);
+        let seq = AtomicU64::new(0);
+        let enriched = enrich(event, "agent", 0, &seq);
         assert!(enriched.received_at_ms > 0);
     }
 
     #[test]
     fn enrich_sets_source_to_sdk() {
         let event = make_audit_event();
-        let enriched = enrich(event, "agent", 0);
+        let seq = AtomicU64::new(0);
+        let enriched = enrich(event, "agent", 0, &seq);
         assert_eq!(enriched.source, EventSource::Sdk);
     }
 
     #[test]
     fn is_policy_violation_true_for_violation_detail() {
         let event = make_policy_violation_event();
-        let enriched = enrich(event, "agent", 0);
+        let seq = AtomicU64::new(0);
+        let enriched = enrich(event, "agent", 0, &seq);
         assert!(is_policy_violation(&enriched, &PolicyRules::default()));
     }
 
     #[test]
     fn is_policy_violation_false_for_normal_event() {
         let event = make_audit_event(); // detail = None
-        let enriched = enrich(event, "agent", 0);
+        let seq = AtomicU64::new(0);
+        let enriched = enrich(event, "agent", 0, &seq);
         assert!(!is_policy_violation(&enriched, &PolicyRules::default()));
     }
 
@@ -270,7 +280,8 @@ mod tests {
     fn flush_broadcasts_all_events_and_records_batch_size() {
         let (tx, mut rx) = broadcast::channel::<EnrichedEvent>(16);
         let metrics = PipelineMetrics::default();
-        let mut batch = vec![enrich(make_audit_event(), "a", 0), enrich(make_audit_event(), "b", 0)];
+        let seq = AtomicU64::new(0);
+        let mut batch = vec![enrich(make_audit_event(), "a", 0, &seq), enrich(make_audit_event(), "b", 0, &seq)];
         flush(&mut batch, &tx, &metrics);
         assert!(batch.is_empty());
         assert_eq!(metrics.last_batch_size(), 2);
