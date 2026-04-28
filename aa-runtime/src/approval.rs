@@ -164,11 +164,7 @@ impl ApprovalQueue {
     ///
     /// Returns `Err(ApprovalError::NotFound)` if no pending request exists for
     /// `id` (already resolved, timed out, or never submitted).
-    pub fn decide(
-        &self,
-        id: ApprovalRequestId,
-        decision: ApprovalDecision,
-    ) -> Result<(), ApprovalError> {
+    pub fn decide(&self, id: ApprovalRequestId, decision: ApprovalDecision) -> Result<(), ApprovalError> {
         if self.resolve(id, decision) {
             Ok(())
         } else {
@@ -295,7 +291,9 @@ mod tests {
         let fallback = aa_core::PolicyResult::Deny {
             reason: "expired".to_string(),
         };
-        let d = ApprovalDecision::TimedOut { fallback: fallback.clone() };
+        let d = ApprovalDecision::TimedOut {
+            fallback: fallback.clone(),
+        };
         if let ApprovalDecision::TimedOut { fallback: f } = d {
             assert_eq!(f, fallback);
         } else {
@@ -382,7 +380,10 @@ mod tests {
 
         q.decide(
             id,
-            ApprovalDecision::Approved { by: "alice".to_string(), reason: None },
+            ApprovalDecision::Approved {
+                by: "alice".to_string(),
+                reason: None,
+            },
         )
         .expect("decide should succeed");
 
@@ -419,13 +420,19 @@ mod tests {
 
         q.decide(
             id,
-            ApprovalDecision::Approved { by: "alice".to_string(), reason: None },
+            ApprovalDecision::Approved {
+                by: "alice".to_string(),
+                reason: None,
+            },
         )
         .expect("first decide should succeed");
 
         let result = q.decide(
             id,
-            ApprovalDecision::Rejected { by: "eve".to_string(), reason: "too late".to_string() },
+            ApprovalDecision::Rejected {
+                by: "eve".to_string(),
+                reason: "too late".to_string(),
+            },
         );
         assert_eq!(result, Err(ApprovalError::NotFound));
     }
@@ -455,7 +462,10 @@ mod tests {
 
         q.decide(
             id,
-            ApprovalDecision::Approved { by: "alice".to_string(), reason: None },
+            ApprovalDecision::Approved {
+                by: "alice".to_string(),
+                reason: None,
+            },
         )
         .expect("decide should succeed");
 
@@ -483,7 +493,10 @@ mod tests {
         for id in &ids {
             q.decide(
                 *id,
-                ApprovalDecision::Approved { by: "operator".to_string(), reason: None },
+                ApprovalDecision::Approved {
+                    by: "operator".to_string(),
+                    reason: None,
+                },
             )
             .expect("decide should succeed for each request");
         }
