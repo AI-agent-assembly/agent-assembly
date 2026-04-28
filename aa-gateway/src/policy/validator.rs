@@ -28,16 +28,14 @@ impl PolicyValidator {
     /// hard constraint is violated, or when the YAML cannot be parsed.
     pub fn from_yaml(yaml_str: &str) -> Result<PolicyValidatorOutput, Vec<ValidationError>> {
         // Step 1 — parse raw YAML
-        let raw: RawPolicyDocument = serde_yaml::from_str(yaml_str)
-            .map_err(|e| {
-                let line = e.location().map(|l| l.line() as u32);
-                let mut err =
-                    ValidationError::new("(document)", format!("YAML parse error: {}", e));
-                if let Some(l) = line {
-                    err = err.with_line(l);
-                }
-                vec![err]
-            })?;
+        let raw: RawPolicyDocument = serde_yaml::from_str(yaml_str).map_err(|e| {
+            let line = e.location().map(|l| l.line() as u32);
+            let mut err = ValidationError::new("(document)", format!("YAML parse error: {}", e));
+            if let Some(l) = line {
+                err = err.with_line(l);
+            }
+            vec![err]
+        })?;
 
         let mut errors: Vec<ValidationError> = Vec::new();
         let mut warnings: Vec<ValidationWarning> = Vec::new();
