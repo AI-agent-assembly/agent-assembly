@@ -197,16 +197,54 @@ impl EbpfLoader {
     /// # Errors
     ///
     /// Returns [`EbpfError::MapUpdate`] if the map update fails.
-    pub fn update_path_filter(&self, _patterns: &[PathPattern]) -> Result<(), EbpfError> {
+    pub fn update_path_filter(&mut self, patterns: &[PathPattern]) -> Result<(), EbpfError> {
         #[cfg(not(target_os = "linux"))]
         {
+            let _ = patterns;
             return Err(EbpfError::MapUpdate("eBPF is only supported on Linux".into()));
         }
 
         #[cfg(target_os = "linux")]
         {
-            tracing::info!(count = _patterns.len(), "updating path filter map");
-            // TODO: write patterns to BPF hash map
+            use crate::maps::PathVerdict;
+
+            let bpf = self.bpf.as_mut().ok_or_else(|| {
+                EbpfError::MapUpdate("BPF not loaded — call load() first".into())
+            })?;
+
+            let mut blocklist: aya::maps::HashMap<_, [u8; aa_ebpf_common::MAX_PATH_LEN], u8> =
+                aya::maps::HashMap::try_from(
+                    bpf.map_mut("PATH_BLOCKLIST").ok_or_else(|| {
+                        EbpfError::MapUpdate("PATH_BLOCKLIST map not found".into())
+                    })?,
+                )
+                .map_err(|e| EbpfError::MapUpdate(e.to_string()))?;
+
+            // Clear existing entries by iterating keys and removing them.
+            let existing_keys: Vec<[u8; aa_ebpf_common::MAX_PATH_LEN]> = blocklist
+                .keys()
+                .filter_map(|k| k.ok())
+                .collect();
+            for key in &existing_keys {
+                let _ = blocklist.remove(key);
+            }
+
+            // Insert new deny patterns.
+            for pat in patterns {
+                if pat.verdict != PathVerdict::Deny {
+                    continue;
+                }
+                let mut key = [0u8; aa_ebpf_common::MAX_PATH_LEN];
+                let bytes = pat.pattern.as_bytes();
+                let len = bytes.len().min(aa_ebpf_common::MAX_PATH_LEN);
+                key[..len].copy_from_slice(&bytes[..len]);
+
+                blocklist
+                    .insert(key, 1, 0)
+                    .map_err(|e| EbpfError::MapUpdate(e.to_string()))?;
+            }
+
+            tracing::info!(count = patterns.len(), "updated path blocklist");
             Ok(())
         }
     }
@@ -243,7 +281,7 @@ mod tests {
     fn update_path_filter_returns_error_on_non_linux() {
         use crate::maps::PathVerdict;
 
-        let loader = EbpfLoader::new(1);
+        let mut loader = EbpfLoader::new(1);
         let patterns = vec![PathPattern {
             pattern: "/etc/shadow".into(),
             verdict: PathVerdict::Deny,
