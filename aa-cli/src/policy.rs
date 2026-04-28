@@ -62,17 +62,18 @@ pub async fn run(cmd: PolicyCommand) -> Result<(), Box<dyn std::error::Error>> {
                 return Ok(());
             }
             println!(
-                "{:<14} {:<26} {:<12} {:<10}",
-                "VERSION", "TIMESTAMP", "APPLIED BY", "ROLLBACK"
+                "{:<14} {:<26} {:<12} {:<10} {:<16}",
+                "VERSION", "TIMESTAMP", "APPLIED BY", "ROLLBACK", "FIRST EVENT"
             );
-            println!("{}", "-".repeat(64));
+            println!("{}", "-".repeat(80));
             for meta in versions {
                 let version_short = &meta.sha256[..meta.sha256.len().min(12)];
                 let applied_by = meta.applied_by.as_deref().unwrap_or("-");
                 let rollback = if meta.is_rollback { "yes" } else { "-" };
+                let first_event = meta.first_event_covered.as_deref().unwrap_or("-");
                 println!(
-                    "{:<14} {:<26} {:<12} {:<10}",
-                    version_short, meta.timestamp, applied_by, rollback
+                    "{:<14} {:<26} {:<12} {:<10} {:<16}",
+                    version_short, meta.timestamp, applied_by, rollback, first_event
                 );
             }
             Ok(())
