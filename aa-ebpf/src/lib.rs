@@ -47,6 +47,7 @@ pub mod kprobes;
 pub mod lineage;
 pub mod loader;
 pub mod maps;
+pub mod shell_detect;
 pub mod syscall;
 
 // aya-dependent modules — Linux only.
@@ -62,10 +63,12 @@ pub mod uprobe;
 pub use alert::SensitivePathDetector;
 pub use error::EbpfError;
 pub use events::FileIoEvent;
-pub use loader::{EbpfLoader, FileIoLoader};
+pub use lineage::ProcessLineageTracker;
+pub use loader::{EbpfLoader, ExecLoader, FileIoLoader};
 pub use maps::{PathPattern, PathVerdict, MAX_PATH_LEN, MAX_PATH_PATTERNS};
 #[cfg(target_os = "linux")]
 pub use ringbuf::EbpfEvent;
+pub use shell_detect::ShellDetector;
 pub use syscall::SyscallKind;
 
 /// Compiled BPF bytecode for the file I/O probe program.
@@ -80,6 +83,19 @@ pub use syscall::SyscallKind;
 pub static AA_FILE_IO_BPF: &[u8] = aya::include_bytes_aligned!(concat!(
     env!("OUT_DIR"),
     "/aa-ebpf-probes/bpfel-unknown-none/release/aa-file-io"
+));
+
+/// Compiled BPF bytecode for the exec tracepoint programs (AAASM-39).
+///
+/// Embedded from `aa-ebpf-probes/src/exec_probes.rs` at build time.
+/// Contains two programs: `handle_sched_process_exec`, `handle_sched_process_exit`.
+/// Pass this slice to [`aya::Ebpf::load`] to obtain a handle.
+///
+/// Only meaningful on Linux — on other platforms this constant is absent.
+#[cfg(target_os = "linux")]
+pub static AA_EXEC_BPF: &[u8] = aya::include_bytes_aligned!(concat!(
+    env!("OUT_DIR"),
+    "/aa-ebpf-probes/bpfel-unknown-none/release/aa-exec-probes"
 ));
 
 /// Compiled BPF bytecode for the TLS uprobe programs (AAASM-37).

@@ -60,6 +60,8 @@ pub enum PolicyLoadError {
     Io(std::io::Error),
     /// The YAML parsed but failed policy validation.
     Validation(Vec<crate::policy::ValidationError>),
+    /// An error from the policy history store.
+    History(crate::policy::history::PolicyHistoryError),
 }
 
 impl PolicyEngine {
@@ -88,6 +90,29 @@ impl PolicyEngine {
             budget: crate::engine::budget::BudgetTracker::new(),
             _watcher: watcher,
         })
+    }
+
+    /// Apply a raw YAML policy string: validate, swap into the live slot, and
+    /// persist a versioned snapshot to the history store.
+    ///
+    /// This is the integration point between the policy engine and the version
+    /// history system — every `apply_yaml` call creates a new history entry.
+    pub async fn apply_yaml(
+        &self,
+        yaml: &str,
+        applied_by: Option<&str>,
+        history: &dyn crate::policy::history::PolicyHistoryStore,
+    ) -> Result<crate::policy::history::PolicyVersionMeta, PolicyLoadError> {
+        // Validate the YAML
+        let output = PolicyValidator::from_yaml(yaml).map_err(PolicyLoadError::Validation)?;
+
+        // Save to history
+        let meta = history.save(yaml, applied_by).await.map_err(PolicyLoadError::History)?;
+
+        // Hot-swap the live policy
+        self.policy.store(Arc::new(output.document));
+
+        Ok(meta)
     }
 
     /// Evaluate a governance action through the 7-step pipeline.
@@ -753,5 +778,48 @@ mod tests {
             elapsed.as_millis(),
             budget_ms,
         );
+    }
+
+    // ── apply_yaml integration ──────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn apply_yaml_swaps_policy_and_saves_history() {
+        use crate::policy::history::{FsHistoryStore, HistoryConfig, PolicyHistoryStore};
+        let tmp = tempfile::tempdir().unwrap();
+        let store = FsHistoryStore::new(HistoryConfig {
+            history_dir: tmp.path().to_path_buf(),
+            max_versions: 50,
+        });
+
+        let engine = make_engine(empty_doc());
+        let yaml = "tools:\n  bash:\n    allow: false\n";
+
+        let meta = engine.apply_yaml(yaml, Some("tester"), &store).await.unwrap();
+
+        // History entry was created
+        assert!(!meta.sha256.is_empty());
+        assert_eq!(meta.applied_by.as_deref(), Some("tester"));
+
+        // Live policy was swapped
+        let live = engine.policy.load();
+        assert!(!live.tools["bash"].allow);
+
+        // History store has the entry
+        let list = store.list(10).await.unwrap();
+        assert_eq!(list.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn apply_yaml_rejects_invalid_yaml() {
+        use crate::policy::history::{FsHistoryStore, HistoryConfig};
+        let tmp = tempfile::tempdir().unwrap();
+        let store = FsHistoryStore::new(HistoryConfig {
+            history_dir: tmp.path().to_path_buf(),
+            max_versions: 50,
+        });
+
+        let engine = make_engine(empty_doc());
+        let result = engine.apply_yaml(":\n  [[[bad", None, &store).await;
+        assert!(result.is_err());
     }
 }

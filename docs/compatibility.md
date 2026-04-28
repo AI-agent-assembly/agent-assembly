@@ -76,3 +76,4 @@ See [versioning.md](versioning.md) for the full versioning and deprecation polic
 | AAASM-107 | Added `conformance` workspace crate (test infrastructure, not shipped) | None — internal tooling only |
 | AAASM-39 | Added `aa-ebpf-common` workspace crate (shared eBPF types, not shipped standalone) | None — internal shared types only |
 | AAASM-37  | Added `aa-ebpf-common` workspace crate (no_std shared eBPF event types, not shipped as a public API) | None — internal kernel/userspace bridge only |
+| AAASM-39 (impl) | Added exec tracepoint BPF programs, ProcessLineageTracker, ShellDetector, ExecLoader in `aa-ebpf` | None — kernel-level monitoring, not a public API |

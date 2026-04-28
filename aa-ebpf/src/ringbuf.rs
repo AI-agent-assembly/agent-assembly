@@ -6,7 +6,11 @@
 
 use std::mem;
 
-use aa_ebpf_common::{exec::ExecEvent, file::FileIoEventRaw, tls::TlsCaptureEvent};
+use aa_ebpf_common::{
+    exec::{ExecEvent, ProcessExitEvent},
+    file::FileIoEventRaw,
+    tls::TlsCaptureEvent,
+};
 use aya::{
     maps::{MapData, RingBuf},
     Ebpf,
@@ -24,6 +28,8 @@ pub enum EbpfEvent {
     File(Box<FileIoEventRaw>),
     /// Process exec (AAASM-39).
     Exec(Box<ExecEvent>),
+    /// Process exit (AAASM-39).
+    Exit(Box<ProcessExitEvent>),
 }
 
 /// Async consumer that reads [`EbpfEvent`]s from the BPF ring buffer.
@@ -99,6 +105,9 @@ fn parse_event(bytes: &[u8]) -> Result<EbpfEvent, EbpfError> {
         n if n == mem::size_of::<TlsCaptureEvent>() => Ok(EbpfEvent::Tls(Box::new(bytes_to::<TlsCaptureEvent>(bytes)))),
         n if n == mem::size_of::<FileIoEventRaw>() => Ok(EbpfEvent::File(Box::new(bytes_to::<FileIoEventRaw>(bytes)))),
         n if n == mem::size_of::<ExecEvent>() => Ok(EbpfEvent::Exec(Box::new(bytes_to::<ExecEvent>(bytes)))),
+        n if n == mem::size_of::<ProcessExitEvent>() => {
+            Ok(EbpfEvent::Exit(Box::new(bytes_to::<ProcessExitEvent>(bytes))))
+        }
         got => Err(EbpfError::EventSize {
             expected: mem::size_of::<TlsCaptureEvent>(),
             got,
