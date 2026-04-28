@@ -134,3 +134,19 @@ pub struct FileIoEventRaw {
 
 unsafe impl Send for FileIoEventRaw {}
 unsafe impl Sync for FileIoEventRaw {}
+
+/// Maximum number of events buffered in the perf event array.
+pub const MAX_ENTRIES: u32 = 1024;
+
+/// Maximum number of path patterns in the blocklist/allowlist BPF map.
+pub const MAX_PATH_PATTERNS: u32 = 256;
+
+/// Key for the fd-to-path BPF hash map: (pid, fd).
+#[derive(Clone, Copy)]
+#[repr(C)]
+pub struct FdPathKey {
+    /// Process ID that opened the file.
+    pub pid: u32,
+    /// File descriptor number returned by `openat`.
+    pub fd: u64,
+}
