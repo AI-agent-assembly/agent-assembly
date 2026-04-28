@@ -28,6 +28,7 @@
 ///
 /// Only meaningful on Linux — on other platforms this constant is absent.
 #[cfg(target_os = "linux")]
-pub static AA_HELLO_BPF: &[u8] = aya::include_bytes_aligned!(
-    concat!(env!("OUT_DIR"), "/aa-hello/bpfel-unknown-none/release/aa-hello")
-);
+pub static AA_HELLO_BPF: &[u8] = aya::include_bytes_aligned!(concat!(
+    env!("OUT_DIR"),
+    "/aa-hello/bpfel-unknown-none/release/aa-hello"
+));
