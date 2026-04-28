@@ -312,6 +312,25 @@ mod tests {
             .any(|w| w.field == "tools.bash.constraint"));
     }
 
+    // ── Network allowlist validation ────────────────────────────────────────
+
+    #[test]
+    fn network_empty_allowlist_entry_is_an_error() {
+        let yaml = "network:\n  allowlist:\n    - \"\"\n";
+        let result = PolicyValidator::from_yaml(yaml);
+        assert!(result.is_err());
+        let errs = result.unwrap_err();
+        assert!(errs.iter().any(|e| e.field == "network.allowlist[0]"));
+    }
+
+    #[test]
+    fn network_valid_allowlist_round_trips() {
+        let yaml = "network:\n  allowlist:\n    - api.openai.com\n    - slack.com\n";
+        let out = PolicyValidator::from_yaml(yaml).unwrap();
+        let np = out.document.network.unwrap();
+        assert_eq!(np.allowlist, vec!["api.openai.com", "slack.com"]);
+    }
+
     // ── Malformed YAML ──────────────────────────────────────────────────────
 
     #[test]
