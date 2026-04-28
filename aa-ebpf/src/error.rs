@@ -1,32 +1,78 @@
-//! Error types for eBPF program lifecycle operations.
+//! Error types for the aa-ebpf userspace loader.
 
-use core::fmt;
+use thiserror::Error;
 
-/// Errors that can occur during eBPF program loading, attachment, and operation.
-#[derive(Debug)]
+/// Errors that can occur while loading, attaching, or reading eBPF programs.
+#[derive(Debug, Error)]
 pub enum EbpfError {
+    // ── aya-native variants (Linux only, used by uprobe/ringbuf) ────────
+
+    /// Failed to load the eBPF program ELF object.
+    #[cfg(target_os = "linux")]
+    #[error("failed to load eBPF object: {0}")]
+    Load(#[from] aya::EbpfError),
+
+    /// An eBPF map operation failed (e.g. writing to a PID filter map).
+    #[cfg(target_os = "linux")]
+    #[error("eBPF map operation failed: {0}")]
+    Map(#[from] aya::maps::MapError),
+
+    /// An eBPF program operation failed (e.g. load or attach).
+    #[cfg(target_os = "linux")]
+    #[error("eBPF program operation failed: {0}")]
+    Program(#[from] aya::programs::ProgramError),
+
+    /// Failed to attach an uprobe or kprobe to a target symbol.
+    #[error("failed to attach probe to `{symbol}`: {source}")]
+    Attach {
+        /// Name of the target symbol (e.g. `SSL_write`).
+        symbol: String,
+        /// Underlying error.
+        #[source]
+        source: Box<dyn std::error::Error + Send + Sync + 'static>,
+    },
+
+    /// The ring buffer returned an unexpected event size.
+    #[error("ring buffer event size mismatch: expected {expected}, got {got}")]
+    EventSize {
+        /// Expected byte length.
+        expected: usize,
+        /// Actual byte length received.
+        got: usize,
+    },
+
+    /// A required eBPF map was not found in the loaded object.
+    #[error("eBPF map `{name}` not found in object")]
+    MapNotFound {
+        /// Name of the missing map.
+        name: String,
+    },
+
+    /// OpenSSL shared library could not be located for the target process.
+    #[error("could not find OpenSSL library for pid {pid:?}")]
+    OpenSslNotFound {
+        /// Target PID, or `None` for system-wide search.
+        pid: Option<i32>,
+    },
+
+    // ── string-based variants (used by file I/O loader, cross-platform) ─
+
     /// Failed to load the compiled eBPF bytecode into the kernel.
+    #[error("eBPF program load failed: {0}")]
     ProgramLoad(String),
+
     /// Failed to attach a kprobe to the target syscall.
+    #[error("kprobe attach failed: {0}")]
     ProbeAttach(String),
+
     /// Failed to update a BPF map from userspace.
+    #[error("BPF map update failed: {0}")]
     MapUpdate(String),
-    /// Failed to parse an event received from the BPF ring buffer.
+
+    /// Failed to parse an event received from the BPF perf event array.
+    #[error("event parse failed: {0}")]
     EventParse(String),
 }
-
-impl fmt::Display for EbpfError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::ProgramLoad(msg) => write!(f, "eBPF program load failed: {msg}"),
-            Self::ProbeAttach(msg) => write!(f, "kprobe attach failed: {msg}"),
-            Self::MapUpdate(msg) => write!(f, "BPF map update failed: {msg}"),
-            Self::EventParse(msg) => write!(f, "event parse failed: {msg}"),
-        }
-    }
-}
-
-impl std::error::Error for EbpfError {}
 
 #[cfg(test)]
 mod tests {
@@ -54,6 +100,12 @@ mod tests {
     fn display_event_parse() {
         let err = EbpfError::EventParse("truncated buffer".into());
         assert_eq!(err.to_string(), "event parse failed: truncated buffer");
+    }
+
+    #[test]
+    fn display_map_not_found() {
+        let err = EbpfError::MapNotFound { name: "PID_FILTER".into() };
+        assert_eq!(err.to_string(), "eBPF map `PID_FILTER` not found in object");
     }
 
     #[test]

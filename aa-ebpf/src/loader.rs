@@ -121,7 +121,7 @@ impl EbpfLoader {
     /// Returns [`EbpfError::EventParse`] if the perf array cannot be opened.
     #[cfg(target_os = "linux")]
     pub fn start_event_reader(&mut self) -> Result<tokio::sync::mpsc::Receiver<FileIoEvent>, EbpfError> {
-        use aa_ebpf_common::FileIoEventRaw;
+        use aa_ebpf_common::file::FileIoEventRaw;
         use aya::maps::perf::AsyncPerfEventArray;
         use aya::util::online_cpus;
         use bytes::BytesMut;
@@ -245,14 +245,14 @@ impl EbpfLoader {
                 .as_mut()
                 .ok_or_else(|| EbpfError::MapUpdate("BPF not loaded — call load() first".into()))?;
 
-            let mut blocklist: aya::maps::HashMap<_, [u8; aa_ebpf_common::MAX_PATH_LEN], u8> =
+            let mut blocklist: aya::maps::HashMap<_, [u8; aa_ebpf_common::file::MAX_PATH_LEN], u8> =
                 aya::maps::HashMap::try_from(
                     bpf.map_mut("PATH_BLOCKLIST")
                         .ok_or_else(|| EbpfError::MapUpdate("PATH_BLOCKLIST map not found".into()))?,
                 )
                 .map_err(|e| EbpfError::MapUpdate(e.to_string()))?;
 
-            let mut allowlist: aya::maps::HashMap<_, [u8; aa_ebpf_common::MAX_PATH_LEN], u8> =
+            let mut allowlist: aya::maps::HashMap<_, [u8; aa_ebpf_common::file::MAX_PATH_LEN], u8> =
                 aya::maps::HashMap::try_from(
                     bpf.map_mut("PATH_ALLOWLIST")
                         .ok_or_else(|| EbpfError::MapUpdate("PATH_ALLOWLIST map not found".into()))?,
@@ -260,13 +260,13 @@ impl EbpfLoader {
                 .map_err(|e| EbpfError::MapUpdate(e.to_string()))?;
 
             // Clear existing entries by iterating keys and removing them.
-            let existing_blocklist_keys: Vec<[u8; aa_ebpf_common::MAX_PATH_LEN]> =
+            let existing_blocklist_keys: Vec<[u8; aa_ebpf_common::file::MAX_PATH_LEN]> =
                 blocklist.keys().filter_map(|k| k.ok()).collect();
             for key in &existing_blocklist_keys {
                 let _ = blocklist.remove(key);
             }
 
-            let existing_allowlist_keys: Vec<[u8; aa_ebpf_common::MAX_PATH_LEN]> =
+            let existing_allowlist_keys: Vec<[u8; aa_ebpf_common::file::MAX_PATH_LEN]> =
                 allowlist.keys().filter_map(|k| k.ok()).collect();
             for key in &existing_allowlist_keys {
                 let _ = allowlist.remove(key);
@@ -276,9 +276,9 @@ impl EbpfLoader {
             let mut deny_count = 0u32;
             let mut allow_count = 0u32;
             for pat in patterns {
-                let mut key = [0u8; aa_ebpf_common::MAX_PATH_LEN];
+                let mut key = [0u8; aa_ebpf_common::file::MAX_PATH_LEN];
                 let bytes = pat.pattern.as_bytes();
-                let len = bytes.len().min(aa_ebpf_common::MAX_PATH_LEN);
+                let len = bytes.len().min(aa_ebpf_common::file::MAX_PATH_LEN);
                 key[..len].copy_from_slice(&bytes[..len]);
 
                 match pat.verdict {

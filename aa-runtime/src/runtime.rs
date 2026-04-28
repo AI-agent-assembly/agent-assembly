@@ -70,7 +70,8 @@ pub async fn run(config: RuntimeConfig) {
 
     // Build pipeline config and create the inbound channel at the configured depth.
     let pipeline_config = crate::pipeline::PipelineConfig::from_runtime_config(&config);
-    let (inbound_tx, inbound_rx) = tokio::sync::mpsc::channel::<crate::ipc::IpcFrame>(pipeline_config.input_buffer);
+    let (inbound_tx, inbound_rx) =
+        tokio::sync::mpsc::channel::<(u64, crate::ipc::IpcFrame)>(pipeline_config.input_buffer);
 
     // Create the broadcast channel for fan-out to downstream subscribers.
     // The leading `_broadcast_rx` keeps the channel alive until real subscribers
@@ -84,6 +85,9 @@ pub async fn run(config: RuntimeConfig) {
     // Shared active-connections counter exposed to the health/metrics endpoint.
     let active_connections = std::sync::Arc::new(std::sync::atomic::AtomicI64::new(0));
 
+    // Shared response router — maps connection_id → per-connection IpcResponse sender.
+    let response_router = crate::ipc::new_response_router();
+
     // Clone inbound_tx for the health/metrics handler before IpcServer consumes it.
     let inbound_tx_health = inbound_tx.clone();
 
@@ -95,9 +99,10 @@ pub async fn run(config: RuntimeConfig) {
             let ipc_tracker = tracker.clone();
             let ipc_token = token.clone();
             let ipc_active_connections = std::sync::Arc::clone(&active_connections);
+            let ipc_router = std::sync::Arc::clone(&response_router);
             tracker.spawn(async move {
                 ipc_server
-                    .run(ipc_tracker, ipc_token, inbound_tx, ipc_active_connections)
+                    .run(ipc_tracker, ipc_token, inbound_tx, ipc_active_connections, ipc_router)
                     .await;
             });
             tracing::info!("IPC server task spawned");
@@ -114,6 +119,7 @@ pub async fn run(config: RuntimeConfig) {
         let pipeline_token = token.clone();
         let pm = pipeline_metrics.clone();
         let pipeline_policy = std::sync::Arc::clone(&policy);
+        let pipeline_router = std::sync::Arc::clone(&response_router);
         tracker.spawn(async move {
             crate::pipeline::run(
                 inbound_rx,
@@ -122,6 +128,7 @@ pub async fn run(config: RuntimeConfig) {
                 pm,
                 pipeline_token,
                 pipeline_policy,
+                pipeline_router,
             )
             .await;
         });

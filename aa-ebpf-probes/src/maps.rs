@@ -1,6 +1,6 @@
 //! BPF map definitions for file I/O kprobes.
 
-use aa_ebpf_common::{FdPathKey, FileIoEventRaw, MAX_ENTRIES, MAX_PATH_LEN, MAX_PATH_PATTERNS};
+use aa_ebpf_common::file::{FdPathKey, FileIoEventRaw, MAX_ENTRIES, MAX_PATH_LEN, MAX_PATH_PATTERNS};
 use aya_ebpf::macros::map;
 use aya_ebpf::maps::{HashMap, PerfEventArray};
 

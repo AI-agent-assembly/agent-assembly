@@ -1,6 +1,6 @@
 //! Helper functions for BPF kprobe programs.
 
-use aa_ebpf_common::FileIoEventRaw;
+use aa_ebpf_common::file::FileIoEventRaw;
 use aya_ebpf::{helpers::bpf_ktime_get_ns, EbpfContext};
 
 use crate::maps::EVENTS;

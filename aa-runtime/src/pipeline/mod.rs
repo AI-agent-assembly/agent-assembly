@@ -7,9 +7,9 @@ pub use event::{EnrichedEvent, EventSource};
 pub use metrics::PipelineMetrics;
 
 use crate::config::RuntimeConfig;
-use crate::ipc::IpcFrame;
+use crate::ipc::{IpcFrame, IpcResponse, ResponseRouter};
 use crate::policy::PolicyRules;
-use aa_proto::assembly::audit::v1::{audit_event::Detail, AuditEvent};
+use aa_proto::assembly::audit::v1::{audit_event::Detail, AuditEvent, PolicyViolation};
 use aa_proto::assembly::common::v1::ActionType;
 use std::sync::Arc;
 use std::time::Duration;
@@ -53,12 +53,13 @@ impl PipelineConfig {
 ///
 /// Returns when `token` is cancelled — flushing any pending batch first.
 pub async fn run(
-    mut rx: mpsc::Receiver<IpcFrame>,
+    mut rx: mpsc::Receiver<(u64, IpcFrame)>,
     broadcast_tx: broadcast::Sender<EnrichedEvent>,
     config: PipelineConfig,
     metrics: Arc<PipelineMetrics>,
     token: CancellationToken,
     policy: Arc<PolicyRules>,
+    response_router: ResponseRouter,
 ) {
     let mut batch: Vec<EnrichedEvent> = Vec::with_capacity(config.batch_size);
     let mut ticker = tokio::time::interval(config.flush_interval);
@@ -76,14 +77,16 @@ pub async fn run(
                 break;
             }
 
-            Some(frame) = rx.recv() => {
+            Some((connection_id, frame)) = rx.recv() => {
                 if let IpcFrame::EventReport(event) = frame {
-                    let enriched = enrich(event, &config.agent_id);
+                    let enriched = enrich(event, &config.agent_id, connection_id);
                     metrics.record_processed(1);
                     ::metrics::counter!("aa_events_received_total").increment(1);
                     if is_policy_violation(&enriched, &policy) {
                         // Bypass the batch — emit immediately.
                         ::metrics::counter!("aa_policy_violations_total").increment(1);
+                        // Push a ViolationAlert back to the originating SDK connection.
+                        push_violation_alert(&enriched, &response_router).await;
                         let _ = broadcast_tx.send(enriched);
                     } else {
                         batch.push(enriched);
@@ -106,7 +109,7 @@ pub async fn run(
 }
 
 /// Enrich a raw [`AuditEvent`] with runtime-side metadata.
-fn enrich(event: AuditEvent, agent_id: &str) -> EnrichedEvent {
+fn enrich(event: AuditEvent, agent_id: &str, connection_id: u64) -> EnrichedEvent {
     use std::time::{SystemTime, UNIX_EPOCH};
     let received_at_ms = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -117,6 +120,7 @@ fn enrich(event: AuditEvent, agent_id: &str) -> EnrichedEvent {
         received_at_ms,
         source: EventSource::Sdk,
         agent_id: agent_id.to_string(),
+        connection_id,
     }
 }
 
@@ -144,6 +148,42 @@ fn is_policy_violation(event: &EnrichedEvent, policy: &PolicyRules) -> bool {
         }
     }
     false
+}
+
+/// Extract a `PolicyViolation` from an `EnrichedEvent`, if one is present.
+///
+/// Returns `Some` when the event's detail is `Detail::Violation(_)`.
+/// Returns `None` for rule-matched events that have no embedded violation proto —
+/// in that case the SDK already knows the action was blocked.
+fn extract_violation(event: &EnrichedEvent) -> Option<PolicyViolation> {
+    match &event.inner.detail {
+        Some(Detail::Violation(v)) => Some(v.clone()),
+        _ => None,
+    }
+}
+
+/// Send a `ViolationAlert` to the SDK connection that originated `event`.
+///
+/// Looks up the per-connection sender in the `ResponseRouter`. If the connection
+/// has already disconnected the entry will be absent and the alert is silently
+/// dropped — the connection is gone so there is no point delivering it.
+async fn push_violation_alert(event: &EnrichedEvent, router: &crate::ipc::ResponseRouter) {
+    let Some(violation) = extract_violation(event) else {
+        // Rule-matched events don't carry a PolicyViolation proto; skip.
+        return;
+    };
+    let sender = {
+        let map = router.read().await;
+        map.get(&event.connection_id).cloned()
+    };
+    if let Some(tx) = sender {
+        if tx.send(IpcResponse::ViolationAlert(violation)).await.is_err() {
+            tracing::debug!(
+                connection_id = event.connection_id,
+                "ViolationAlert dropped — connection already closed"
+            );
+        }
+    }
 }
 
 /// Broadcast all events in `batch` and record metrics.
@@ -184,35 +224,35 @@ mod tests {
     #[test]
     fn enrich_sets_agent_id() {
         let event = make_audit_event();
-        let enriched = enrich(event, "my-agent");
+        let enriched = enrich(event, "my-agent", 0);
         assert_eq!(enriched.agent_id, "my-agent");
     }
 
     #[test]
     fn enrich_sets_received_at_ms_positive() {
         let event = make_audit_event();
-        let enriched = enrich(event, "agent");
+        let enriched = enrich(event, "agent", 0);
         assert!(enriched.received_at_ms > 0);
     }
 
     #[test]
     fn enrich_sets_source_to_sdk() {
         let event = make_audit_event();
-        let enriched = enrich(event, "agent");
+        let enriched = enrich(event, "agent", 0);
         assert_eq!(enriched.source, EventSource::Sdk);
     }
 
     #[test]
     fn is_policy_violation_true_for_violation_detail() {
         let event = make_policy_violation_event();
-        let enriched = enrich(event, "agent");
+        let enriched = enrich(event, "agent", 0);
         assert!(is_policy_violation(&enriched, &PolicyRules::default()));
     }
 
     #[test]
     fn is_policy_violation_false_for_normal_event() {
         let event = make_audit_event(); // detail = None
-        let enriched = enrich(event, "agent");
+        let enriched = enrich(event, "agent", 0);
         assert!(!is_policy_violation(&enriched, &PolicyRules::default()));
     }
 
@@ -230,7 +270,7 @@ mod tests {
     fn flush_broadcasts_all_events_and_records_batch_size() {
         let (tx, mut rx) = broadcast::channel::<EnrichedEvent>(16);
         let metrics = PipelineMetrics::default();
-        let mut batch = vec![enrich(make_audit_event(), "a"), enrich(make_audit_event(), "b")];
+        let mut batch = vec![enrich(make_audit_event(), "a", 0), enrich(make_audit_event(), "b", 0)];
         flush(&mut batch, &tx, &metrics);
         assert!(batch.is_empty());
         assert_eq!(metrics.last_batch_size(), 2);
@@ -320,7 +360,7 @@ mod tests {
     #[tokio::test]
     async fn batch_flushes_on_size_threshold() {
         let config = test_config(3, 10_000); // batch_size=3, very long interval (won't fire)
-        let (tx, rx) = mpsc::channel::<IpcFrame>(64);
+        let (tx, rx) = mpsc::channel::<(u64, IpcFrame)>(64);
         let (broadcast_tx, mut broadcast_rx) = broadcast::channel::<EnrichedEvent>(64);
         let metrics = Arc::new(PipelineMetrics::default());
         let token = CancellationToken::new();
@@ -332,11 +372,12 @@ mod tests {
             metrics.clone(),
             token.clone(),
             Arc::new(PolicyRules::default()),
+            crate::ipc::new_response_router(),
         ));
 
         // Send 3 events — batch threshold reached, should flush before interval
         for _ in 0..3 {
-            tx.send(IpcFrame::EventReport(normal_event())).await.unwrap();
+            tx.send((0, IpcFrame::EventReport(normal_event()))).await.unwrap();
         }
 
         // All 3 events should arrive within a short time
@@ -353,7 +394,7 @@ mod tests {
     #[tokio::test]
     async fn batch_flushes_on_interval() {
         let config = test_config(100, 50); // batch_size=100 (won't reach), interval=50ms
-        let (tx, rx) = mpsc::channel::<IpcFrame>(64);
+        let (tx, rx) = mpsc::channel::<(u64, IpcFrame)>(64);
         let (broadcast_tx, mut broadcast_rx) = broadcast::channel::<EnrichedEvent>(64);
         let metrics = Arc::new(PipelineMetrics::default());
         let token = CancellationToken::new();
@@ -365,11 +406,12 @@ mod tests {
             metrics.clone(),
             token.clone(),
             Arc::new(PolicyRules::default()),
+            crate::ipc::new_response_router(),
         ));
 
         // Send 5 events (less than batch_size=100) — should arrive after interval flush
         for _ in 0..5 {
-            tx.send(IpcFrame::EventReport(normal_event())).await.unwrap();
+            tx.send((0, IpcFrame::EventReport(normal_event()))).await.unwrap();
         }
 
         for _ in 0..5 {
@@ -386,7 +428,7 @@ mod tests {
     async fn policy_violation_bypasses_batch() {
         // batch_size=100, very long interval — only a violation should arrive
         let config = test_config(100, 10_000);
-        let (tx, rx) = mpsc::channel::<IpcFrame>(64);
+        let (tx, rx) = mpsc::channel::<(u64, IpcFrame)>(64);
         let (broadcast_tx, mut broadcast_rx) = broadcast::channel::<EnrichedEvent>(64);
         let metrics = Arc::new(PipelineMetrics::default());
         let token = CancellationToken::new();
@@ -398,10 +440,11 @@ mod tests {
             metrics.clone(),
             token.clone(),
             Arc::new(PolicyRules::default()),
+            crate::ipc::new_response_router(),
         ));
 
         // Send a violation — should arrive immediately, bypassing batch
-        tx.send(IpcFrame::EventReport(violation_event())).await.unwrap();
+        tx.send((0, IpcFrame::EventReport(violation_event()))).await.unwrap();
 
         let event = tokio::time::timeout(Duration::from_millis(200), broadcast_rx.recv())
             .await
@@ -416,7 +459,7 @@ mod tests {
     #[tokio::test]
     async fn cancellation_flushes_pending_batch() {
         let config = test_config(100, 10_000); // large batch, long interval
-        let (tx, rx) = mpsc::channel::<IpcFrame>(64);
+        let (tx, rx) = mpsc::channel::<(u64, IpcFrame)>(64);
         let (broadcast_tx, mut broadcast_rx) = broadcast::channel::<EnrichedEvent>(64);
         let metrics = Arc::new(PipelineMetrics::default());
         let token = CancellationToken::new();
@@ -428,11 +471,12 @@ mod tests {
             metrics.clone(),
             token.clone(),
             Arc::new(PolicyRules::default()),
+            crate::ipc::new_response_router(),
         ));
 
         // Send 5 events (batch won't flush yet)
         for _ in 0..5 {
-            tx.send(IpcFrame::EventReport(normal_event())).await.unwrap();
+            tx.send((0, IpcFrame::EventReport(normal_event()))).await.unwrap();
         }
 
         // Wait until the run loop has processed all 5 events before cancelling,
@@ -467,7 +511,7 @@ mod tests {
     #[tokio::test]
     async fn non_event_frames_ignored() {
         let config = test_config(100, 50);
-        let (tx, rx) = mpsc::channel::<IpcFrame>(64);
+        let (tx, rx) = mpsc::channel::<(u64, IpcFrame)>(64);
         let (broadcast_tx, _broadcast_rx) = broadcast::channel::<EnrichedEvent>(64);
         let metrics = Arc::new(PipelineMetrics::default());
         let token = CancellationToken::new();
@@ -479,10 +523,11 @@ mod tests {
             metrics.clone(),
             token.clone(),
             Arc::new(PolicyRules::default()),
+            crate::ipc::new_response_router(),
         ));
 
         // Send non-event frames
-        tx.send(IpcFrame::Heartbeat).await.unwrap();
+        tx.send((0, IpcFrame::Heartbeat)).await.unwrap();
 
         // Give run loop a moment to process
         tokio::time::sleep(Duration::from_millis(20)).await;
@@ -507,19 +552,27 @@ mod tests {
 
         // batch_size=100, very long interval — only a rule-matched event should arrive immediately
         let config = test_config(100, 10_000);
-        let (tx, rx) = mpsc::channel::<IpcFrame>(64);
+        let (tx, rx) = mpsc::channel::<(u64, IpcFrame)>(64);
         let (broadcast_tx, mut broadcast_rx) = broadcast::channel::<EnrichedEvent>(64);
         let metrics = Arc::new(PipelineMetrics::default());
         let token = CancellationToken::new();
 
-        tokio::spawn(run(rx, broadcast_tx, config, metrics.clone(), token.clone(), policy));
+        tokio::spawn(run(
+            rx,
+            broadcast_tx,
+            config,
+            metrics.clone(),
+            token.clone(),
+            policy,
+            crate::ipc::new_response_router(),
+        ));
 
         // Build an AuditEvent with action_type = FILE_OPERATION
         let event = AuditEvent {
             action_type: ActionType::FileOperation as i32,
             ..Default::default()
         };
-        tx.send(IpcFrame::EventReport(event)).await.unwrap();
+        tx.send((0, IpcFrame::EventReport(event))).await.unwrap();
 
         // Should arrive immediately (before flush interval)
         let received = tokio::time::timeout(Duration::from_millis(200), broadcast_rx.recv())
@@ -547,12 +600,20 @@ mod tests {
 
         // batch_size=100, very long interval — event should NOT arrive before timeout
         let config = test_config(100, 10_000);
-        let (tx, rx) = mpsc::channel::<IpcFrame>(64);
+        let (tx, rx) = mpsc::channel::<(u64, IpcFrame)>(64);
         let (broadcast_tx, mut broadcast_rx) = broadcast::channel::<EnrichedEvent>(64);
         let metrics = Arc::new(PipelineMetrics::default());
         let token = CancellationToken::new();
 
-        tokio::spawn(run(rx, broadcast_tx, config, metrics.clone(), token.clone(), policy));
+        tokio::spawn(run(
+            rx,
+            broadcast_tx,
+            config,
+            metrics.clone(),
+            token.clone(),
+            policy,
+            crate::ipc::new_response_router(),
+        ));
 
         // Yield briefly so the pipeline's interval fires its immediate first tick
         // (tokio::time::interval ticks once immediately on creation).
@@ -563,7 +624,7 @@ mod tests {
             action_type: ActionType::ToolCall as i32,
             ..Default::default()
         };
-        tx.send(IpcFrame::EventReport(event)).await.unwrap();
+        tx.send((0, IpcFrame::EventReport(event))).await.unwrap();
 
         // Should NOT arrive before the flush interval (100ms timeout)
         let result = tokio::time::timeout(Duration::from_millis(100), broadcast_rx.recv()).await;
@@ -582,7 +643,7 @@ mod tests {
         const EVENT_COUNT: u64 = 100_000;
 
         let config = test_config(100, 10);
-        let (tx, rx) = mpsc::channel::<IpcFrame>(10_000);
+        let (tx, rx) = mpsc::channel::<(u64, IpcFrame)>(10_000);
         let (broadcast_tx, mut broadcast_rx) = broadcast::channel::<EnrichedEvent>(10_000);
         let metrics = Arc::new(PipelineMetrics::default());
         let token = CancellationToken::new();
@@ -594,6 +655,7 @@ mod tests {
             metrics.clone(),
             token.clone(),
             Arc::new(PolicyRules::default()),
+            crate::ipc::new_response_router(),
         ));
 
         // Spawn a receiver that drains the broadcast channel
@@ -602,7 +664,7 @@ mod tests {
         let start = std::time::Instant::now();
 
         for _ in 0..EVENT_COUNT {
-            tx.send(IpcFrame::EventReport(normal_event())).await.unwrap();
+            tx.send((0, IpcFrame::EventReport(normal_event()))).await.unwrap();
         }
 
         // Wait until all events are processed

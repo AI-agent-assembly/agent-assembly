@@ -8,21 +8,20 @@ description = "eBPF-based kernel-level monitoring hooks for Agent Assembly"
 
 [features]
 default = []
-linux = ["dep:aya", "dep:aya-log", "dep:tokio"]
 # Enables integration tests that load BPF programs into a live kernel.
 # Requires root (CAP_BPF + CAP_PERFMON). Only meaningful on Linux.
 # Usage: cargo test -p aa-ebpf --features integration-test --test load_hello
 integration-test = []
 
 [dependencies]
-aa-core = { path = "../aa-core" }
-aa-ebpf-common = { path = "../aa-ebpf-common" }
-aya     = { version = "0.13", optional = true }
-aya-log = { version = "0.2", optional = true }
-bytes   = "1"
-thiserror = "2"
-tokio   = { version = "1", features = ["rt", "sync", "macros", "signal"], optional = true }
-tracing = "0.1"
+aa-core        = { path = "../aa-core" }
+aa-ebpf-common = { path = "../aa-ebpf-common", features = ["std"] }
+anyhow         = "1"
+bytes          = "1"
+thiserror      = "2"
+tokio          = { version = "1", features = ["full"] }
+tracing        = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # aya is Linux-only: it uses libc symbols (CLOCK_BOOTTIME, etc.) absent on macOS/Windows.
 # The build-dep (aya-build) is unconditional so build.rs always compiles; the actual
@@ -30,7 +29,6 @@ tracing = "0.1"
 [target.'cfg(target_os = "linux")'.dependencies]
 aya     = { version = "0.13", features = ["async_tokio"] }
 aya-log = "0.2"
-tokio   = { version = "1", features = ["rt", "sync", "macros", "signal"] }
 
 [lints]
 workspace = true

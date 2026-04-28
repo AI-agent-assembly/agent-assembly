@@ -12,12 +12,15 @@
 //!   1 = PolicyResponse   (CheckActionResponse)
 //!   2 = ApprovalDecision (ApprovalDecision)
 //!   3 = Ack              (zero-length varint + empty body: [0x03][0x00])
+//!   4 = ViolationAlert   (PolicyViolation)
 
 use prost::Message;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use crate::ipc::message::{IpcFrame, IpcResponse};
 use aa_proto::assembly::audit::v1::AuditEvent;
+#[cfg(test)]
+use aa_proto::assembly::audit::v1::PolicyViolation;
 use aa_proto::assembly::event::v1::ApprovalDecision;
 use aa_proto::assembly::policy::v1::CheckActionRequest;
 #[cfg(test)]
@@ -35,6 +38,7 @@ pub const TAG_HEARTBEAT: u8 = 4;
 pub const TAG_POLICY_RESPONSE: u8 = 1;
 pub const TAG_APPROVAL_DECISION: u8 = 2;
 pub const TAG_ACK: u8 = 3;
+pub const TAG_VIOLATION_ALERT: u8 = 4;
 
 /// Errors that can occur during frame encoding or decoding.
 #[derive(Debug)]
@@ -115,6 +119,11 @@ where
         }
         IpcResponse::ApprovalDecision(msg) => {
             writer.write_u8(TAG_APPROVAL_DECISION).await?;
+            let bytes = msg.encode_to_vec();
+            write_length_delimited(writer, &bytes).await?;
+        }
+        IpcResponse::ViolationAlert(msg) => {
+            writer.write_u8(TAG_VIOLATION_ALERT).await?;
             let bytes = msg.encode_to_vec();
             write_length_delimited(writer, &bytes).await?;
         }
@@ -349,5 +358,31 @@ mod tests {
         let mut cursor = Cursor::new(buf);
         let result = read_frame(&mut cursor).await;
         assert!(matches!(result, Err(CodecError::UnknownTag(99))));
+    }
+
+    #[tokio::test]
+    async fn violation_alert_encodes_with_correct_tag_and_decodes() {
+        let violation = PolicyViolation {
+            policy_rule: "block-files".to_string(),
+            blocked_action: "FILE_OPERATION".to_string(),
+            reason: "file access not permitted".to_string(),
+        };
+
+        let bytes = encode_response(IpcResponse::ViolationAlert(violation)).await;
+
+        // Tag must be TAG_VIOLATION_ALERT.
+        assert_eq!(bytes[0], TAG_VIOLATION_ALERT);
+
+        // Decode payload back.
+        let mut cursor = Cursor::new(&bytes[1..]);
+        let len = read_varint(&mut cursor).await.unwrap() as usize;
+        let varint_bytes = cursor.position() as usize;
+        let payload_start = 1 + varint_bytes;
+        let payload = &bytes[payload_start..payload_start + len];
+        let decoded = PolicyViolation::decode(payload).unwrap();
+
+        assert_eq!(decoded.policy_rule, "block-files");
+        assert_eq!(decoded.blocked_action, "FILE_OPERATION");
+        assert_eq!(decoded.reason, "file access not permitted");
     }
 }

@@ -3,13 +3,13 @@
 //! Re-exports shared event types from [`aa_ebpf_common`] and defines
 //! userspace-only event types for file I/O kprobes.
 
-pub use aa_ebpf_common::{
+pub use aa_ebpf_common::exec::{
     AlertLevel, ProcessNode, ProcessSpawnEvent, ShellInjectionAlert, MAX_ARGV_ENTRIES, MAX_ARGV_LEN, MAX_EXECUTABLE_LEN,
 };
 
 use crate::error::EbpfError;
 use crate::syscall::SyscallKind;
-use aa_ebpf_common::{FileIoEventRaw, SyscallType};
+use aa_ebpf_common::file::{FileIoEventRaw, SyscallType};
 
 /// A file I/O event captured by a kprobe.
 ///
@@ -69,7 +69,7 @@ impl FileIoEvent {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use aa_ebpf_common::MAX_PATH_LEN;
+    use aa_ebpf_common::file::MAX_PATH_LEN;
 
     fn make_raw(path: &str, syscall: SyscallType, flags: u32) -> FileIoEventRaw {
         let mut path_buf = [0u8; MAX_PATH_LEN];

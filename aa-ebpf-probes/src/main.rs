@@ -4,7 +4,7 @@
 mod helpers;
 mod maps;
 
-use aa_ebpf_common::{FdPathKey, FileIoEventRaw, SyscallType, MAX_PATH_LEN};
+use aa_ebpf_common::file::{FdPathKey, FileIoEventRaw, SyscallType, MAX_PATH_LEN};
 use aya_ebpf::{
     helpers::bpf_probe_read_user_str_bytes,
     macros::{kprobe, kretprobe},

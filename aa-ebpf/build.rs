@@ -49,5 +49,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             return Err("BPF probe compilation failed — see cargo output above".into());
         }
     }
+
     Ok(())
 }

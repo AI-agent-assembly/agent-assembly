@@ -1,0 +1,21 @@
+[package]
+name = "aa-ebpf-programs"
+version = "0.0.1"
+edition = "2021"
+license = "Apache-2.0"
+repository = "https://github.com/AI-agent-assembly/agent-assembly"
+description = "eBPF kernel-space programs for Agent Assembly — compiled for the bpf target"
+publish = false
+
+# This crate is NOT a member of the top-level Cargo workspace because it must
+# be compiled for the `bpfel-unknown-none` target.  It is built by the
+# `aa-ebpf/build.rs` script via `aya-build`.
+
+[dependencies]
+aa-ebpf-common = { path = "../aa-ebpf-common" }
+aya-ebpf       = "0.1"
+aya-log-ebpf   = "0.1"
+
+[[bin]]
+name = "aa-ebpf-programs"
+path = "src/main.rs"
