@@ -64,7 +64,7 @@ pub use alert::SensitivePathDetector;
 pub use error::EbpfError;
 pub use events::FileIoEvent;
 pub use lineage::ProcessLineageTracker;
-pub use loader::{EbpfLoader, FileIoLoader};
+pub use loader::{EbpfLoader, ExecLoader, FileIoLoader};
 pub use maps::{PathPattern, PathVerdict, MAX_PATH_LEN, MAX_PATH_PATTERNS};
 pub use shell_detect::ShellDetector;
 #[cfg(target_os = "linux")]
