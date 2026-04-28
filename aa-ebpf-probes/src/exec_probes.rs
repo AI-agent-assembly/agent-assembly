@@ -63,10 +63,7 @@ fn pid_allowed(tgid: u32) -> bool {
 /// command-line arguments, then emits an [`ExecEvent`] to the ring buffer.
 #[tracepoint]
 pub fn handle_sched_process_exec(ctx: TracePointContext) -> u32 {
-    match try_sched_process_exec(&ctx) {
-        Ok(ret) => ret,
-        Err(_) => 0,
-    }
+    try_sched_process_exec(&ctx).unwrap_or_default()
 }
 
 fn try_sched_process_exec(ctx: &TracePointContext) -> Result<u32, i64> {
@@ -110,7 +107,7 @@ fn try_sched_process_exec(ctx: &TracePointContext) -> Result<u32, i64> {
 
         // Read the filename string from the tracepoint data area.
         let _ = bpf_probe_read_kernel_str_bytes(
-            (ctx.as_ptr() as *const u8).add(filename_offset) as *const u8,
+            (ctx.as_ptr() as *const u8).add(filename_offset),
             &mut (*event_ptr).filename,
         );
 
@@ -148,10 +145,7 @@ fn try_sched_process_exec(ctx: &TracePointContext) -> Result<u32, i64> {
 /// can remove the PID from the lineage map.
 #[tracepoint]
 pub fn handle_sched_process_exit(ctx: TracePointContext) -> u32 {
-    match try_sched_process_exit(&ctx) {
-        Ok(ret) => ret,
-        Err(_) => 0,
-    }
+    try_sched_process_exit(&ctx).unwrap_or_default()
 }
 
 fn try_sched_process_exit(_ctx: &TracePointContext) -> Result<u32, i64> {
