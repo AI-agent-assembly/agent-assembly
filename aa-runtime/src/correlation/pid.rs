@@ -63,6 +63,6 @@ mod tests {
         let mut lineage = PidLineage::new();
         lineage.register(100, 1);
         lineage.remove(100);
-        assert!(lineage.parent_map.get(&100).is_none());
+        assert!(!lineage.parent_map.contains_key(&100));
     }
 }
