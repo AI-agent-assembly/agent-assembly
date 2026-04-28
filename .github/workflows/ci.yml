@@ -39,7 +39,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
       - name: Build workspace
-        run: cargo build --workspace
+        # aa-ebpf requires nightly (aya-build invokes rustup run nightly).
+        # It is validated by the dedicated ebpf-build job.
+        run: cargo build --workspace --exclude aa-ebpf
 
   fmt:
     name: Format check
@@ -64,7 +66,9 @@ jobs:
           components: clippy
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
       - name: Run Clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        # aa-ebpf requires nightly (aya-build invokes rustup run nightly).
+        # It is linted by the dedicated ebpf-build job.
+        run: cargo clippy --workspace --all-targets --all-features --exclude aa-ebpf -- -D warnings
 
   docs:
     name: Rustdoc
@@ -90,7 +94,9 @@ jobs:
       - name: Install cargo-nextest
         uses: taiki-e/install-action@83c419a40a2e48673b2c523337e57f602dfe53c9 # cargo-nextest
       - name: Run tests
-        run: cargo nextest run --workspace --no-tests=pass
+        # aa-ebpf requires nightly (aya-build invokes rustup run nightly) and has no
+        # unit tests. Validated by the dedicated ebpf-build job.
+        run: cargo nextest run --workspace --no-tests=pass --exclude aa-ebpf
 
   coverage:
     name: Coverage
@@ -106,7 +112,9 @@ jobs:
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@3f7f2bd74f95d407a45d96b106f26d4f6c238fab # cargo-llvm-cov
       - name: Generate coverage report
-        run: cargo llvm-cov --all-features --workspace --codecov --output-path codecov.xml
+        # aa-ebpf requires nightly (aya-build invokes rustup run nightly) and has no
+        # testable userspace logic. Excluded from coverage.
+        run: cargo llvm-cov --all-features --workspace --codecov --output-path codecov.xml --exclude aa-ebpf
       - name: Upload to Codecov
         uses: codecov/codecov-action@b9fd7d16f6d7d1b5d2bec1a2887e65ceed900238 # v4
         with:
@@ -231,6 +239,66 @@ jobs:
           fetch-depth: 0
       - name: Check compatibility matrix is updated when versions change
         run: bash .ci/check-compatibility-matrix.sh
+
+  ebpf-build:
+    name: eBPF probes build (Linux nightly)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: aa-ebpf-probes
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          # Do NOT add bpfel-unknown-none to targets: there is no precompiled rust-std
+          # for this target. BPF programs are built from source via -Zbuild-std=core
+          # (configured in aa-ebpf-probes/.cargo/config.toml). Only rust-src is needed.
+          # clippy is required for the "Clippy on eBPF probes" step below.
+          components: rust-src,clippy
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          workspaces: aa-ebpf-probes
+      - name: Cache bpf-linker binary
+        # Cache the compiled bpf-linker binary so subsequent CI runs skip the
+        # slow bundled-LLVM compile (~5-10 min). Key includes the version so a
+        # version bump automatically invalidates the cache.
+        uses: actions/cache@v4
+        id: cache-bpf-linker
+        with:
+          path: ~/.cargo/bin/bpf-linker
+          key: bpf-linker-${{ runner.os }}-0.10.3
+      - name: Install bpf-linker
+        # bpf-linker is the custom linker required for the bpfel-unknown-none target.
+        # Using the bundled-LLVM default (no --no-default-features) avoids fragile
+        # system-LLVM package discovery. Only runs on cache miss.
+        if: steps.cache-bpf-linker.outputs.cache-hit != 'true'
+        run: cargo install bpf-linker
+      - name: Build eBPF probes
+        run: cargo build --release
+      - name: Clippy on eBPF probes
+        # --all-targets would try to build test harness binaries, which require the
+        # `test` crate — unavailable on the no_std bpfel-unknown-none target.
+        # --bins lints only the BPF program binaries.
+        run: cargo clippy --bins -- -D warnings
+      - name: Integration test — load and attach aa-hello kprobe
+        # Runs from the workspace root so cargo can resolve the aa-ebpf package.
+        # BPF loading requires CAP_BPF + CAP_PERFMON (root). sudo -E preserves
+        # CARGO_HOME, RUSTUP_HOME, and PATH so cargo uses the already-installed
+        # nightly toolchain and bpf-linker.
+        working-directory: ${{ github.workspace }}
+        # sudo runs as root (/root/.rustup, /root/.cargo) but the nightly toolchain
+        # was installed for the runner user. RUSTUP_HOME and CARGO_HOME are not set
+        # as env vars on GitHub runners — they default to ~/.rustup/~/.cargo, which
+        # expands to /root/... under sudo. Capture them from the runner's $HOME first,
+        # then pass explicit paths so root reuses the already-installed toolchain.
+        run: |
+          RUNNER_RUSTUP="${HOME}/.rustup"
+          RUNNER_CARGO="${HOME}/.cargo"
+          sudo env \
+            "PATH=$PATH" \
+            "RUSTUP_HOME=${RUNNER_RUSTUP}" \
+            "CARGO_HOME=${RUNNER_CARGO}" \
+            cargo +nightly test -p aa-ebpf --features integration-test --test load_hello -- --nocapture
 
   conformance:
     name: Rust conformance suite

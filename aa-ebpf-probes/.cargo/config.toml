@@ -1,0 +1,6 @@
+[build]
+target = "bpfel-unknown-none"
+
+[unstable]
+# bpfel-unknown-none has no precompiled core — build it from rust-src at compile time.
+build-std = ["core"]
