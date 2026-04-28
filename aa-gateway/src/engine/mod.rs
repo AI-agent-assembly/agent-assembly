@@ -183,6 +183,37 @@ impl PolicyEngine {
     }
 }
 
+/// Implement the `aa_core::PolicyEvaluator` trait so `PolicyEngine` can be used
+/// as `dyn PolicyEvaluator` wherever a pluggable evaluation backend is expected.
+///
+/// `load_policy` and `validate_policy` are not meaningful for `PolicyEngine` because
+/// it uses a richer YAML-based policy document (not the `aa_core::PolicyDocument` stub).
+/// Both methods return `Err(PolicyError::InvalidDocument)` to make the limitation explicit.
+/// Use [`PolicyEngine::load_from_file`] to construct and reload a live engine.
+impl aa_core::PolicyEvaluator for PolicyEngine {
+    fn evaluate(
+        &self,
+        ctx: &aa_core::AgentContext,
+        action: &aa_core::GovernanceAction,
+    ) -> aa_core::PolicyResult {
+        PolicyEngine::evaluate(self, ctx, action)
+    }
+
+    fn load_policy(
+        &mut self,
+        _policy: &aa_core::PolicyDocument,
+    ) -> Result<(), aa_core::PolicyError> {
+        Err(aa_core::PolicyError::InvalidDocument)
+    }
+
+    fn validate_policy(
+        &self,
+        _policy: &aa_core::PolicyDocument,
+    ) -> Result<(), Vec<aa_core::PolicyError>> {
+        Err(vec![aa_core::PolicyError::InvalidDocument])
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -494,5 +525,45 @@ mod tests {
         tmp.flush().unwrap();
         let result = PolicyEngine::load_from_file(tmp.path());
         assert!(result.is_ok(), "expected Ok, got: {:?}", result.err());
+    }
+
+    // ── PolicyEvaluator trait impl ────────────────────────────────────────────
+
+    #[test]
+    fn trait_evaluate_delegates_to_inherent_method() {
+        use aa_core::PolicyEvaluator;
+        let engine = make_engine(empty_doc());
+        let ctx = make_ctx();
+        let action = tool_call("any", "");
+        // Call via the trait — result must match the inherent method.
+        let via_trait = <PolicyEngine as PolicyEvaluator>::evaluate(&engine, &ctx, &action);
+        let via_inherent = engine.evaluate(&ctx, &action);
+        assert_eq!(via_trait, via_inherent);
+    }
+
+    #[test]
+    fn trait_load_policy_returns_invalid_document() {
+        use aa_core::PolicyEvaluator;
+        let mut engine = make_engine(empty_doc());
+        let stub = aa_core::PolicyDocument {
+            version: 1,
+            name: "stub".to_string(),
+            rules: vec![],
+        };
+        let result = engine.load_policy(&stub);
+        assert_eq!(result, Err(aa_core::PolicyError::InvalidDocument));
+    }
+
+    #[test]
+    fn trait_validate_policy_returns_invalid_document() {
+        use aa_core::PolicyEvaluator;
+        let engine = make_engine(empty_doc());
+        let stub = aa_core::PolicyDocument {
+            version: 1,
+            name: "stub".to_string(),
+            rules: vec![],
+        };
+        let result = engine.validate_policy(&stub);
+        assert_eq!(result, Err(vec![aa_core::PolicyError::InvalidDocument]));
     }
 }
