@@ -191,6 +191,37 @@ impl ApprovalQueue {
             false
         }
     }
+
+    /// Submit a new approval request and start its timeout task.
+    ///
+    /// Returns the request's [`ApprovalRequestId`] and an [`ApprovalFuture`]
+    /// that resolves when the request is settled (approved, rejected, or timed
+    /// out).
+    ///
+    /// # Timeout behaviour
+    ///
+    /// A `tokio::spawn`ed task sleeps for `request.timeout_secs` seconds, then
+    /// calls `resolve(TimedOut)`. Because [`resolve`] is idempotent, a human
+    /// decision that arrives before the timeout simply wins the race; the
+    /// timeout task's subsequent `resolve` call becomes a no-op.
+    pub fn submit(self: &Arc<Self>, request: ApprovalRequest) -> (ApprovalRequestId, ApprovalFuture) {
+        let id = request.request_id;
+        let timeout_secs = request.timeout_secs;
+        let fallback = request.fallback.clone();
+
+        let (tx, rx) = oneshot::channel();
+        self.pending.insert(id, (request, tx));
+
+        // Spawn the timeout enforcer.  The Arc clone keeps the queue alive
+        // for the duration of the sleep even if all other holders drop.
+        let queue = Arc::clone(self);
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_secs(timeout_secs)).await;
+            queue.resolve(id, ApprovalDecision::TimedOut { fallback });
+        });
+
+        (id, rx)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -324,5 +355,90 @@ mod tests {
             },
         );
         assert_eq!(result, Err(ApprovalError::NotFound));
+    }
+
+    fn make_request(timeout_secs: u64) -> ApprovalRequest {
+        ApprovalRequest {
+            request_id: Uuid::new_v4(),
+            agent_id: "agent-1".to_string(),
+            action: "read_file /etc/passwd".to_string(),
+            condition_triggered: "sensitive-file-access".to_string(),
+            submitted_at: 1_700_000_000,
+            timeout_secs,
+            fallback: aa_core::PolicyResult::Deny {
+                reason: "timed out".to_string(),
+            },
+        }
+    }
+
+    // --- ApprovalQueue::submit ---
+
+    #[tokio::test]
+    async fn submit_then_approve_resolves_future() {
+        let q = ApprovalQueue::new();
+        let req = make_request(60);
+        let id = req.request_id;
+        let (_rid, fut) = q.submit(req);
+
+        q.decide(
+            id,
+            ApprovalDecision::Approved { by: "alice".to_string(), reason: None },
+        )
+        .expect("decide should succeed");
+
+        let decision = fut.await.expect("future should resolve");
+        assert!(matches!(decision, ApprovalDecision::Approved { .. }));
+    }
+
+    #[tokio::test]
+    async fn submit_then_reject_resolves_future() {
+        let q = ApprovalQueue::new();
+        let req = make_request(60);
+        let id = req.request_id;
+        let (_rid, fut) = q.submit(req);
+
+        q.decide(
+            id,
+            ApprovalDecision::Rejected {
+                by: "bob".to_string(),
+                reason: "not allowed".to_string(),
+            },
+        )
+        .expect("decide should succeed");
+
+        let decision = fut.await.expect("future should resolve");
+        assert!(matches!(decision, ApprovalDecision::Rejected { .. }));
+    }
+
+    #[tokio::test]
+    async fn decide_after_resolve_returns_not_found() {
+        let q = ApprovalQueue::new();
+        let req = make_request(60);
+        let id = req.request_id;
+        let (_rid, _fut) = q.submit(req);
+
+        q.decide(
+            id,
+            ApprovalDecision::Approved { by: "alice".to_string(), reason: None },
+        )
+        .expect("first decide should succeed");
+
+        let result = q.decide(
+            id,
+            ApprovalDecision::Rejected { by: "eve".to_string(), reason: "too late".to_string() },
+        );
+        assert_eq!(result, Err(ApprovalError::NotFound));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn submit_times_out_after_timeout_secs() {
+        let q = ApprovalQueue::new();
+        let req = make_request(5);
+        let (_rid, fut) = q.submit(req);
+
+        tokio::time::advance(std::time::Duration::from_secs(6)).await;
+
+        let decision = fut.await.expect("future should resolve after timeout");
+        assert!(matches!(decision, ApprovalDecision::TimedOut { .. }));
     }
 }
