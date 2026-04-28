@@ -38,6 +38,18 @@ pub fn default_budget_path() -> std::path::PathBuf {
     std::path::PathBuf::from(home).join(".aa").join("budget.json")
 }
 
+/// Load persisted budget from disk. Returns an empty budget on `NotFound`.
+pub fn load_from_disk(path: &std::path::Path) -> Result<PersistedBudget, PersistenceError> {
+    match std::fs::read_to_string(path) {
+        Ok(json) => serde_json::from_str(&json).map_err(PersistenceError::Json),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(PersistedBudget {
+            per_agent: vec![],
+            global: crate::budget::types::BudgetState::new_today(),
+        }),
+        Err(e) => Err(PersistenceError::Io(e)),
+    }
+}
+
 pub fn agent_id_to_hex(id: &aa_core::AgentId) -> String {
     id.as_bytes().iter().map(|b| format!("{:02x}", b)).collect()
 }
@@ -88,6 +100,13 @@ mod tests {
     fn persistence_error_io_displays_message() {
         let e = PersistenceError::Io(std::io::Error::new(std::io::ErrorKind::Other, "disk full"));
         assert!(e.to_string().contains("budget I/O error"));
+    }
+
+    #[test]
+    fn load_from_disk_returns_empty_on_missing_file() {
+        let p = std::path::Path::new("/nonexistent/budget.json");
+        let b = load_from_disk(p).unwrap();
+        assert!(b.per_agent.is_empty());
     }
 
     #[test]
