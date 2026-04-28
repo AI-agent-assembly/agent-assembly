@@ -5,7 +5,7 @@
 
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 use std::sync::Arc;
 
 use tokio::net::UnixListener;
@@ -81,13 +81,15 @@ impl IpcServer {
         token: CancellationToken,
         inbound_tx: mpsc::Sender<IpcFrame>,
         active_connections: Arc<AtomicI64>,
-        _response_router: ResponseRouter, // wired in commit 3
+        response_router: ResponseRouter,
     ) {
         let semaphore = Arc::new(Semaphore::new(self.config.max_connections));
         let listener = self.listener;
         let socket_path = self.config.socket_path.clone();
         let inbound_channel_capacity = self.config.inbound_channel_capacity;
         let max_connections = self.config.max_connections;
+        // Monotonically increasing connection ID — unique per accepted connection.
+        let next_conn_id = Arc::new(AtomicU64::new(0));
 
         tracing::info!("IPC server accept loop started");
 
@@ -117,20 +119,23 @@ impl IpcServer {
                                 }
                             };
 
+                            let connection_id = next_conn_id.fetch_add(1, Ordering::Relaxed);
                             let frame_tx = inbound_tx.clone();
                             let conn_token = token.child_token();
 
                             // Per-connection outbound channel.
-                            // NOTE: resp_tx is not yet wired to a response dispatcher — response routing
-                            // is out of scope for AAASM-30 and will be implemented in a follow-on ticket.
-                            // The writer task will exit immediately when resp_tx is dropped here.
                             let (resp_tx, resp_rx) =
                                 mpsc::channel::<IpcResponse>(inbound_channel_capacity);
+
+                            // Register resp_tx in the router so the pipeline can route
+                            // ViolationAlert responses back to this connection.
+                            response_router.write().await.insert(connection_id, resp_tx.clone());
 
                             // Increment the active connection counter before spawning.
                             active_connections.fetch_add(1, Ordering::Relaxed);
 
                             // Spawn connection handler tasks.
+                            let conn_router = Arc::clone(&response_router);
                             spawn_connection(
                                 &tracker,
                                 stream,
@@ -140,6 +145,8 @@ impl IpcServer {
                                 conn_token,
                                 permit,
                                 Arc::clone(&active_connections),
+                                connection_id,
+                                conn_router,
                             );
                         }
                     }
@@ -162,13 +169,13 @@ pub(super) fn spawn_connection(
     tracker: &TaskTracker,
     stream: tokio::net::UnixStream,
     frame_tx: mpsc::Sender<IpcFrame>,
-    // _resp_tx: not yet used — response routing is out of scope for AAASM-30.
-    // Will be wired to the governance dispatcher in a follow-on ticket.
-    _resp_tx: mpsc::Sender<IpcResponse>,
+    resp_tx: mpsc::Sender<IpcResponse>,
     resp_rx: mpsc::Receiver<IpcResponse>,
     token: CancellationToken,
     permit: tokio::sync::OwnedSemaphorePermit,
     active_connections: Arc<AtomicI64>,
+    connection_id: u64,
+    response_router: ResponseRouter,
 ) {
     let (read_half, write_half) = stream.into_split();
 
@@ -177,10 +184,12 @@ pub(super) fn spawn_connection(
     let reader_frame_tx = frame_tx;
     tracker.spawn(async move {
         let _permit = permit; // held until reader task completes
-        run_reader(read_half, reader_frame_tx, reader_token, active_connections).await;
+        run_reader(read_half, reader_frame_tx, reader_token, active_connections, connection_id, response_router).await;
     });
 
     // Writer task: outbound responses → socket.
+    // resp_tx is held here to keep the channel alive while the writer is running.
+    let _resp_tx = resp_tx;
     tracker.spawn(async move {
         run_writer(write_half, resp_rx, token).await;
     });
@@ -192,6 +201,8 @@ pub(super) async fn run_reader(
     frame_tx: mpsc::Sender<IpcFrame>,
     token: CancellationToken,
     active_connections: Arc<AtomicI64>,
+    connection_id: u64,
+    response_router: ResponseRouter,
 ) {
     loop {
         tokio::select! {
@@ -222,6 +233,8 @@ pub(super) async fn run_reader(
             }
         }
     }
+    // Remove this connection from the response router before signalling shutdown.
+    response_router.write().await.remove(&connection_id);
     token.cancel(); // Signal the paired writer to stop.
     active_connections.fetch_sub(1, Ordering::Relaxed);
 }
@@ -284,12 +297,12 @@ mod tests {
         panic!("could not connect to test IPC server at {}", path.display());
     }
 
-    /// Start a test IpcServer and return the inbound frame receiver.
+    /// Start a test IpcServer and return the inbound frame receiver plus response router.
     async fn start_server(
         socket_path: std::path::PathBuf,
         token: CancellationToken,
         active_connections: Arc<AtomicI64>,
-    ) -> mpsc::Receiver<IpcFrame> {
+    ) -> (mpsc::Receiver<IpcFrame>, crate::ipc::ResponseRouter) {
         let config = IpcServerConfig {
             socket_path,
             max_connections: 64,
@@ -297,12 +310,14 @@ mod tests {
         };
         let server = IpcServer::bind(config).expect("bind failed");
         let (tx, rx) = mpsc::channel(16);
+        let router = crate::ipc::new_response_router();
+        let router_clone = Arc::clone(&router);
         let tracker = TaskTracker::new();
         let tracker_clone = tracker.clone();
         tracker.spawn(async move {
-            server.run(tracker_clone, token, tx, active_connections, crate::ipc::new_response_router()).await;
+            server.run(tracker_clone, token, tx, active_connections, router_clone).await;
         });
-        rx
+        (rx, router)
     }
 
     /// Write a raw inbound frame (tag + varint len + payload) to the socket.
@@ -330,7 +345,7 @@ mod tests {
         let socket_path = temp_socket_path("heartbeat");
         let token = CancellationToken::new();
         let counter = Arc::new(AtomicI64::new(0));
-        let mut rx = start_server(socket_path.clone(), token.clone(), Arc::clone(&counter)).await;
+        let (mut rx, _router) = start_server(socket_path.clone(), token.clone(), Arc::clone(&counter)).await;
 
         let client = connect_client(&socket_path).await;
         let (_, mut write_half) = client.into_split();
@@ -354,7 +369,7 @@ mod tests {
         let socket_path = temp_socket_path("policy-query");
         let token = CancellationToken::new();
         let counter = Arc::new(AtomicI64::new(0));
-        let mut rx = start_server(socket_path.clone(), token.clone(), Arc::clone(&counter)).await;
+        let (mut rx, _router) = start_server(socket_path.clone(), token.clone(), Arc::clone(&counter)).await;
 
         let client = connect_client(&socket_path).await;
         let (_, mut write_half) = client.into_split();
@@ -383,7 +398,7 @@ mod tests {
         let socket_path = temp_socket_path("event-report");
         let token = CancellationToken::new();
         let counter = Arc::new(AtomicI64::new(0));
-        let mut rx = start_server(socket_path.clone(), token.clone(), Arc::clone(&counter)).await;
+        let (mut rx, _router) = start_server(socket_path.clone(), token.clone(), Arc::clone(&counter)).await;
 
         let client = connect_client(&socket_path).await;
         let (_, mut write_half) = client.into_split();
@@ -412,7 +427,7 @@ mod tests {
         let socket_path = temp_socket_path("concurrent");
         let token = CancellationToken::new();
         let counter = Arc::new(AtomicI64::new(0));
-        let _rx = start_server(socket_path.clone(), token.clone(), Arc::clone(&counter)).await;
+        let (_rx, _router) = start_server(socket_path.clone(), token.clone(), Arc::clone(&counter)).await;
 
         const CONN_COUNT: usize = 5;
         let mut clients = Vec::new();
@@ -432,7 +447,7 @@ mod tests {
         let socket_path = temp_socket_path("latency");
         let token = CancellationToken::new();
         let counter = Arc::new(AtomicI64::new(0));
-        let mut rx = start_server(socket_path.clone(), token.clone(), Arc::clone(&counter)).await;
+        let (mut rx, _router) = start_server(socket_path.clone(), token.clone(), Arc::clone(&counter)).await;
 
         let client = connect_client(&socket_path).await;
         let (_, mut write_half) = client.into_split();
@@ -464,7 +479,7 @@ mod tests {
         let socket_path = temp_socket_path("counter-increment");
         let token = CancellationToken::new();
         let counter = Arc::new(AtomicI64::new(0));
-        let _rx = start_server(socket_path.clone(), token.clone(), Arc::clone(&counter)).await;
+        let (_rx, _router) = start_server(socket_path.clone(), token.clone(), Arc::clone(&counter)).await;
 
         const CONN_COUNT: usize = 3;
         let mut clients = Vec::new();
@@ -496,7 +511,7 @@ mod tests {
         let socket_path = temp_socket_path("counter-decrement");
         let token = CancellationToken::new();
         let counter = Arc::new(AtomicI64::new(0));
-        let _rx = start_server(socket_path.clone(), token.clone(), Arc::clone(&counter)).await;
+        let (_rx, _router) = start_server(socket_path.clone(), token.clone(), Arc::clone(&counter)).await;
 
         let client = connect_client(&socket_path).await;
 
@@ -527,6 +542,63 @@ mod tests {
         }
 
         assert_eq!(observed, 0, "counter should return to 0 after client disconnects");
+
+        token.cancel();
+    }
+
+    #[tokio::test]
+    async fn response_router_has_entry_after_accept() {
+        let socket_path = temp_socket_path("router-insert");
+        let token = CancellationToken::new();
+        let counter = Arc::new(AtomicI64::new(0));
+        let (_rx, router) = start_server(socket_path.clone(), token.clone(), Arc::clone(&counter)).await;
+
+        let _client = connect_client(&socket_path).await;
+
+        // Poll until the server has processed the accept (counter reaches 1).
+        for _ in 0..50 {
+            if counter.load(Ordering::Relaxed) == 1 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+
+        let map = router.read().await;
+        assert_eq!(map.len(), 1, "router should contain one entry after one connection");
+        token.cancel();
+    }
+
+    #[tokio::test]
+    async fn response_router_entry_removed_after_disconnect() {
+        let socket_path = temp_socket_path("router-remove");
+        let token = CancellationToken::new();
+        let counter = Arc::new(AtomicI64::new(0));
+        let (_rx, router) = start_server(socket_path.clone(), token.clone(), Arc::clone(&counter)).await;
+
+        let client = connect_client(&socket_path).await;
+
+        // Wait for entry to appear.
+        for _ in 0..50 {
+            if router.read().await.len() == 1 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert_eq!(router.read().await.len(), 1);
+
+        // Drop client — triggers disconnect → router removal.
+        drop(client);
+
+        // Poll for the entry to be removed.
+        let mut observed_len = 1usize;
+        for _ in 0..100 {
+            observed_len = router.read().await.len();
+            if observed_len == 0 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert_eq!(observed_len, 0, "router entry should be removed after client disconnects");
 
         token.cancel();
     }
