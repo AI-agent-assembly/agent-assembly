@@ -9,9 +9,11 @@ use aa_core::time::Timestamp;
 use aa_core::{AgentContext, FileMode, GovernanceAction, PolicyResult};
 use aa_proto::assembly::common::v1::Decision;
 use aa_proto::assembly::policy::v1::action_context::Action;
-use aa_proto::assembly::policy::v1::{CheckActionRequest, CheckActionResponse};
+use aa_proto::assembly::policy::v1::{CheckActionRequest, CheckActionResponse, RedactInstructions, RedactRule};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
+
+use crate::engine::EvaluationResult;
 
 /// Errors arising from malformed or incomplete proto requests.
 #[derive(Debug, thiserror::Error)]
@@ -125,16 +127,39 @@ pub fn request_to_core(
     Ok((ctx, action))
 }
 
-/// Convert a [`PolicyResult`] into a [`CheckActionResponse`].
+/// Convert an [`EvaluationResult`] into a [`CheckActionResponse`].
 ///
 /// `latency_us` is the measured evaluation wall time in microseconds.
 /// `policy_rule` is the identifier of the rule that triggered (empty for Allow).
-pub fn result_to_response(
-    result: &PolicyResult,
+///
+/// When the engine detected credential/PII findings and produced a redacted payload,
+/// the response uses `Decision::Redact` with the redacted field paths.
+pub fn eval_result_to_response(
+    eval: &EvaluationResult,
     latency_us: i64,
     policy_rule: &str,
 ) -> CheckActionResponse {
-    match result {
+    // If the scanner produced redaction findings, return REDACT with instructions.
+    if !eval.credential_findings.is_empty() {
+        let rules: Vec<RedactRule> = eval
+            .credential_findings
+            .iter()
+            .map(|f| RedactRule {
+                field_path: format!("$.{:?}", f.kind),
+                replacement: "[REDACTED]".into(),
+            })
+            .collect();
+        return CheckActionResponse {
+            decision: Decision::Redact as i32,
+            reason: "sensitive data detected".into(),
+            policy_rule: "data_pattern_scan".into(),
+            approval_id: String::new(),
+            redact: Some(RedactInstructions { rules }),
+            decision_latency_us: latency_us,
+        };
+    }
+
+    match &eval.decision {
         PolicyResult::Allow => CheckActionResponse {
             decision: Decision::Allow as i32,
             reason: String::new(),
@@ -160,4 +185,21 @@ pub fn result_to_response(
             decision_latency_us: latency_us,
         },
     }
+}
+
+/// Convert a [`PolicyResult`] into a [`CheckActionResponse`].
+///
+/// Convenience wrapper for tests and callers that only have a `PolicyResult`
+/// (no redaction findings).
+pub fn result_to_response(
+    result: &PolicyResult,
+    latency_us: i64,
+    policy_rule: &str,
+) -> CheckActionResponse {
+    let eval = EvaluationResult {
+        decision: result.clone(),
+        redacted_payload: None,
+        credential_findings: Vec::new(),
+    };
+    eval_result_to_response(&eval, latency_us, policy_rule)
 }
