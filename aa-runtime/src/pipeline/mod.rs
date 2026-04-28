@@ -281,7 +281,10 @@ mod tests {
         let (tx, mut rx) = broadcast::channel::<EnrichedEvent>(16);
         let metrics = PipelineMetrics::default();
         let seq = AtomicU64::new(0);
-        let mut batch = vec![enrich(make_audit_event(), "a", 0, &seq), enrich(make_audit_event(), "b", 0, &seq)];
+        let mut batch = vec![
+            enrich(make_audit_event(), "a", 0, &seq),
+            enrich(make_audit_event(), "b", 0, &seq),
+        ];
         flush(&mut batch, &tx, &metrics);
         assert!(batch.is_empty());
         assert_eq!(metrics.last_batch_size(), 2);
@@ -680,7 +683,11 @@ mod tests {
         }
 
         // Sequence numbers must be strictly monotonically increasing, starting at 0.
-        assert_eq!(seq_numbers, vec![0, 1, 2], "expected consecutive sequence numbers 0, 1, 2");
+        assert_eq!(
+            seq_numbers,
+            vec![0, 1, 2],
+            "expected consecutive sequence numbers 0, 1, 2"
+        );
         token.cancel();
     }
 
@@ -736,7 +743,11 @@ mod tests {
         };
 
         assert_eq!(first_batch, vec![0, 1]);
-        assert_eq!(second_batch, vec![2, 3], "sequence counter must not reset between batches");
+        assert_eq!(
+            second_batch,
+            vec![2, 3],
+            "sequence counter must not reset between batches"
+        );
         token.cancel();
     }
 
