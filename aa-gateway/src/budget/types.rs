@@ -59,9 +59,16 @@ impl BudgetState {
         }
     }
 
-    /// Reset `spent_usd` to zero if `date` is before today UTC. No-op if same day.
-    pub fn maybe_reset(&mut self) {
-        let today = chrono::Utc::now().date_naive();
+    /// Create a fresh zero-spend state stamped with the given date.
+    pub fn new_for_date(date: chrono::NaiveDate) -> Self {
+        Self {
+            spent_usd: rust_decimal::Decimal::ZERO,
+            date,
+        }
+    }
+
+    /// Reset `spent_usd` to zero if `date` is before `today`. No-op if same day.
+    pub fn maybe_reset(&mut self, today: chrono::NaiveDate) {
         if self.date < today {
             self.spent_usd = rust_decimal::Decimal::ZERO;
             self.date = today;
@@ -144,7 +151,7 @@ mod tests {
             spent_usd: Decimal::new(500, 2), // 5.00
             date: Utc::now().date_naive() - chrono::Duration::days(1),
         };
-        state.maybe_reset();
+        state.maybe_reset(Utc::now().date_naive());
         assert_eq!(state.spent_usd, Decimal::ZERO);
         assert_eq!(state.date, Utc::now().date_naive());
     }
@@ -158,8 +165,23 @@ mod tests {
             spent_usd: amount,
             date: Utc::now().date_naive(),
         };
-        state.maybe_reset();
+        state.maybe_reset(Utc::now().date_naive());
         assert_eq!(state.spent_usd, amount);
+    }
+
+    #[test]
+    fn budget_state_maybe_reset_uses_injected_date() {
+        use rust_decimal::Decimal;
+        use chrono::NaiveDate;
+        let mut state = BudgetState {
+            spent_usd: Decimal::new(500, 2), // 5.00
+            date: NaiveDate::from_ymd_opt(2024, 1, 1).unwrap(),
+        };
+        // Inject a specific "today" that is after state.date
+        let injected_today = NaiveDate::from_ymd_opt(2024, 1, 2).unwrap();
+        state.maybe_reset(injected_today);
+        assert_eq!(state.spent_usd, Decimal::ZERO);
+        assert_eq!(state.date, injected_today);
     }
 
     #[test]
