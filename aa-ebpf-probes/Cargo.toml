@@ -5,13 +5,18 @@ edition = "2021"
 publish = false
 
 [dependencies]
-aya-ebpf = "0.1"
+aya-ebpf     = "0.1"
 aya-log-ebpf = "0.1"
+aa-ebpf-common = { path = "../aa-ebpf-common" }
 
 # BPF programs are no_std binaries; there is no std or test harness.
 [[bin]]
 name = "aa-hello"
 path = "src/main.rs"
+
+[[bin]]
+name = "aa-tls-probes"
+path = "src/ssl_probes.rs"
 
 # Declare this crate as its own standalone workspace so Cargo does not
 # attempt to include it in the parent agent-assembly workspace.
