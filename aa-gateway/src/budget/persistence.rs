@@ -205,7 +205,7 @@ mod tests {
         use std::sync::Arc;
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
-            let tracker = Arc::new(BudgetTracker::new(PricingTable::default_table(), None));
+            let tracker = Arc::new(BudgetTracker::new(PricingTable::default_table(), None, chrono_tz::UTC));
             let dir = tempfile::tempdir().unwrap();
             let path = dir.path().join("budget.json");
             let handle = start_background_writer(tracker, path);
