@@ -26,6 +26,7 @@ pub enum IpcFrame {
     Heartbeat,
 }
 
+use aa_proto::assembly::audit::v1::PolicyViolation;
 use aa_proto::assembly::policy::v1::CheckActionResponse;
 
 /// A message sent from the runtime back to an SDK process over the Unix socket.
@@ -34,6 +35,7 @@ use aa_proto::assembly::policy::v1::CheckActionResponse;
 /// - `1` = PolicyResponse
 /// - `2` = ApprovalDecision (async push when a PENDING decision resolves)
 /// - `3` = Ack
+/// - `4` = ViolationAlert (runtime pushes a policy violation back to the originating SDK)
 #[derive(Debug)]
 pub enum IpcResponse {
     /// The policy engine's verdict for a `PolicyQuery`.
@@ -43,4 +45,7 @@ pub enum IpcResponse {
     ApprovalDecision(ApprovalDecision),
     /// Acknowledgement of a received `EventReport` or `Heartbeat`.
     Ack,
+    /// Runtime-initiated push: a policy violation was detected on an event
+    /// submitted by this connection. Contains the full `PolicyViolation` proto.
+    ViolationAlert(PolicyViolation),
 }
