@@ -26,6 +26,7 @@ mod tests {
                 sha256: "abc123".to_string(),
                 applied_by: None,
                 source_path: None,
+                first_event_covered: None,
                 is_rollback: false,
                 rollback_target: None,
             },

@@ -16,6 +16,8 @@ pub struct PolicyVersionMeta {
     pub applied_by: Option<String>,
     /// Original file path from which the policy was loaded.
     pub source_path: Option<String>,
+    /// ISO 8601 UTC timestamp of the first event evaluated under this policy version.
+    pub first_event_covered: Option<String>,
     /// Whether this version was created by a rollback operation.
     pub is_rollback: bool,
     /// Version identifier of the rollback target (set when `is_rollback` is true).
@@ -33,6 +35,7 @@ mod tests {
             sha256: "abcdef1234567890".to_string(),
             applied_by: None,
             source_path: None,
+            first_event_covered: None,
             is_rollback: false,
             rollback_target: None,
         };
@@ -47,6 +50,7 @@ mod tests {
             sha256: "abcdef1234567890".to_string(),
             applied_by: Some("alice".to_string()),
             source_path: Some("/etc/aa/policy.yaml".to_string()),
+            first_event_covered: None,
             is_rollback: false,
             rollback_target: None,
         };
@@ -62,6 +66,7 @@ mod tests {
             sha256: "fedcba0987654321".to_string(),
             applied_by: Some("ops-bot".to_string()),
             source_path: None,
+            first_event_covered: Some("2026-04-28T13:01:00Z".to_string()),
             is_rollback: true,
             rollback_target: Some("abcdef1234567890".to_string()),
         };
