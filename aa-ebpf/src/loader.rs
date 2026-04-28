@@ -84,7 +84,6 @@ impl EbpfLoader {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::maps::PathVerdict;
 
     #[test]
     fn new_stores_target_pid() {
@@ -111,6 +110,8 @@ mod tests {
     #[test]
     #[cfg(not(target_os = "linux"))]
     fn update_path_filter_returns_error_on_non_linux() {
+        use crate::maps::PathVerdict;
+
         let loader = EbpfLoader::new(1);
         let patterns = vec![PathPattern {
             pattern: "/etc/shadow".into(),
