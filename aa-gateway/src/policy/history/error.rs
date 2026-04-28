@@ -100,4 +100,40 @@ mod tests {
         let e = PolicyHistoryError::VersionNotFound("v1".to_string());
         assert!(std::error::Error::source(&e).is_none());
     }
+
+    #[test]
+    fn from_serde_json_error() {
+        let json_err = serde_json::from_str::<serde_json::Value>("{bad}").unwrap_err();
+        let e: PolicyHistoryError = json_err.into();
+        assert!(matches!(e, PolicyHistoryError::SerdeJson(_)));
+        assert!(e.to_string().contains("metadata JSON error"));
+    }
+
+    #[test]
+    fn from_serde_yaml_error() {
+        let yaml_err = serde_yaml::from_str::<serde_yaml::Value>(":\n  [[[bad").unwrap_err();
+        let e: PolicyHistoryError = yaml_err.into();
+        assert!(matches!(e, PolicyHistoryError::SerdeYaml(_)));
+        assert!(e.to_string().contains("policy YAML error"));
+    }
+
+    #[test]
+    fn source_returns_inner_for_serde_json() {
+        let json_err = serde_json::from_str::<serde_json::Value>("{bad}").unwrap_err();
+        let e = PolicyHistoryError::SerdeJson(json_err);
+        assert!(std::error::Error::source(&e).is_some());
+    }
+
+    #[test]
+    fn source_returns_inner_for_serde_yaml() {
+        let yaml_err = serde_yaml::from_str::<serde_yaml::Value>(":\n  [[[bad").unwrap_err();
+        let e = PolicyHistoryError::SerdeYaml(yaml_err);
+        assert!(std::error::Error::source(&e).is_some());
+    }
+
+    #[test]
+    fn source_returns_none_for_corrupted_metadata() {
+        let e = PolicyHistoryError::CorruptedMetadata("bad data".to_string());
+        assert!(std::error::Error::source(&e).is_none());
+    }
 }
