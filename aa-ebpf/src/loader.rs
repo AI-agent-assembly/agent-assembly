@@ -252,29 +252,52 @@ impl EbpfLoader {
                 )
                 .map_err(|e| EbpfError::MapUpdate(e.to_string()))?;
 
+            let mut allowlist: aya::maps::HashMap<_, [u8; aa_ebpf_common::MAX_PATH_LEN], u8> =
+                aya::maps::HashMap::try_from(
+                    bpf.map_mut("PATH_ALLOWLIST")
+                        .ok_or_else(|| EbpfError::MapUpdate("PATH_ALLOWLIST map not found".into()))?,
+                )
+                .map_err(|e| EbpfError::MapUpdate(e.to_string()))?;
+
             // Clear existing entries by iterating keys and removing them.
-            let existing_keys: Vec<[u8; aa_ebpf_common::MAX_PATH_LEN]> =
+            let existing_blocklist_keys: Vec<[u8; aa_ebpf_common::MAX_PATH_LEN]> =
                 blocklist.keys().filter_map(|k| k.ok()).collect();
-            for key in &existing_keys {
+            for key in &existing_blocklist_keys {
                 let _ = blocklist.remove(key);
             }
 
-            // Insert new deny patterns.
+            let existing_allowlist_keys: Vec<[u8; aa_ebpf_common::MAX_PATH_LEN]> =
+                allowlist.keys().filter_map(|k| k.ok()).collect();
+            for key in &existing_allowlist_keys {
+                let _ = allowlist.remove(key);
+            }
+
+            // Insert patterns into the appropriate BPF map.
+            let mut deny_count = 0u32;
+            let mut allow_count = 0u32;
             for pat in patterns {
-                if pat.verdict != PathVerdict::Deny {
-                    continue;
-                }
                 let mut key = [0u8; aa_ebpf_common::MAX_PATH_LEN];
                 let bytes = pat.pattern.as_bytes();
                 let len = bytes.len().min(aa_ebpf_common::MAX_PATH_LEN);
                 key[..len].copy_from_slice(&bytes[..len]);
 
-                blocklist
-                    .insert(key, 1, 0)
-                    .map_err(|e| EbpfError::MapUpdate(e.to_string()))?;
+                match pat.verdict {
+                    PathVerdict::Deny => {
+                        blocklist
+                            .insert(key, 1, 0)
+                            .map_err(|e| EbpfError::MapUpdate(e.to_string()))?;
+                        deny_count += 1;
+                    }
+                    PathVerdict::Allow => {
+                        allowlist
+                            .insert(key, 1, 0)
+                            .map_err(|e| EbpfError::MapUpdate(e.to_string()))?;
+                        allow_count += 1;
+                    }
+                }
             }
 
-            tracing::info!(count = patterns.len(), "updated path blocklist");
+            tracing::info!(deny = deny_count, allow = allow_count, "updated path filters");
             Ok(())
         }
     }
