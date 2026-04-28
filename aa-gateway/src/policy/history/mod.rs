@@ -26,12 +26,14 @@
 
 pub mod config;
 pub mod error;
+pub mod fs_store;
 pub mod meta;
 pub mod snapshot;
 pub mod store;
 
 pub use config::HistoryConfig;
 pub use error::PolicyHistoryError;
+pub use fs_store::FsHistoryStore;
 pub use meta::PolicyVersionMeta;
 pub use snapshot::PolicySnapshot;
 pub use store::PolicyHistoryStore;
