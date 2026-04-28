@@ -602,4 +602,176 @@ mod tests {
 
         token.cancel();
     }
+
+    /// Spin up an IPC server + pipeline and verify that a violation EventReport
+    /// results in a ViolationAlert (tag 4) arriving on the same connection
+    /// within 100 ms.
+    #[tokio::test]
+    async fn violation_event_triggers_alert_within_100ms() {
+        use crate::ipc::codec::{TAG_EVENT_REPORT, TAG_VIOLATION_ALERT};
+        use crate::pipeline::{PipelineConfig, PipelineMetrics};
+        use aa_proto::assembly::audit::v1::{audit_event::Detail, PolicyViolation};
+        use prost::Message;
+        use std::sync::Arc;
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let socket_path = temp_socket_path("violation-alert");
+        let token = CancellationToken::new();
+        let counter = Arc::new(AtomicI64::new(0));
+        let (inbound_rx, router) =
+            start_server(socket_path.clone(), token.clone(), Arc::clone(&counter)).await;
+
+        // Spin up the pipeline.
+        let pipeline_config = PipelineConfig {
+            input_buffer: 64,
+            batch_size: 100,
+            flush_interval: std::time::Duration::from_secs(60),
+            broadcast_capacity: 64,
+            agent_id: "test-agent".to_string(),
+        };
+        let pipeline_metrics = Arc::new(PipelineMetrics::default());
+        let (broadcast_tx, _broadcast_rx) =
+            tokio::sync::broadcast::channel::<crate::pipeline::EnrichedEvent>(64);
+        let pipeline_router = Arc::clone(&router);
+        let pipeline_token = token.clone();
+        tokio::spawn(crate::pipeline::run(
+            inbound_rx,
+            broadcast_tx,
+            pipeline_config,
+            pipeline_metrics,
+            pipeline_token,
+            Arc::new(crate::policy::PolicyRules::default()),
+            pipeline_router,
+        ));
+
+        // Connect a client.
+        let client = connect_client(&socket_path).await;
+        let (mut read_half, mut write_half) = client.into_split();
+
+        // Wait for the connection to be registered.
+        for _ in 0..50 {
+            if counter.load(Ordering::Relaxed) == 1 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+
+        // Build a PolicyViolation event.
+        let violation = PolicyViolation {
+            policy_rule: "test-rule".to_string(),
+            blocked_action: "FILE_OPERATION".to_string(),
+            reason: "blocked".to_string(),
+        };
+        let event = AuditEvent {
+            detail: Some(Detail::Violation(violation)),
+            ..Default::default()
+        };
+        let payload = event.encode_to_vec();
+
+        // Send as EventReport frame.
+        write_half.write_u8(TAG_EVENT_REPORT).await.unwrap();
+        let mut len = payload.len() as u64;
+        loop {
+            let byte = (len & 0x7F) as u8;
+            len >>= 7;
+            if len == 0 {
+                write_half.write_u8(byte).await.unwrap();
+                break;
+            } else {
+                write_half.write_u8(byte | 0x80).await.unwrap();
+            }
+        }
+        write_half.write_all(&payload).await.unwrap();
+        write_half.flush().await.unwrap();
+
+        // The pipeline should detect the violation and push ViolationAlert (tag 4) back.
+        let tag = tokio::time::timeout(Duration::from_millis(100), read_half.read_u8())
+            .await
+            .expect("ViolationAlert did not arrive within 100ms")
+            .expect("read error");
+
+        assert_eq!(tag, TAG_VIOLATION_ALERT, "expected ViolationAlert tag (4)");
+
+        token.cancel();
+    }
+
+    /// A normal (non-violation) EventReport must NOT produce any response
+    /// on the same connection.
+    #[tokio::test]
+    async fn normal_event_produces_no_response() {
+        use crate::ipc::codec::TAG_EVENT_REPORT;
+        use crate::pipeline::{PipelineConfig, PipelineMetrics};
+        use prost::Message;
+        use std::sync::Arc;
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let socket_path = temp_socket_path("no-alert");
+        let token = CancellationToken::new();
+        let counter = Arc::new(AtomicI64::new(0));
+        let (inbound_rx, router) =
+            start_server(socket_path.clone(), token.clone(), Arc::clone(&counter)).await;
+
+        // Spin up the pipeline.
+        let pipeline_config = PipelineConfig {
+            input_buffer: 64,
+            batch_size: 100,
+            flush_interval: std::time::Duration::from_secs(60),
+            broadcast_capacity: 64,
+            agent_id: "test-agent".to_string(),
+        };
+        let pipeline_metrics = Arc::new(PipelineMetrics::default());
+        let (broadcast_tx, _broadcast_rx) =
+            tokio::sync::broadcast::channel::<crate::pipeline::EnrichedEvent>(64);
+        let pipeline_router = Arc::clone(&router);
+        let pipeline_token = token.clone();
+        tokio::spawn(crate::pipeline::run(
+            inbound_rx,
+            broadcast_tx,
+            pipeline_config,
+            pipeline_metrics,
+            pipeline_token,
+            Arc::new(crate::policy::PolicyRules::default()),
+            pipeline_router,
+        ));
+
+        // Connect a client.
+        let client = connect_client(&socket_path).await;
+        let (mut read_half, mut write_half) = client.into_split();
+
+        // Wait for the connection to be registered.
+        for _ in 0..50 {
+            if counter.load(Ordering::Relaxed) == 1 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+
+        // Send a normal (non-violation) event.
+        let event = AuditEvent::default();
+        let payload = event.encode_to_vec();
+        write_half.write_u8(TAG_EVENT_REPORT).await.unwrap();
+        let mut len = payload.len() as u64;
+        loop {
+            let byte = (len & 0x7F) as u8;
+            len >>= 7;
+            if len == 0 {
+                write_half.write_u8(byte).await.unwrap();
+                break;
+            } else {
+                write_half.write_u8(byte | 0x80).await.unwrap();
+            }
+        }
+        write_half.write_all(&payload).await.unwrap();
+        write_half.flush().await.unwrap();
+
+        // No ViolationAlert should arrive — read should time out.
+        let result =
+            tokio::time::timeout(Duration::from_millis(100), read_half.read_u8()).await;
+        assert!(
+            result.is_err(),
+            "expected no response for a normal event, but received one"
+        );
+
+        token.cancel();
+    }
 }
