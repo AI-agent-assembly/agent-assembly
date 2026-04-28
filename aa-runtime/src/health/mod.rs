@@ -19,7 +19,7 @@ pub struct HealthState {
     pub ready_rx: watch::Receiver<bool>,
     pub prometheus_handle: PrometheusHandle,
     pub active_connections: Arc<AtomicI64>,
-    pub inbound_tx: mpsc::Sender<IpcFrame>,
+    pub inbound_tx: mpsc::Sender<(u64, IpcFrame)>,
 }
 
 /// Response body for GET /health.

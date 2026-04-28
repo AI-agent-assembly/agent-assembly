@@ -29,6 +29,9 @@ pub struct EnrichedEvent {
     pub source: EventSource,
     /// Agent identity string — copied from `RuntimeConfig::agent_id`.
     pub agent_id: String,
+    /// ID of the IPC connection that submitted this event.
+    /// Used to route `IpcResponse::ViolationAlert` back to the originating SDK client.
+    pub connection_id: u64,
 }
 
 #[cfg(test)]
@@ -41,18 +44,21 @@ mod tests {
         let received_at_ms: i64 = 1234567890;
         let source = EventSource::Sdk;
         let agent_id = "test-agent".to_string();
+        let connection_id: u64 = 42;
 
         let enriched_event = EnrichedEvent {
             inner: audit_event.clone(),
             received_at_ms,
             source: source.clone(),
             agent_id: agent_id.clone(),
+            connection_id,
         };
 
         assert_eq!(enriched_event.inner, audit_event);
         assert_eq!(enriched_event.received_at_ms, received_at_ms);
         assert_eq!(enriched_event.source, source);
         assert_eq!(enriched_event.agent_id, agent_id);
+        assert_eq!(enriched_event.connection_id, connection_id);
     }
 
     #[test]
@@ -70,9 +76,11 @@ mod tests {
             received_at_ms: 1234567890,
             source: EventSource::EBpf,
             agent_id: "original-agent".to_string(),
+            connection_id: 7,
         };
 
         let cloned = original.clone();
         assert_eq!(cloned.agent_id, original.agent_id);
+        assert_eq!(cloned.connection_id, original.connection_id);
     }
 }

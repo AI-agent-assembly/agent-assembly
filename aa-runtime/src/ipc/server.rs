@@ -5,7 +5,7 @@
 
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 use std::sync::Arc;
 
 use tokio::net::UnixListener;
@@ -14,6 +14,7 @@ use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
 use crate::ipc::message::{IpcFrame, IpcResponse};
+use crate::ipc::ResponseRouter;
 
 /// Configuration for the IPC server.
 #[derive(Debug, Clone)]
@@ -78,14 +79,17 @@ impl IpcServer {
         self,
         tracker: TaskTracker,
         token: CancellationToken,
-        inbound_tx: mpsc::Sender<IpcFrame>,
+        inbound_tx: mpsc::Sender<(u64, IpcFrame)>,
         active_connections: Arc<AtomicI64>,
+        response_router: ResponseRouter,
     ) {
         let semaphore = Arc::new(Semaphore::new(self.config.max_connections));
         let listener = self.listener;
         let socket_path = self.config.socket_path.clone();
         let inbound_channel_capacity = self.config.inbound_channel_capacity;
         let max_connections = self.config.max_connections;
+        // Monotonically increasing connection ID — unique per accepted connection.
+        let next_conn_id = Arc::new(AtomicU64::new(0));
 
         tracing::info!("IPC server accept loop started");
 
@@ -115,20 +119,23 @@ impl IpcServer {
                                 }
                             };
 
+                            let connection_id = next_conn_id.fetch_add(1, Ordering::Relaxed);
                             let frame_tx = inbound_tx.clone();
                             let conn_token = token.child_token();
 
                             // Per-connection outbound channel.
-                            // NOTE: resp_tx is not yet wired to a response dispatcher — response routing
-                            // is out of scope for AAASM-30 and will be implemented in a follow-on ticket.
-                            // The writer task will exit immediately when resp_tx is dropped here.
                             let (resp_tx, resp_rx) =
                                 mpsc::channel::<IpcResponse>(inbound_channel_capacity);
+
+                            // Register resp_tx in the router so the pipeline can route
+                            // ViolationAlert responses back to this connection.
+                            response_router.write().await.insert(connection_id, resp_tx.clone());
 
                             // Increment the active connection counter before spawning.
                             active_connections.fetch_add(1, Ordering::Relaxed);
 
                             // Spawn connection handler tasks.
+                            let conn_router = Arc::clone(&response_router);
                             spawn_connection(
                                 &tracker,
                                 stream,
@@ -138,6 +145,8 @@ impl IpcServer {
                                 conn_token,
                                 permit,
                                 Arc::clone(&active_connections),
+                                connection_id,
+                                conn_router,
                             );
                         }
                     }
@@ -159,14 +168,14 @@ impl IpcServer {
 pub(super) fn spawn_connection(
     tracker: &TaskTracker,
     stream: tokio::net::UnixStream,
-    frame_tx: mpsc::Sender<IpcFrame>,
-    // _resp_tx: not yet used — response routing is out of scope for AAASM-30.
-    // Will be wired to the governance dispatcher in a follow-on ticket.
-    _resp_tx: mpsc::Sender<IpcResponse>,
+    frame_tx: mpsc::Sender<(u64, IpcFrame)>,
+    resp_tx: mpsc::Sender<IpcResponse>,
     resp_rx: mpsc::Receiver<IpcResponse>,
     token: CancellationToken,
     permit: tokio::sync::OwnedSemaphorePermit,
     active_connections: Arc<AtomicI64>,
+    connection_id: u64,
+    response_router: ResponseRouter,
 ) {
     let (read_half, write_half) = stream.into_split();
 
@@ -175,10 +184,20 @@ pub(super) fn spawn_connection(
     let reader_frame_tx = frame_tx;
     tracker.spawn(async move {
         let _permit = permit; // held until reader task completes
-        run_reader(read_half, reader_frame_tx, reader_token, active_connections).await;
+        run_reader(
+            read_half,
+            reader_frame_tx,
+            reader_token,
+            active_connections,
+            connection_id,
+            response_router,
+        )
+        .await;
     });
 
     // Writer task: outbound responses → socket.
+    // resp_tx is held here to keep the channel alive while the writer is running.
+    let _resp_tx = resp_tx;
     tracker.spawn(async move {
         run_writer(write_half, resp_rx, token).await;
     });
@@ -187,9 +206,11 @@ pub(super) fn spawn_connection(
 /// Reader task: reads frames from the socket and sends them to the inbound channel.
 pub(super) async fn run_reader(
     mut stream: tokio::net::unix::OwnedReadHalf,
-    frame_tx: mpsc::Sender<IpcFrame>,
+    frame_tx: mpsc::Sender<(u64, IpcFrame)>,
     token: CancellationToken,
     active_connections: Arc<AtomicI64>,
+    connection_id: u64,
+    response_router: ResponseRouter,
 ) {
     loop {
         tokio::select! {
@@ -200,7 +221,7 @@ pub(super) async fn run_reader(
             result = super::codec::read_frame(&mut stream) => {
                 match result {
                     Ok(frame) => {
-                        if frame_tx.send(frame).await.is_err() {
+                        if frame_tx.send((connection_id, frame)).await.is_err() {
                             tracing::debug!("inbound channel closed — reader exiting");
                             break;
                         }
@@ -220,6 +241,8 @@ pub(super) async fn run_reader(
             }
         }
     }
+    // Remove this connection from the response router before signalling shutdown.
+    response_router.write().await.remove(&connection_id);
     token.cancel(); // Signal the paired writer to stop.
     active_connections.fetch_sub(1, Ordering::Relaxed);
 }
@@ -282,12 +305,12 @@ mod tests {
         panic!("could not connect to test IPC server at {}", path.display());
     }
 
-    /// Start a test IpcServer and return the inbound frame receiver.
+    /// Start a test IpcServer and return the inbound frame receiver plus response router.
     async fn start_server(
         socket_path: std::path::PathBuf,
         token: CancellationToken,
         active_connections: Arc<AtomicI64>,
-    ) -> mpsc::Receiver<IpcFrame> {
+    ) -> (mpsc::Receiver<(u64, IpcFrame)>, crate::ipc::ResponseRouter) {
         let config = IpcServerConfig {
             socket_path,
             max_connections: 64,
@@ -295,12 +318,16 @@ mod tests {
         };
         let server = IpcServer::bind(config).expect("bind failed");
         let (tx, rx) = mpsc::channel(16);
+        let router = crate::ipc::new_response_router();
+        let router_clone = Arc::clone(&router);
         let tracker = TaskTracker::new();
         let tracker_clone = tracker.clone();
         tracker.spawn(async move {
-            server.run(tracker_clone, token, tx, active_connections).await;
+            server
+                .run(tracker_clone, token, tx, active_connections, router_clone)
+                .await;
         });
-        rx
+        (rx, router)
     }
 
     /// Write a raw inbound frame (tag + varint len + payload) to the socket.
@@ -328,7 +355,7 @@ mod tests {
         let socket_path = temp_socket_path("heartbeat");
         let token = CancellationToken::new();
         let counter = Arc::new(AtomicI64::new(0));
-        let mut rx = start_server(socket_path.clone(), token.clone(), Arc::clone(&counter)).await;
+        let (mut rx, _router) = start_server(socket_path.clone(), token.clone(), Arc::clone(&counter)).await;
 
         let client = connect_client(&socket_path).await;
         let (_, mut write_half) = client.into_split();
@@ -338,7 +365,7 @@ mod tests {
         write_half.write_u8(TAG_HEARTBEAT).await.unwrap();
         write_half.flush().await.unwrap();
 
-        let frame = tokio::time::timeout(Duration::from_secs(2), rx.recv())
+        let (_conn_id, frame) = tokio::time::timeout(Duration::from_secs(2), rx.recv())
             .await
             .expect("timed out waiting for frame")
             .expect("channel closed");
@@ -352,7 +379,7 @@ mod tests {
         let socket_path = temp_socket_path("policy-query");
         let token = CancellationToken::new();
         let counter = Arc::new(AtomicI64::new(0));
-        let mut rx = start_server(socket_path.clone(), token.clone(), Arc::clone(&counter)).await;
+        let (mut rx, _router) = start_server(socket_path.clone(), token.clone(), Arc::clone(&counter)).await;
 
         let client = connect_client(&socket_path).await;
         let (_, mut write_half) = client.into_split();
@@ -364,7 +391,7 @@ mod tests {
         let payload = request.encode_to_vec();
         write_raw_frame(&mut write_half, TAG_POLICY_QUERY, &payload).await;
 
-        let frame = tokio::time::timeout(Duration::from_secs(2), rx.recv())
+        let (_conn_id, frame) = tokio::time::timeout(Duration::from_secs(2), rx.recv())
             .await
             .expect("timed out")
             .expect("channel closed");
@@ -381,7 +408,7 @@ mod tests {
         let socket_path = temp_socket_path("event-report");
         let token = CancellationToken::new();
         let counter = Arc::new(AtomicI64::new(0));
-        let mut rx = start_server(socket_path.clone(), token.clone(), Arc::clone(&counter)).await;
+        let (mut rx, _router) = start_server(socket_path.clone(), token.clone(), Arc::clone(&counter)).await;
 
         let client = connect_client(&socket_path).await;
         let (_, mut write_half) = client.into_split();
@@ -393,7 +420,7 @@ mod tests {
         let payload = event.encode_to_vec();
         write_raw_frame(&mut write_half, TAG_EVENT_REPORT, &payload).await;
 
-        let frame = tokio::time::timeout(Duration::from_secs(2), rx.recv())
+        let (_conn_id, frame) = tokio::time::timeout(Duration::from_secs(2), rx.recv())
             .await
             .expect("timed out")
             .expect("channel closed");
@@ -410,7 +437,7 @@ mod tests {
         let socket_path = temp_socket_path("concurrent");
         let token = CancellationToken::new();
         let counter = Arc::new(AtomicI64::new(0));
-        let _rx = start_server(socket_path.clone(), token.clone(), Arc::clone(&counter)).await;
+        let (_rx, _router) = start_server(socket_path.clone(), token.clone(), Arc::clone(&counter)).await;
 
         const CONN_COUNT: usize = 5;
         let mut clients = Vec::new();
@@ -430,7 +457,7 @@ mod tests {
         let socket_path = temp_socket_path("latency");
         let token = CancellationToken::new();
         let counter = Arc::new(AtomicI64::new(0));
-        let mut rx = start_server(socket_path.clone(), token.clone(), Arc::clone(&counter)).await;
+        let (mut rx, _router) = start_server(socket_path.clone(), token.clone(), Arc::clone(&counter)).await;
 
         let client = connect_client(&socket_path).await;
         let (_, mut write_half) = client.into_split();
@@ -445,7 +472,7 @@ mod tests {
             tokio::time::timeout(Duration::from_millis(100), rx.recv())
                 .await
                 .expect("timed out")
-                .expect("channel closed");
+                .expect("channel closed"); // returns (conn_id, frame) — result unused in latency test
         }
 
         let elapsed = start.elapsed();
@@ -462,7 +489,7 @@ mod tests {
         let socket_path = temp_socket_path("counter-increment");
         let token = CancellationToken::new();
         let counter = Arc::new(AtomicI64::new(0));
-        let _rx = start_server(socket_path.clone(), token.clone(), Arc::clone(&counter)).await;
+        let (_rx, _router) = start_server(socket_path.clone(), token.clone(), Arc::clone(&counter)).await;
 
         const CONN_COUNT: usize = 3;
         let mut clients = Vec::new();
@@ -494,7 +521,7 @@ mod tests {
         let socket_path = temp_socket_path("counter-decrement");
         let token = CancellationToken::new();
         let counter = Arc::new(AtomicI64::new(0));
-        let _rx = start_server(socket_path.clone(), token.clone(), Arc::clone(&counter)).await;
+        let (_rx, _router) = start_server(socket_path.clone(), token.clone(), Arc::clone(&counter)).await;
 
         let client = connect_client(&socket_path).await;
 
@@ -525,6 +552,233 @@ mod tests {
         }
 
         assert_eq!(observed, 0, "counter should return to 0 after client disconnects");
+
+        token.cancel();
+    }
+
+    #[tokio::test]
+    async fn response_router_has_entry_after_accept() {
+        let socket_path = temp_socket_path("router-insert");
+        let token = CancellationToken::new();
+        let counter = Arc::new(AtomicI64::new(0));
+        let (_rx, router) = start_server(socket_path.clone(), token.clone(), Arc::clone(&counter)).await;
+
+        let _client = connect_client(&socket_path).await;
+
+        // Poll until the server has processed the accept (counter reaches 1).
+        for _ in 0..50 {
+            if counter.load(Ordering::Relaxed) == 1 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+
+        let map = router.read().await;
+        assert_eq!(map.len(), 1, "router should contain one entry after one connection");
+        token.cancel();
+    }
+
+    #[tokio::test]
+    async fn response_router_entry_removed_after_disconnect() {
+        let socket_path = temp_socket_path("router-remove");
+        let token = CancellationToken::new();
+        let counter = Arc::new(AtomicI64::new(0));
+        let (_rx, router) = start_server(socket_path.clone(), token.clone(), Arc::clone(&counter)).await;
+
+        let client = connect_client(&socket_path).await;
+
+        // Wait for entry to appear.
+        for _ in 0..50 {
+            if router.read().await.len() == 1 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert_eq!(router.read().await.len(), 1);
+
+        // Drop client — triggers disconnect → router removal.
+        drop(client);
+
+        // Poll for the entry to be removed.
+        let mut observed_len = 1usize;
+        for _ in 0..100 {
+            observed_len = router.read().await.len();
+            if observed_len == 0 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert_eq!(
+            observed_len, 0,
+            "router entry should be removed after client disconnects"
+        );
+
+        token.cancel();
+    }
+
+    /// Spin up an IPC server + pipeline and verify that a violation EventReport
+    /// results in a ViolationAlert (tag 4) arriving on the same connection
+    /// within 100 ms.
+    #[tokio::test]
+    async fn violation_event_triggers_alert_within_100ms() {
+        use crate::ipc::codec::{TAG_EVENT_REPORT, TAG_VIOLATION_ALERT};
+        use crate::pipeline::{PipelineConfig, PipelineMetrics};
+        use aa_proto::assembly::audit::v1::{audit_event::Detail, PolicyViolation};
+        use prost::Message;
+        use std::sync::Arc;
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let socket_path = temp_socket_path("violation-alert");
+        let token = CancellationToken::new();
+        let counter = Arc::new(AtomicI64::new(0));
+        let (inbound_rx, router) = start_server(socket_path.clone(), token.clone(), Arc::clone(&counter)).await;
+
+        // Spin up the pipeline.
+        let pipeline_config = PipelineConfig {
+            input_buffer: 64,
+            batch_size: 100,
+            flush_interval: std::time::Duration::from_secs(60),
+            broadcast_capacity: 64,
+            agent_id: "test-agent".to_string(),
+        };
+        let pipeline_metrics = Arc::new(PipelineMetrics::default());
+        let (broadcast_tx, _broadcast_rx) = tokio::sync::broadcast::channel::<crate::pipeline::EnrichedEvent>(64);
+        let pipeline_router = Arc::clone(&router);
+        let pipeline_token = token.clone();
+        tokio::spawn(crate::pipeline::run(
+            inbound_rx,
+            broadcast_tx,
+            pipeline_config,
+            pipeline_metrics,
+            pipeline_token,
+            Arc::new(crate::policy::PolicyRules::default()),
+            pipeline_router,
+        ));
+
+        // Connect a client.
+        let client = connect_client(&socket_path).await;
+        let (mut read_half, mut write_half) = client.into_split();
+
+        // Wait for the connection to be registered.
+        for _ in 0..50 {
+            if counter.load(Ordering::Relaxed) == 1 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+
+        // Build a PolicyViolation event.
+        let violation = PolicyViolation {
+            policy_rule: "test-rule".to_string(),
+            blocked_action: "FILE_OPERATION".to_string(),
+            reason: "blocked".to_string(),
+        };
+        let event = AuditEvent {
+            detail: Some(Detail::Violation(violation)),
+            ..Default::default()
+        };
+        let payload = event.encode_to_vec();
+
+        // Send as EventReport frame.
+        write_half.write_u8(TAG_EVENT_REPORT).await.unwrap();
+        let mut len = payload.len() as u64;
+        loop {
+            let byte = (len & 0x7F) as u8;
+            len >>= 7;
+            if len == 0 {
+                write_half.write_u8(byte).await.unwrap();
+                break;
+            } else {
+                write_half.write_u8(byte | 0x80).await.unwrap();
+            }
+        }
+        write_half.write_all(&payload).await.unwrap();
+        write_half.flush().await.unwrap();
+
+        // The pipeline should detect the violation and push ViolationAlert (tag 4) back.
+        let tag = tokio::time::timeout(Duration::from_millis(100), read_half.read_u8())
+            .await
+            .expect("ViolationAlert did not arrive within 100ms")
+            .expect("read error");
+
+        assert_eq!(tag, TAG_VIOLATION_ALERT, "expected ViolationAlert tag (4)");
+
+        token.cancel();
+    }
+
+    /// A normal (non-violation) EventReport must NOT produce any response
+    /// on the same connection.
+    #[tokio::test]
+    async fn normal_event_produces_no_response() {
+        use crate::ipc::codec::TAG_EVENT_REPORT;
+        use crate::pipeline::{PipelineConfig, PipelineMetrics};
+        use prost::Message;
+        use std::sync::Arc;
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let socket_path = temp_socket_path("no-alert");
+        let token = CancellationToken::new();
+        let counter = Arc::new(AtomicI64::new(0));
+        let (inbound_rx, router) = start_server(socket_path.clone(), token.clone(), Arc::clone(&counter)).await;
+
+        // Spin up the pipeline.
+        let pipeline_config = PipelineConfig {
+            input_buffer: 64,
+            batch_size: 100,
+            flush_interval: std::time::Duration::from_secs(60),
+            broadcast_capacity: 64,
+            agent_id: "test-agent".to_string(),
+        };
+        let pipeline_metrics = Arc::new(PipelineMetrics::default());
+        let (broadcast_tx, _broadcast_rx) = tokio::sync::broadcast::channel::<crate::pipeline::EnrichedEvent>(64);
+        let pipeline_router = Arc::clone(&router);
+        let pipeline_token = token.clone();
+        tokio::spawn(crate::pipeline::run(
+            inbound_rx,
+            broadcast_tx,
+            pipeline_config,
+            pipeline_metrics,
+            pipeline_token,
+            Arc::new(crate::policy::PolicyRules::default()),
+            pipeline_router,
+        ));
+
+        // Connect a client.
+        let client = connect_client(&socket_path).await;
+        let (mut read_half, mut write_half) = client.into_split();
+
+        // Wait for the connection to be registered.
+        for _ in 0..50 {
+            if counter.load(Ordering::Relaxed) == 1 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+
+        // Send a normal (non-violation) event.
+        let event = AuditEvent::default();
+        let payload = event.encode_to_vec();
+        write_half.write_u8(TAG_EVENT_REPORT).await.unwrap();
+        let mut len = payload.len() as u64;
+        loop {
+            let byte = (len & 0x7F) as u8;
+            len >>= 7;
+            if len == 0 {
+                write_half.write_u8(byte).await.unwrap();
+                break;
+            } else {
+                write_half.write_u8(byte | 0x80).await.unwrap();
+            }
+        }
+        write_half.write_all(&payload).await.unwrap();
+        write_half.flush().await.unwrap();
+
+        // No ViolationAlert should arrive — read should time out.
+        let result = tokio::time::timeout(Duration::from_millis(100), read_half.read_u8()).await;
+        assert!(
+            result.is_err(),
+            "expected no response for a normal event, but received one"
+        );
 
         token.cancel();
     }
