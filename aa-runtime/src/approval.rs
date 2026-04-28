@@ -5,6 +5,10 @@
 //! until a human operator calls [`ApprovalQueue::decide`], or the per-request
 //! timeout elapses and the queue auto-resolves it as [`ApprovalDecision::TimedOut`].
 
+use std::sync::Arc;
+
+use dashmap::DashMap;
+use tokio::sync::oneshot;
 use uuid::Uuid;
 
 // ---------------------------------------------------------------------------
@@ -115,6 +119,49 @@ impl std::fmt::Display for ApprovalError {
 impl std::error::Error for ApprovalError {}
 
 // ---------------------------------------------------------------------------
+// ApprovalQueue
+// ---------------------------------------------------------------------------
+
+/// Concurrent, in-memory store of pending approval requests.
+///
+/// Constructed via [`ApprovalQueue::new`], which returns an [`Arc`] so the
+/// queue can be cloned cheaply across tasks (e.g., the timeout spawner holds
+/// a back-reference).
+pub struct ApprovalQueue {
+    pending: DashMap<ApprovalRequestId, (ApprovalRequest, oneshot::Sender<ApprovalDecision>)>,
+}
+
+impl ApprovalQueue {
+    /// Creates a new, empty queue wrapped in an [`Arc`].
+    pub fn new() -> Arc<Self> {
+        Arc::new(Self {
+            pending: DashMap::new(),
+        })
+    }
+
+    /// Returns a snapshot of all currently pending requests.
+    ///
+    /// The snapshot is consistent at the moment of the call; entries submitted
+    /// or resolved concurrently may not appear.
+    pub fn list(&self) -> Vec<PendingApprovalRequest> {
+        self.pending
+            .iter()
+            .map(|entry| {
+                let req = &entry.value().0;
+                PendingApprovalRequest {
+                    request_id: req.request_id,
+                    agent_id: req.agent_id.clone(),
+                    action: req.action.clone(),
+                    condition_triggered: req.condition_triggered.clone(),
+                    submitted_at: req.submitted_at,
+                    timeout_secs: req.timeout_secs,
+                }
+            })
+            .collect()
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -222,5 +269,13 @@ mod tests {
         assert_eq!(pending.request_id, id);
         assert_eq!(pending.agent_id, "agent-1");
         assert_eq!(pending.timeout_secs, 60);
+    }
+
+    // --- ApprovalQueue::new and list ---
+
+    #[test]
+    fn new_queue_list_is_empty() {
+        let q = ApprovalQueue::new();
+        assert!(q.list().is_empty());
     }
 }
