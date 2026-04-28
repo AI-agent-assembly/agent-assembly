@@ -80,3 +80,83 @@ impl Default for ShellDetector {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn detects_critical_bash() {
+        let d = ShellDetector::new();
+        assert_eq!(d.check("/bin/bash"), Some(AlertLevel::Critical));
+    }
+
+    #[test]
+    fn detects_critical_sh() {
+        let d = ShellDetector::new();
+        assert_eq!(d.check("/bin/sh"), Some(AlertLevel::Critical));
+    }
+
+    #[test]
+    fn detects_critical_curl() {
+        let d = ShellDetector::new();
+        assert_eq!(d.check("/usr/bin/curl"), Some(AlertLevel::Critical));
+    }
+
+    #[test]
+    fn detects_critical_wget() {
+        let d = ShellDetector::new();
+        assert_eq!(d.check("/usr/bin/wget"), Some(AlertLevel::Critical));
+    }
+
+    #[test]
+    fn detects_warning_python() {
+        let d = ShellDetector::new();
+        assert_eq!(d.check("/usr/bin/python3"), Some(AlertLevel::Warning));
+    }
+
+    #[test]
+    fn detects_warning_node() {
+        let d = ShellDetector::new();
+        assert_eq!(d.check("/usr/bin/node"), Some(AlertLevel::Warning));
+    }
+
+    #[test]
+    fn allows_safe_binary() {
+        let d = ShellDetector::new();
+        assert_eq!(d.check("/usr/bin/ls"), None);
+    }
+
+    #[test]
+    fn allows_agent_binary() {
+        let d = ShellDetector::new();
+        assert_eq!(d.check("/opt/agent/run"), None);
+    }
+
+    #[test]
+    fn basename_extraction_no_slash() {
+        let d = ShellDetector::new();
+        assert_eq!(d.check("bash"), Some(AlertLevel::Critical));
+    }
+
+    #[test]
+    fn build_alert_returns_some_for_match() {
+        let d = ShellDetector::new();
+        let alert = d.build_alert(100, 200, "/bin/bash", 5000).unwrap();
+
+        assert_eq!(alert.parent_pid, 100);
+        assert_eq!(alert.child_pid, 200);
+        assert_eq!(alert.alert_level, AlertLevel::Critical);
+        assert_eq!(alert.timestamp_ns, 5000);
+        // Check executable contains the path.
+        let nul = alert.executable.iter().position(|&b| b == 0).unwrap_or(alert.executable.len());
+        let exe_str = core::str::from_utf8(&alert.executable[..nul]).unwrap();
+        assert_eq!(exe_str, "/bin/bash");
+    }
+
+    #[test]
+    fn build_alert_returns_none_for_safe() {
+        let d = ShellDetector::new();
+        assert!(d.build_alert(100, 200, "/usr/bin/ls", 5000).is_none());
+    }
+}

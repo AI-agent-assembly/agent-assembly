@@ -109,7 +109,7 @@ pub const MAX_EXECUTABLE_LEN: usize = 256;
 
 /// Severity level for a shell injection alert.
 #[repr(u8)]
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AlertLevel {
     /// Informational — known-benign shell spawns (e.g. build scripts).
     Info = 0,
