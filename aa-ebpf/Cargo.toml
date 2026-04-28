@@ -19,5 +19,11 @@ aya-log = "0.2"
 [build-dependencies]
 aya-build = "0.1"
 
+[features]
+# Enables integration tests that load BPF programs into a live kernel.
+# Requires root (CAP_BPF + CAP_PERFMON). Only meaningful on Linux.
+# Usage: cargo test -p aa-ebpf --features integration-test --test load_hello
+integration-test = []
+
 [lints]
 workspace = true
