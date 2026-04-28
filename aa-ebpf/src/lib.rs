@@ -1,60 +1,66 @@
-//! eBPF-based kernel-level monitoring hooks for Agent Assembly (Layer 3).
+//! eBPF-based kernel-level monitoring hooks for Agent Assembly — Layer 3.
 //!
-//! This crate is the **userspace** half of the eBPF subsystem. It loads
-//! compiled BPF bytecode into the kernel, attaches tracepoints and kprobes,
-//! and reads events back through ring buffers — feeding them into the
-//! `aa-core` governance pipeline.
+//! This crate is the **userspace** half of the aa-ebpf subsystem.  It loads
+//! the compiled eBPF programs (from `aa-ebpf-probes`), attaches the probes
+//! to the kernel, and reads structured events from the shared BPF ring buffer.
 //!
-//! # Crate architecture (three-crate split)
-//!
-//! eBPF programs run inside the Linux kernel and must be compiled to the
-//! `bpfel-unknown-none` target. This forces a three-crate design:
-//!
-//! | Crate | Role | Target |
-//! |---|---|---|
-//! | **`aa-ebpf-common`** | Shared `repr(C)` types for maps and events | `no_std` (both) |
-//! | **`aa-ebpf-ebpf`** | BPF programs (tracepoints, kprobes, uprobes) | `bpfel-unknown-none` |
-//! | **`aa-ebpf`** (this crate) | Userspace loader, event consumer, lineage tracker | `std` (Linux) |
-//!
-//! # Data flow
+//! ## Architecture
 //!
 //! ```text
-//! kernel: tracepoint fires → BPF program writes to ring buffer / map
-//!                                         │
-//! ────────────────────────────────────────────────────────────
-//!                                         │
-//! user:  EbpfLoader reads ring buffer → ProcessSpawnEvent
-//!          → ProcessLineageTracker updates PID tree
-//!          → ShellInjectionAlert emitted if suspicious
-//!          → event forwarded to aa-core governance pipeline
+//! ┌─────────────────────────────────────────────┐
+//! │  aa-ebpf (userspace)                         │
+//! │                                              │
+//! │  EbpfLoader ──► UprobeManager  (AAASM-37)   │
+//! │             ──► KprobeManager  (AAASM-38)   │
+//! │             ──► TracepointManager (AAASM-39) │
+//! │                                              │
+//! │  RingBufReader ◄── BPF ring buffer           │
+//! └─────────────────────────────────────────────┘
+//!          │ kernel boundary │
+//! ┌─────────────────────────────────────────────┐
+//! │  aa-ebpf-probes (bpfel-unknown-none)         │
+//! │                                              │
+//! │  ssl_write_uprobe / ssl_read_uretprobe       │
+//! │  openat_kprobe / write_kprobe / unlink_kprobe│
+//! │  sched_process_exec (tracepoint)             │
+//! └─────────────────────────────────────────────┘
 //! ```
 //!
-//! # Loading BPF programs
+//! ## Shared types
 //!
-//! The compiled BPF bytecode is embedded at build time and exposed as the
-//! [`AA_HELLO_BPF`] constant. Pass it to [`aya::Ebpf::load`] to load all
-//! programs defined in the `aa-ebpf-probes` crate:
+//! Event structs shared between kernel-space and userspace live in
+//! [`aa_ebpf_common`].  They are `#[repr(C)]` and `no_std` so they compile
+//! for both targets without modification.
 //!
-//! ```no_run
-//! # #[cfg(target_os = "linux")]
-//! # {
-//! use aya::Ebpf;
-//! use aa_ebpf::AA_HELLO_BPF;
+//! ## Platform support
 //!
-//! let mut bpf = Ebpf::load(AA_HELLO_BPF).expect("failed to load BPF programs");
-//! # }
-//! ```
-//!
-//! # Platform support
-//!
-//! eBPF is Linux-only. On macOS, this crate compiles but the `aya` and
-//! `aya-log` dependencies are gated behind `cfg(target_os = "linux")`.
-//! A future degraded mode using DTrace may provide partial observability
-//! on macOS.
+//! eBPF is Linux-only. On macOS, this crate compiles but all aya-dependent
+//! modules (`loader`, `uprobe`, `kprobe`, `tracepoint`, `ringbuf`) are gated
+//! with `#[cfg(target_os = "linux")]`.  The `events` and `lineage` modules
+//! are unconditional and available on all platforms.
 
+// Shared event type re-exports — unconditional (no aya dependency).
 pub mod events;
 pub mod lineage;
+
+// aya-dependent modules — Linux only.
+#[cfg(target_os = "linux")]
+pub mod error;
+#[cfg(target_os = "linux")]
+pub mod kprobe;
+#[cfg(target_os = "linux")]
 pub mod loader;
+#[cfg(target_os = "linux")]
+pub mod ringbuf;
+#[cfg(target_os = "linux")]
+pub mod tracepoint;
+#[cfg(target_os = "linux")]
+pub mod uprobe;
+
+#[cfg(target_os = "linux")]
+pub use error::EbpfError;
+#[cfg(target_os = "linux")]
+pub use ringbuf::EbpfEvent;
 
 /// Compiled BPF bytecode for the `aa-hello` probe program.
 ///

@@ -8,8 +8,12 @@ description = "eBPF-based kernel-level monitoring hooks for Agent Assembly"
 
 [dependencies]
 aa-core        = { path = "../aa-core" }
-aa-ebpf-common = { path = "../aa-ebpf-common" }
-tokio          = { version = "1", features = ["rt", "signal"] }
+aa-ebpf-common = { path = "../aa-ebpf-common", features = ["std"] }
+anyhow         = "1"
+thiserror      = "2"
+tokio          = { version = "1", features = ["full"] }
+tracing        = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # aya is Linux-only: it uses libc symbols (CLOCK_BOOTTIME, etc.) absent on macOS/Windows.
 # The build-dep (aya-build) is unconditional so build.rs always compiles; the actual
