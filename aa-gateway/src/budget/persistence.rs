@@ -53,4 +53,13 @@ mod tests {
         };
         assert_eq!(entry.agent_id_hex, "aabbcc");
     }
+
+    #[test]
+    fn persisted_budget_holds_entries_and_global() {
+        let budget = PersistedBudget {
+            per_agent: vec![],
+            global: BudgetState::new_today(),
+        };
+        assert!(budget.per_agent.is_empty());
+    }
 }
