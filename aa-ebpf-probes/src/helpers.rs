@@ -1,38 +1,26 @@
 //! Helper functions for BPF kprobe programs.
 
-use aa_ebpf_common::{FileIoEventRaw, SyscallType, MAX_PATH_LEN};
+use aa_ebpf_common::FileIoEventRaw;
 use aya_ebpf::{helpers::bpf_ktime_get_ns, EbpfContext};
 
 use crate::maps::EVENTS;
 
-/// Fill a [`FileIoEventRaw`] and submit it to the perf event array.
+/// Set the timestamp on a caller-constructed [`FileIoEventRaw`] and
+/// submit it to the perf event array.
 ///
 /// Generic over the BPF context type so it works from both kprobes
 /// (`ProbeContext`) and kretprobes (`RetProbeContext`).
 ///
-/// `#[inline(never)]` ensures this gets its own stack frame so the
-/// `FileIoEventRaw` (290+ bytes) doesn't share the caller's stack
-/// which already holds a 256-byte path buffer (BPF stack limit = 512).
+/// Accepts only two arguments (ctx + event) so it stays within the
+/// BPF calling convention limit of 5 register arguments.
+///
+/// `#[inline(never)]` keeps this in its own stack frame. The caller
+/// owns the `FileIoEventRaw` (~290 bytes), and this function adds
+/// almost nothing — so neither frame exceeds the 512-byte BPF limit.
 #[inline(never)]
-pub fn emit_event<C: EbpfContext>(
-    ctx: &C,
-    pid: u32,
-    tid: u32,
-    syscall: SyscallType,
-    path: &[u8; MAX_PATH_LEN],
-    flags: u32,
-    return_code: i64,
-) {
-    let event = FileIoEventRaw {
-        pid,
-        tid,
-        timestamp_ns: unsafe { bpf_ktime_get_ns() },
-        syscall,
-        flags,
-        return_code,
-        path: *path,
-    };
-    EVENTS.output(ctx, &event, 0);
+pub fn emit_event<C: EbpfContext>(ctx: &C, event: &mut FileIoEventRaw) {
+    event.timestamp_ns = unsafe { bpf_ktime_get_ns() };
+    EVENTS.output(ctx, event, 0);
 }
 
 /// Extract (pid, tgid) from the current BPF context.

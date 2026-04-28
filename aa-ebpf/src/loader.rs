@@ -44,8 +44,7 @@ impl EbpfLoader {
         #[cfg(target_os = "linux")]
         {
             tracing::info!(pid = self.target_pid, "loading eBPF programs");
-            let mut bpf = aya::Ebpf::load(crate::AA_FILE_IO_BPF)
-                .map_err(|e| EbpfError::ProgramLoad(e.to_string()))?;
+            let mut bpf = aya::Ebpf::load(crate::AA_FILE_IO_BPF).map_err(|e| EbpfError::ProgramLoad(e.to_string()))?;
 
             // Insert the target PID into the PID filter map.
             let mut pid_filter: aya::maps::HashMap<_, u32, u8> = aya::maps::HashMap::try_from(
@@ -95,17 +94,11 @@ impl EbpfLoader {
             for (prog_name, fn_name) in probes {
                 let program: &mut KProbe = bpf
                     .program_mut(prog_name)
-                    .ok_or_else(|| {
-                        EbpfError::ProbeAttach(format!("{prog_name} program not found"))
-                    })?
+                    .ok_or_else(|| EbpfError::ProbeAttach(format!("{prog_name} program not found")))?
                     .try_into()
-                    .map_err(|e: aya::programs::ProgramError| {
-                        EbpfError::ProbeAttach(e.to_string())
-                    })?;
+                    .map_err(|e: aya::programs::ProgramError| EbpfError::ProbeAttach(e.to_string()))?;
 
-                program
-                    .load()
-                    .map_err(|e| EbpfError::ProbeAttach(e.to_string()))?;
+                program.load().map_err(|e| EbpfError::ProbeAttach(e.to_string()))?;
                 program
                     .attach(fn_name, 0)
                     .map_err(|e| EbpfError::ProbeAttach(e.to_string()))?;
@@ -127,9 +120,7 @@ impl EbpfLoader {
     ///
     /// Returns [`EbpfError::EventParse`] if the perf array cannot be opened.
     #[cfg(target_os = "linux")]
-    pub fn start_event_reader(
-        &mut self,
-    ) -> Result<tokio::sync::mpsc::Receiver<FileIoEvent>, EbpfError> {
+    pub fn start_event_reader(&mut self) -> Result<tokio::sync::mpsc::Receiver<FileIoEvent>, EbpfError> {
         use aa_ebpf_common::FileIoEventRaw;
         use aya::maps::perf::AsyncPerfEventArray;
         use aya::util::online_cpus;
@@ -246,23 +237,21 @@ impl EbpfLoader {
         {
             use crate::maps::PathVerdict;
 
-            let bpf = self.bpf.as_mut().ok_or_else(|| {
-                EbpfError::MapUpdate("BPF not loaded — call load() first".into())
-            })?;
+            let bpf = self
+                .bpf
+                .as_mut()
+                .ok_or_else(|| EbpfError::MapUpdate("BPF not loaded — call load() first".into()))?;
 
             let mut blocklist: aya::maps::HashMap<_, [u8; aa_ebpf_common::MAX_PATH_LEN], u8> =
                 aya::maps::HashMap::try_from(
-                    bpf.map_mut("PATH_BLOCKLIST").ok_or_else(|| {
-                        EbpfError::MapUpdate("PATH_BLOCKLIST map not found".into())
-                    })?,
+                    bpf.map_mut("PATH_BLOCKLIST")
+                        .ok_or_else(|| EbpfError::MapUpdate("PATH_BLOCKLIST map not found".into()))?,
                 )
                 .map_err(|e| EbpfError::MapUpdate(e.to_string()))?;
 
             // Clear existing entries by iterating keys and removing them.
-            let existing_keys: Vec<[u8; aa_ebpf_common::MAX_PATH_LEN]> = blocklist
-                .keys()
-                .filter_map(|k| k.ok())
-                .collect();
+            let existing_keys: Vec<[u8; aa_ebpf_common::MAX_PATH_LEN]> =
+                blocklist.keys().filter_map(|k| k.ok()).collect();
             for key in &existing_keys {
                 let _ = blocklist.remove(key);
             }

@@ -28,11 +28,13 @@ async fn blocklisted_path_triggers_sensitive_flag() {
 
     // Insert our PID into the PID filter.
     let pid = std::process::id();
-    let mut pid_filter: aya::maps::HashMap<_, u32, u8> = aya::maps::HashMap::try_from(bpf.map_mut("PID_FILTER").unwrap()).unwrap();
+    let mut pid_filter: aya::maps::HashMap<_, u32, u8> =
+        aya::maps::HashMap::try_from(bpf.map_mut("PID_FILTER").unwrap()).unwrap();
     pid_filter.insert(pid, 1, 0).unwrap();
 
     // Add /etc/passwd to the path blocklist.
-    let mut blocklist: aya::maps::HashMap<_, [u8; 256], u8> = aya::maps::HashMap::try_from(bpf.map_mut("PATH_BLOCKLIST").unwrap()).unwrap();
+    let mut blocklist: aya::maps::HashMap<_, [u8; 256], u8> =
+        aya::maps::HashMap::try_from(bpf.map_mut("PATH_BLOCKLIST").unwrap()).unwrap();
     let mut key = [0u8; 256];
     let path_bytes = b"/etc/passwd";
     key[..path_bytes.len()].copy_from_slice(path_bytes);

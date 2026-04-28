@@ -21,8 +21,8 @@ use aya::{programs::KProbe, Ebpf};
 /// kernel is left clean after the test regardless of pass/fail.
 #[test]
 fn aa_file_io_loads_and_attaches() {
-    let mut bpf = Ebpf::load(AA_FILE_IO_BPF)
-        .expect("failed to load aa-file-io BPF program — ensure the test is running as root");
+    let mut bpf =
+        Ebpf::load(AA_FILE_IO_BPF).expect("failed to load aa-file-io BPF program — ensure the test is running as root");
 
     let program: &mut KProbe = bpf
         .program_mut("aa_sys_openat")
@@ -30,9 +30,7 @@ fn aa_file_io_loads_and_attaches() {
         .try_into()
         .expect("aa_sys_openat is not a KProbe program");
 
-    program
-        .load()
-        .expect("kernel verifier rejected aa_sys_openat kprobe");
+    program.load().expect("kernel verifier rejected aa_sys_openat kprobe");
 
     let _link = program
         .attach("__x64_sys_openat", 0)

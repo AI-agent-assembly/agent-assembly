@@ -4,8 +4,7 @@
 //! userspace-only event types for file I/O kprobes.
 
 pub use aa_ebpf_common::{
-    AlertLevel, ProcessNode, ProcessSpawnEvent, ShellInjectionAlert, MAX_ARGV_ENTRIES,
-    MAX_ARGV_LEN, MAX_EXECUTABLE_LEN,
+    AlertLevel, ProcessNode, ProcessSpawnEvent, ShellInjectionAlert, MAX_ARGV_ENTRIES, MAX_ARGV_LEN, MAX_EXECUTABLE_LEN,
 };
 
 use crate::error::EbpfError;

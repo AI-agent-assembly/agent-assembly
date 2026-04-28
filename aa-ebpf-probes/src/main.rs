@@ -4,7 +4,7 @@
 mod helpers;
 mod maps;
 
-use aa_ebpf_common::{FdPathKey, SyscallType, MAX_PATH_LEN};
+use aa_ebpf_common::{FdPathKey, FileIoEventRaw, SyscallType, MAX_PATH_LEN};
 use aya_ebpf::{
     helpers::bpf_probe_read_user_str_bytes,
     macros::{kprobe, kretprobe},
@@ -64,15 +64,26 @@ fn try_sys_openat_ret(ctx: &RetProbeContext) -> Result<u32, u32> {
 
     let pid_tgid = aya_ebpf::helpers::bpf_get_current_pid_tgid();
 
-    // Retrieve the filename stashed by the entry kprobe.
+    // Retrieve the filename stashed by the entry kprobe and build the
+    // event directly so the path lives inside the event struct (no
+    // separate 256-byte buffer on this stack frame).
     let path = unsafe { OPENAT_TMP.get(&pid_tgid).ok_or(1u32)? };
-    let path_copy = *path;
+    let mut event = FileIoEventRaw {
+        pid: tgid,
+        tid: pid,
+        timestamp_ns: 0,
+        syscall: SyscallType::Openat,
+        flags: 0,
+        return_code: 0,
+        path: *path,
+    };
 
     // Clean up the temporary entry.
     let _ = OPENAT_TMP.remove(&pid_tgid);
 
     // rc is the returned fd (or negative errno).
     let rc: i64 = ctx.ret().ok_or(1u32)?;
+    event.return_code = rc;
 
     // Cache (pid, fd) → path for read/write fd resolution.
     if rc >= 0 {
@@ -80,17 +91,15 @@ fn try_sys_openat_ret(ctx: &RetProbeContext) -> Result<u32, u32> {
             pid: tgid,
             fd: rc as u64,
         };
-        let _ = FD_PATH_MAP.insert(&key, &path_copy, 0);
+        let _ = FD_PATH_MAP.insert(&key, &event.path, 0);
     }
 
-    // Determine flags: bit 0 = blocklist hit (sensitive path alert).
-    let flags = if unsafe { PATH_BLOCKLIST.get(&path_copy).is_some() } {
-        1u32
-    } else {
-        0u32
-    };
+    // Bit 0 = blocklist hit (sensitive path alert).
+    if unsafe { PATH_BLOCKLIST.get(&event.path).is_some() } {
+        event.flags = 1;
+    }
 
-    emit_event(ctx, tgid, pid, SyscallType::Openat, &path_copy, flags, rc);
+    emit_event(ctx, &mut event);
 
     Ok(0)
 }
@@ -116,15 +125,21 @@ fn try_sys_read(ctx: &ProbeContext) -> Result<u32, u32> {
     let key = FdPathKey { pid: tgid, fd };
 
     let path = unsafe { FD_PATH_MAP.get(&key).ok_or(1u32)? };
-    let path_copy = *path;
-
-    let flags = if unsafe { PATH_BLOCKLIST.get(&path_copy).is_some() } {
-        1u32
-    } else {
-        0u32
+    let mut event = FileIoEventRaw {
+        pid: tgid,
+        tid: pid,
+        timestamp_ns: 0,
+        syscall: SyscallType::Read,
+        flags: 0,
+        return_code: 0,
+        path: *path,
     };
 
-    emit_event(ctx, tgid, pid, SyscallType::Read, &path_copy, flags, 0);
+    if unsafe { PATH_BLOCKLIST.get(&event.path).is_some() } {
+        event.flags = 1;
+    }
+
+    emit_event(ctx, &mut event);
 
     Ok(0)
 }
@@ -150,15 +165,21 @@ fn try_sys_write(ctx: &ProbeContext) -> Result<u32, u32> {
     let key = FdPathKey { pid: tgid, fd };
 
     let path = unsafe { FD_PATH_MAP.get(&key).ok_or(1u32)? };
-    let path_copy = *path;
-
-    let flags = if unsafe { PATH_BLOCKLIST.get(&path_copy).is_some() } {
-        1u32
-    } else {
-        0u32
+    let mut event = FileIoEventRaw {
+        pid: tgid,
+        tid: pid,
+        timestamp_ns: 0,
+        syscall: SyscallType::Write,
+        flags: 0,
+        return_code: 0,
+        path: *path,
     };
 
-    emit_event(ctx, tgid, pid, SyscallType::Write, &path_copy, flags, 0);
+    if unsafe { PATH_BLOCKLIST.get(&event.path).is_some() } {
+        event.flags = 1;
+    }
+
+    emit_event(ctx, &mut event);
 
     Ok(0)
 }
@@ -182,18 +203,24 @@ fn try_sys_unlink(ctx: &ProbeContext) -> Result<u32, u32> {
     // unlinkat(int dirfd, const char *pathname, int flags) — arg1 = pathname
     let filename_ptr: *const u8 = ctx.arg(1).ok_or(1u32)?;
 
-    let mut buf = [0u8; MAX_PATH_LEN];
+    let mut event = FileIoEventRaw {
+        pid: tgid,
+        tid: pid,
+        timestamp_ns: 0,
+        syscall: SyscallType::Unlink,
+        flags: 0,
+        return_code: 0,
+        path: [0u8; MAX_PATH_LEN],
+    };
     unsafe {
-        let _ = bpf_probe_read_user_str_bytes(filename_ptr, &mut buf);
+        let _ = bpf_probe_read_user_str_bytes(filename_ptr, &mut event.path);
     }
 
-    let flags = if unsafe { PATH_BLOCKLIST.get(&buf).is_some() } {
-        1u32
-    } else {
-        0u32
-    };
+    if unsafe { PATH_BLOCKLIST.get(&event.path).is_some() } {
+        event.flags = 1;
+    }
 
-    emit_event(ctx, tgid, pid, SyscallType::Unlink, &buf, flags, 0);
+    emit_event(ctx, &mut event);
 
     Ok(0)
 }
@@ -217,18 +244,24 @@ fn try_sys_rename(ctx: &ProbeContext) -> Result<u32, u32> {
     // renameat2(int olddirfd, const char *oldpath, ...) — arg1 = oldpath
     let oldpath_ptr: *const u8 = ctx.arg(1).ok_or(1u32)?;
 
-    let mut buf = [0u8; MAX_PATH_LEN];
+    let mut event = FileIoEventRaw {
+        pid: tgid,
+        tid: pid,
+        timestamp_ns: 0,
+        syscall: SyscallType::Rename,
+        flags: 0,
+        return_code: 0,
+        path: [0u8; MAX_PATH_LEN],
+    };
     unsafe {
-        let _ = bpf_probe_read_user_str_bytes(oldpath_ptr, &mut buf);
+        let _ = bpf_probe_read_user_str_bytes(oldpath_ptr, &mut event.path);
     }
 
-    let flags = if unsafe { PATH_BLOCKLIST.get(&buf).is_some() } {
-        1u32
-    } else {
-        0u32
-    };
+    if unsafe { PATH_BLOCKLIST.get(&event.path).is_some() } {
+        event.flags = 1;
+    }
 
-    emit_event(ctx, tgid, pid, SyscallType::Rename, &buf, flags, 0);
+    emit_event(ctx, &mut event);
 
     Ok(0)
 }

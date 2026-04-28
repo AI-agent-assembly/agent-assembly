@@ -27,7 +27,8 @@ async fn openat_etc_passwd_generates_event() {
 
     // Insert our PID into the PID filter so the probes monitor us.
     let pid = std::process::id();
-    let mut pid_filter: aya::maps::HashMap<_, u32, u8> = aya::maps::HashMap::try_from(bpf.map_mut("PID_FILTER").unwrap()).unwrap();
+    let mut pid_filter: aya::maps::HashMap<_, u32, u8> =
+        aya::maps::HashMap::try_from(bpf.map_mut("PID_FILTER").unwrap()).unwrap();
     pid_filter.insert(pid, 1, 0).unwrap();
 
     // Attach the openat entry kprobe.
@@ -70,9 +71,7 @@ async fn openat_etc_passwd_generates_event() {
     // Wait for the event (with timeout).
     let event = timeout(Duration::from_secs(5), async {
         while let Some(event) = rx.recv().await {
-            if event.path.contains("/etc/passwd")
-                && event.syscall == aa_ebpf::SyscallKind::Openat
-            {
+            if event.path.contains("/etc/passwd") && event.syscall == aa_ebpf::SyscallKind::Openat {
                 return Some(event);
             }
         }
