@@ -7,13 +7,15 @@ repository.workspace = true
 description = "eBPF-based kernel-level monitoring hooks for Agent Assembly"
 
 [dependencies]
-aa-core = { path = "../aa-core" }
+aa-core        = { path = "../aa-core" }
+aa-ebpf-common = { path = "../aa-ebpf-common" }
+tokio          = { version = "1", features = ["rt", "signal"] }
 
 # aya is Linux-only: it uses libc symbols (CLOCK_BOOTTIME, etc.) absent on macOS/Windows.
 # The build-dep (aya-build) is unconditional so build.rs always compiles; the actual
 # BPF compilation call inside build.rs is gated with #[cfg(target_os = "linux")].
 [target.'cfg(target_os = "linux")'.dependencies]
-aya = { version = "0.13", features = ["async_tokio"] }
+aya     = { version = "0.13", features = ["async_tokio"] }
 aya-log = "0.2"
 
 [features]

@@ -74,3 +74,4 @@ See [versioning.md](versioning.md) for the full versioning and deprecation polic
 | PR / Ticket | Change | Compatibility impact |
 |---|---|---|
 | AAASM-107 | Added `conformance` workspace crate (test infrastructure, not shipped) | None — internal tooling only |
+| AAASM-39 | Added `aa-ebpf-common` workspace crate (shared eBPF types, not shipped standalone) | None — internal shared types only |
