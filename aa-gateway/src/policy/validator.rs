@@ -286,6 +286,32 @@ fn is_hhmm(s: &str) -> bool {
 mod tests {
     use super::*;
 
+    // ── Unknown key warnings ────────────────────────────────────────────────
+
+    #[test]
+    fn top_level_unknown_key_produces_warning() {
+        let yaml = "risk_tier: high\n";
+        let out = PolicyValidator::from_yaml(yaml).unwrap();
+        assert!(out.warnings.iter().any(|w| w.field == "risk_tier"));
+    }
+
+    #[test]
+    fn network_unknown_key_produces_warning() {
+        let yaml = "network:\n  allowlist:\n    - api.openai.com\n  blocklist:\n    - \"*\"\n";
+        let out = PolicyValidator::from_yaml(yaml).unwrap();
+        assert!(out.warnings.iter().any(|w| w.field == "network.blocklist"));
+    }
+
+    #[test]
+    fn tool_unknown_key_produces_warning() {
+        let yaml = "tools:\n  bash:\n    allow: true\n    constraint: read-only\n";
+        let out = PolicyValidator::from_yaml(yaml).unwrap();
+        assert!(out
+            .warnings
+            .iter()
+            .any(|w| w.field == "tools.bash.constraint"));
+    }
+
     // ── Malformed YAML ──────────────────────────────────────────────────────
 
     #[test]
