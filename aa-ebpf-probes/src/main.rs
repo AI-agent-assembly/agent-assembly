@@ -198,6 +198,41 @@ fn try_sys_unlink(ctx: &ProbeContext) -> Result<u32, u32> {
     Ok(0)
 }
 
+/// kprobe on `sys_renameat2` — captures the source pathname and emits
+/// a Rename event.
+#[kprobe]
+pub fn aa_sys_rename(ctx: ProbeContext) -> u32 {
+    match try_sys_rename(&ctx) {
+        Ok(ret) => ret,
+        Err(ret) => ret,
+    }
+}
+
+fn try_sys_rename(ctx: &ProbeContext) -> Result<u32, u32> {
+    let (tgid, pid) = get_pid_tgid();
+    if !should_monitor(tgid) {
+        return Ok(0);
+    }
+
+    // renameat2(int olddirfd, const char *oldpath, ...) — arg1 = oldpath
+    let oldpath_ptr: *const u8 = unsafe { ctx.arg(1).ok_or(1u32)? };
+
+    let mut buf = [0u8; MAX_PATH_LEN];
+    unsafe {
+        let _ = bpf_probe_read_user_str_bytes(oldpath_ptr, &mut buf);
+    }
+
+    let flags = if unsafe { PATH_BLOCKLIST.get(&buf).is_some() } {
+        1u32
+    } else {
+        0u32
+    };
+
+    emit_event(ctx, tgid, pid, SyscallType::Rename, &buf, flags, 0);
+
+    Ok(0)
+}
+
 #[panic_handler]
 fn panic(_info: &core::panic::PanicInfo) -> ! {
     unsafe { core::hint::unreachable_unchecked() }
