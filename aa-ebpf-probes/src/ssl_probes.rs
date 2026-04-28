@@ -167,7 +167,7 @@ fn try_ssl_read_exit(ctx: RetProbeContext) -> Result<u32, i64> {
 /// Emit a TLS plaintext capture event into the shared ring buffer.
 ///
 /// Reserves ring-buffer memory (avoiding the 512-byte BPF stack limit),
-/// fills the [`TlsCaptureEvent`] fields in place, reads up to
+/// fills the [`TlsCaptureEvent`] fields in-place, reads up to
 /// [`MAX_PAYLOAD_LEN`] bytes from `buf_ptr`, and submits.
 ///
 /// Returns `Ok(0)` on success or if the userspace read fails (event discarded).
