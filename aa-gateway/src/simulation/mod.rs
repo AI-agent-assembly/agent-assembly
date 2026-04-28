@@ -5,10 +5,12 @@
 
 pub mod engine;
 pub mod error;
+pub mod live;
 pub mod replay;
 pub mod report;
 
 pub use engine::SimulationEngine;
 pub use error::SimulationError;
+pub use live::LiveSimulation;
 pub use replay::{HistoricalReplay, SimulationEvent};
 pub use report::{EventOutcome, SimulationReport};
