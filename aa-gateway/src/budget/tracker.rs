@@ -62,7 +62,7 @@ impl BudgetTracker {
         let (alert_tx, _) = broadcast::channel(ALERT_CHANNEL_CAPACITY);
         Self {
             per_agent: DashMap::new(),
-            global: Mutex::new(BudgetState::new_today()),
+            global: Mutex::new(BudgetState::new_for_date(today_in_tz(timezone))),
             pricing,
             daily_limit_usd,
             alert_tx,
@@ -100,6 +100,11 @@ impl BudgetTracker {
     /// Subscribe to budget threshold alert events (80% and 95% crossings).
     pub fn subscribe_alerts(&self) -> broadcast::Receiver<BudgetAlert> {
         self.alert_tx.subscribe()
+    }
+
+    /// Returns the configured timezone for daily reset boundaries.
+    pub fn timezone(&self) -> chrono_tz::Tz {
+        self.timezone
     }
 
     /// Record token usage and return the resulting [`BudgetStatus`].
@@ -159,7 +164,7 @@ impl BudgetTracker {
         self.global
             .lock()
             .map(|g| g.clone())
-            .unwrap_or_else(|_| BudgetState::new_today())
+            .unwrap_or_else(|_| BudgetState::new_for_date(today_in_tz(self.timezone)))
     }
 
     /// Snapshot the full tracker state for disk persistence.
@@ -309,6 +314,7 @@ mod tests {
         let t = BudgetTracker::with_state(PricingTable::default_table(), None, persisted);
         let entry = t.per_agent.get(&id).unwrap();
         assert_eq!(entry.spent_usd, state.spent_usd);
+        assert_eq!(t.timezone(), chrono_tz::UTC);
     }
 
     #[test]
