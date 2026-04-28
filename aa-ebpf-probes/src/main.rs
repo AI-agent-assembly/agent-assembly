@@ -1,6 +1,7 @@
 #![no_std]
 #![no_main]
 
+mod helpers;
 mod maps;
 
 use aya_ebpf::{macros::kprobe, programs::ProbeContext};
