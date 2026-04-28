@@ -92,6 +92,24 @@ impl PricingTable {
         }
     }
 
+    /// Compute USD cost for a completed LLM call. Returns `Decimal::ZERO` for unknown pairs.
+    pub fn cost_usd(
+        &self,
+        provider: crate::budget::types::Provider,
+        model: crate::budget::types::Model,
+        input_tokens: u64,
+        output_tokens: u64,
+    ) -> Decimal {
+        match self.entries.get(&(provider, model)) {
+            Some(entry) => {
+                let input_cost = entry.input_per_1k_usd * Decimal::from(input_tokens) / Decimal::from(1_000u64);
+                let output_cost = entry.output_per_1k_usd * Decimal::from(output_tokens) / Decimal::from(1_000u64);
+                input_cost + output_cost
+            }
+            None => Decimal::ZERO,
+        }
+    }
+
     /// Look up pricing for a `(provider, model)` pair.
     pub fn entry(
         &self,
@@ -121,6 +139,42 @@ impl std::error::Error for PricingLoadError {}
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cost_usd_gpt4o_input_only() {
+        use crate::budget::types::{Model, Provider};
+        fn d(s: &str) -> rust_decimal::Decimal {
+            s.parse().unwrap()
+        }
+        let table = PricingTable::default_table();
+        // 1,000 input tokens × $0.005/1k = $0.005
+        assert_eq!(table.cost_usd(Provider::OpenAi, Model::Gpt4o, 1_000, 0), d("0.005"));
+    }
+
+    #[test]
+    fn cost_usd_gpt4o_mixed_tokens() {
+        use crate::budget::types::{Model, Provider};
+        fn d(s: &str) -> rust_decimal::Decimal {
+            s.parse().unwrap()
+        }
+        let table = PricingTable::default_table();
+        // 100k input ($0.50) + 20k output ($0.30) = $0.80
+        assert_eq!(
+            table.cost_usd(Provider::OpenAi, Model::Gpt4o, 100_000, 20_000),
+            d("0.80")
+        );
+    }
+
+    #[test]
+    fn cost_usd_unknown_pair_returns_zero() {
+        use crate::budget::types::{Model, Provider};
+        let table = PricingTable::default_table();
+        // Anthropic + CommandR is not a valid pair
+        assert_eq!(
+            table.cost_usd(Provider::Anthropic, Model::CommandR, 1_000, 1_000),
+            rust_decimal::Decimal::ZERO,
+        );
+    }
 
     #[test]
     fn load_from_file_falls_back_to_defaults_on_missing_file() {
