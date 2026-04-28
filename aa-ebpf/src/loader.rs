@@ -29,9 +29,7 @@ impl EbpfLoader {
     pub fn load(&mut self) -> Result<(), EbpfError> {
         #[cfg(not(target_os = "linux"))]
         {
-            return Err(EbpfError::ProgramLoad(
-                "eBPF is only supported on Linux".into(),
-            ));
+            return Err(EbpfError::ProgramLoad("eBPF is only supported on Linux".into()));
         }
 
         #[cfg(target_os = "linux")]
@@ -50,9 +48,7 @@ impl EbpfLoader {
     pub fn attach_kprobes(&mut self) -> Result<(), EbpfError> {
         #[cfg(not(target_os = "linux"))]
         {
-            return Err(EbpfError::ProbeAttach(
-                "eBPF is only supported on Linux".into(),
-            ));
+            return Err(EbpfError::ProbeAttach("eBPF is only supported on Linux".into()));
         }
 
         #[cfg(target_os = "linux")]
@@ -73,9 +69,7 @@ impl EbpfLoader {
     pub fn update_path_filter(&self, _patterns: &[PathPattern]) -> Result<(), EbpfError> {
         #[cfg(not(target_os = "linux"))]
         {
-            return Err(EbpfError::MapUpdate(
-                "eBPF is only supported on Linux".into(),
-            ));
+            return Err(EbpfError::MapUpdate("eBPF is only supported on Linux".into()));
         }
 
         #[cfg(target_os = "linux")]
