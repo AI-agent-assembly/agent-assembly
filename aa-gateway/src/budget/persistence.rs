@@ -14,6 +14,24 @@ pub struct PersistedBudget {
     pub global: BudgetState,
 }
 
+/// Error type for persistence I/O operations.
+#[derive(Debug)]
+pub enum PersistenceError {
+    Io(std::io::Error),
+    Json(serde_json::Error),
+}
+
+impl std::fmt::Display for PersistenceError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PersistenceError::Io(e) => write!(f, "budget I/O error: {e}"),
+            PersistenceError::Json(e) => write!(f, "budget JSON error: {e}"),
+        }
+    }
+}
+
+impl std::error::Error for PersistenceError {}
+
 pub fn agent_id_to_hex(id: &aa_core::AgentId) -> String {
     id.as_bytes().iter().map(|b| format!("{:02x}", b)).collect()
 }
@@ -52,6 +70,12 @@ mod tests {
             state: BudgetState::new_today(),
         };
         assert_eq!(entry.agent_id_hex, "aabbcc");
+    }
+
+    #[test]
+    fn persistence_error_io_displays_message() {
+        let e = PersistenceError::Io(std::io::Error::new(std::io::ErrorKind::Other, "disk full"));
+        assert!(e.to_string().contains("budget I/O error"));
     }
 
     #[test]
