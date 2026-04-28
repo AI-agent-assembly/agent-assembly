@@ -20,3 +20,26 @@ pub struct CausalCorrelation {
     /// Time elapsed (in milliseconds) between the intent and the action.
     pub time_delta_ms: u64,
 }
+
+/// The result of a correlation check — one of three possible outcomes.
+#[derive(Debug, Clone)]
+pub enum CorrelationOutcome {
+    /// An intent was matched to a kernel action within the time window.
+    Matched(CausalCorrelation),
+    /// A kernel action was observed with no preceding LLM intent in the window.
+    ///
+    /// This indicates the agent performed an action that was not instructed —
+    /// potential unauthorized escalation.
+    UnexpectedAction {
+        /// ID of the unmatched action event.
+        action_event_id: Uuid,
+    },
+    /// An LLM intent was observed but no corresponding kernel action followed
+    /// within the time window.
+    ///
+    /// This may indicate the agent bypassed the normal execution path.
+    IntentWithoutAction {
+        /// ID of the unmatched intent event.
+        intent_event_id: Uuid,
+    },
+}
