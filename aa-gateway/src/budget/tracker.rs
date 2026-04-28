@@ -74,9 +74,9 @@ impl BudgetTracker {
     pub fn with_state(
         pricing: PricingTable,
         daily_limit_usd: Option<Decimal>,
-        timezone: chrono_tz::Tz,
         initial: crate::budget::persistence::PersistedBudget,
     ) -> Self {
+        let timezone = initial.timezone;
         let (alert_tx, _) = broadcast::channel(ALERT_CHANNEL_CAPACITY);
         let per_agent: DashMap<AgentId, BudgetState> = initial
             .per_agent
@@ -175,6 +175,7 @@ impl BudgetTracker {
         crate::budget::persistence::PersistedBudget {
             per_agent,
             global: self.global_state(),
+            timezone: self.timezone,
         }
     }
 }
@@ -303,8 +304,9 @@ mod tests {
                 state: state.clone(),
             }],
             global: BudgetState::new_today(),
+            timezone: chrono_tz::UTC,
         };
-        let t = BudgetTracker::with_state(PricingTable::default_table(), None, chrono_tz::UTC, persisted);
+        let t = BudgetTracker::with_state(PricingTable::default_table(), None, persisted);
         let entry = t.per_agent.get(&id).unwrap();
         assert_eq!(entry.spent_usd, state.spent_usd);
     }

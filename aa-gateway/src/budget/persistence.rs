@@ -12,6 +12,12 @@ pub struct PersistedAgentEntry {
 pub struct PersistedBudget {
     pub per_agent: Vec<PersistedAgentEntry>,
     pub global: BudgetState,
+    #[serde(default = "default_timezone")]
+    pub timezone: chrono_tz::Tz,
+}
+
+fn default_timezone() -> chrono_tz::Tz {
+    chrono_tz::UTC
 }
 
 /// Error type for persistence I/O operations.
@@ -45,6 +51,7 @@ pub fn load_from_disk(path: &std::path::Path) -> Result<PersistedBudget, Persist
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(PersistedBudget {
             per_agent: vec![],
             global: crate::budget::types::BudgetState::new_today(),
+            timezone: default_timezone(),
         }),
         Err(e) => Err(PersistenceError::Io(e)),
     }
@@ -159,6 +166,7 @@ mod tests {
                 },
             }],
             global: crate::budget::types::BudgetState::new_today(),
+            timezone: chrono_tz::UTC,
         };
         save_to_disk_atomic(&path, &budget).unwrap();
         let loaded = load_from_disk(&path).unwrap();
@@ -174,6 +182,7 @@ mod tests {
             &PersistedBudget {
                 per_agent: vec![],
                 global: crate::budget::types::BudgetState::new_today(),
+                timezone: chrono_tz::UTC,
             },
         )
         .unwrap();
@@ -185,6 +194,7 @@ mod tests {
         let budget = PersistedBudget {
             per_agent: vec![],
             global: BudgetState::new_today(),
+            timezone: chrono_tz::UTC,
         };
         assert!(budget.per_agent.is_empty());
     }
@@ -211,5 +221,29 @@ mod tests {
             let handle = start_background_writer(tracker, path);
             handle.abort(); // immediately abort — just verifying it compiles and starts
         });
+    }
+
+    #[test]
+    fn save_then_load_round_trips_timezone() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("budget.json");
+        let budget = PersistedBudget {
+            per_agent: vec![],
+            global: crate::budget::types::BudgetState::new_today(),
+            timezone: chrono_tz::Asia::Tokyo,
+        };
+        save_to_disk_atomic(&path, &budget).unwrap();
+        let loaded = load_from_disk(&path).unwrap();
+        assert_eq!(loaded.timezone, chrono_tz::Asia::Tokyo);
+    }
+
+    #[test]
+    fn load_from_disk_defaults_timezone_to_utc_when_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("budget.json");
+        // Write JSON without a `timezone` field (simulates old budget.json)
+        std::fs::write(&path, r#"{"per_agent":[],"global":{"spent_usd":"0","date":"2024-01-01"}}"#).unwrap();
+        let loaded = load_from_disk(&path).unwrap();
+        assert_eq!(loaded.timezone, chrono_tz::UTC);
     }
 }
