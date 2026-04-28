@@ -1,0 +1,158 @@
+//! Policy version history subcommands — apply, history, rollback, diff.
+
+use std::path::PathBuf;
+use std::process::ExitCode;
+
+use aa_gateway::policy::history::{FsHistoryStore, HistoryConfig, PolicyHistoryStore};
+use clap::Args;
+
+/// Arguments for `aasm policy apply`.
+#[derive(Args)]
+pub struct ApplyArgs {
+    /// Path to the policy YAML file.
+    pub file: PathBuf,
+    /// Identity of the person or system applying the policy.
+    #[arg(long)]
+    pub applied_by: Option<String>,
+}
+
+/// Arguments for `aasm policy history`.
+#[derive(Args)]
+pub struct HistoryArgs {
+    /// Maximum number of versions to show.
+    #[arg(short = 'n', long, default_value_t = 10)]
+    pub limit: usize,
+}
+
+/// Arguments for `aasm policy rollback`.
+#[derive(Args)]
+pub struct RollbackArgs {
+    /// Version identifier (SHA-256 prefix) to roll back to.
+    pub version: String,
+}
+
+/// Arguments for `aasm policy diff`.
+#[derive(Args)]
+pub struct DiffArgs {
+    /// First version identifier (SHA-256 prefix).
+    pub version_a: String,
+    /// Second version identifier (SHA-256 prefix).
+    pub version_b: String,
+}
+
+/// Execute the `aasm policy apply` command.
+pub fn run_apply(args: ApplyArgs) -> ExitCode {
+    let rt = tokio::runtime::Runtime::new().expect("failed to create tokio runtime");
+    rt.block_on(async {
+        let store = FsHistoryStore::new(HistoryConfig::default_config());
+        let yaml = match std::fs::read_to_string(&args.file) {
+            Ok(y) => y,
+            Err(e) => {
+                eprintln!("error: failed to read {}: {}", args.file.display(), e);
+                return ExitCode::FAILURE;
+            }
+        };
+        if let Err(errs) = aa_gateway::policy::PolicyValidator::from_yaml(&yaml) {
+            eprintln!("error: policy validation failed: {:?}", errs);
+            return ExitCode::FAILURE;
+        }
+        match store.save(&yaml, args.applied_by.as_deref()).await {
+            Ok(meta) => {
+                println!("Policy applied successfully.");
+                println!("  Version:    {}", &meta.sha256[..12]);
+                println!("  Timestamp:  {}", meta.timestamp);
+                println!("  SHA-256:    {}", meta.sha256);
+                if let Some(by) = &meta.applied_by {
+                    println!("  Applied by: {}", by);
+                }
+                ExitCode::SUCCESS
+            }
+            Err(e) => {
+                eprintln!("error: {}", e);
+                ExitCode::FAILURE
+            }
+        }
+    })
+}
+
+/// Execute the `aasm policy history` command.
+pub fn run_history(args: HistoryArgs) -> ExitCode {
+    let rt = tokio::runtime::Runtime::new().expect("failed to create tokio runtime");
+    rt.block_on(async {
+        let store = FsHistoryStore::new(HistoryConfig::default_config());
+        match store.list(args.limit).await {
+            Ok(versions) => {
+                if versions.is_empty() {
+                    println!("No policy versions found.");
+                    return ExitCode::SUCCESS;
+                }
+                println!(
+                    "{:<14} {:<26} {:<12} {:<10} {:<16}",
+                    "VERSION", "TIMESTAMP", "APPLIED BY", "ROLLBACK", "FIRST EVENT"
+                );
+                println!("{}", "-".repeat(80));
+                for meta in versions {
+                    let version_short = &meta.sha256[..meta.sha256.len().min(12)];
+                    let applied_by = meta.applied_by.as_deref().unwrap_or("-");
+                    let rollback = if meta.is_rollback { "yes" } else { "-" };
+                    let first_event = meta.first_event_covered.as_deref().unwrap_or("-");
+                    println!(
+                        "{:<14} {:<26} {:<12} {:<10} {:<16}",
+                        version_short, meta.timestamp, applied_by, rollback, first_event
+                    );
+                }
+                ExitCode::SUCCESS
+            }
+            Err(e) => {
+                eprintln!("error: {}", e);
+                ExitCode::FAILURE
+            }
+        }
+    })
+}
+
+/// Execute the `aasm policy rollback` command.
+pub fn run_rollback(args: RollbackArgs) -> ExitCode {
+    let rt = tokio::runtime::Runtime::new().expect("failed to create tokio runtime");
+    rt.block_on(async {
+        let store = FsHistoryStore::new(HistoryConfig::default_config());
+        match store.rollback(&args.version).await {
+            Ok(meta) => {
+                println!("Rolled back successfully.");
+                println!("  New version:    {}", &meta.sha256[..12]);
+                println!("  Timestamp:      {}", meta.timestamp);
+                println!(
+                    "  Rolled back to: {}",
+                    meta.rollback_target.as_deref().unwrap_or("unknown")
+                );
+                ExitCode::SUCCESS
+            }
+            Err(e) => {
+                eprintln!("error: {}", e);
+                ExitCode::FAILURE
+            }
+        }
+    })
+}
+
+/// Execute the `aasm policy diff` command.
+pub fn run_diff(args: DiffArgs) -> ExitCode {
+    let rt = tokio::runtime::Runtime::new().expect("failed to create tokio runtime");
+    rt.block_on(async {
+        let store = FsHistoryStore::new(HistoryConfig::default_config());
+        match store.diff(&args.version_a, &args.version_b).await {
+            Ok(diff) => {
+                if diff.lines().count() <= 2 {
+                    println!("No differences between the two versions.");
+                } else {
+                    print!("{}", diff);
+                }
+                ExitCode::SUCCESS
+            }
+            Err(e) => {
+                eprintln!("error: {}", e);
+                ExitCode::FAILURE
+            }
+        }
+    })
+}
