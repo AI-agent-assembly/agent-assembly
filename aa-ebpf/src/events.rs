@@ -31,3 +31,24 @@ pub struct FileIoEvent {
     /// Syscall return code (`0` for success on entry probes).
     pub return_code: i64,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn file_io_event_construction() {
+        let event = FileIoEvent {
+            pid: 1234,
+            tid: 1234,
+            timestamp_ns: 999_999,
+            syscall: SyscallKind::Openat,
+            path: "/etc/shadow".into(),
+            flags: 0,
+            return_code: 0,
+        };
+        assert_eq!(event.pid, 1234);
+        assert_eq!(event.syscall, SyscallKind::Openat);
+        assert_eq!(event.path, "/etc/shadow");
+    }
+}

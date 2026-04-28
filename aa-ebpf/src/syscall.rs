@@ -29,3 +29,26 @@ impl fmt::Display for SyscallKind {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn display_formats_as_lowercase_syscall_name() {
+        assert_eq!(SyscallKind::Openat.to_string(), "openat");
+        assert_eq!(SyscallKind::Read.to_string(), "read");
+        assert_eq!(SyscallKind::Write.to_string(), "write");
+        assert_eq!(SyscallKind::Unlink.to_string(), "unlink");
+        assert_eq!(SyscallKind::Rename.to_string(), "rename");
+    }
+
+    #[test]
+    fn repr_values_are_sequential() {
+        assert_eq!(SyscallKind::Openat as u8, 0);
+        assert_eq!(SyscallKind::Read as u8, 1);
+        assert_eq!(SyscallKind::Write as u8, 2);
+        assert_eq!(SyscallKind::Unlink as u8, 3);
+        assert_eq!(SyscallKind::Rename as u8, 4);
+    }
+}

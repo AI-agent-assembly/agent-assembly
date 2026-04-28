@@ -28,3 +28,24 @@ pub struct PathPattern {
     /// Whether matching this pattern should allow or deny the operation.
     pub verdict: PathVerdict,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn path_pattern_construction() {
+        let pattern = PathPattern {
+            pattern: "/etc/shadow".into(),
+            verdict: PathVerdict::Deny,
+        };
+        assert_eq!(pattern.pattern, "/etc/shadow");
+        assert_eq!(pattern.verdict, PathVerdict::Deny);
+    }
+
+    #[test]
+    fn constants_have_expected_values() {
+        assert_eq!(MAX_PATH_PATTERNS, 256);
+        assert_eq!(MAX_PATH_LEN, 256);
+    }
+}
