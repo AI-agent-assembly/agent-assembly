@@ -38,7 +38,10 @@ jobs:
         uses: taiki-e/install-action@3f7f2bd74f95d407a45d96b106f26d4f6c238fab # cargo-llvm-cov
 
       - name: Generate Clippy report
-        run: cargo clippy --all-targets --all-features --message-format=json 2>&1 | tee clippy-report.json || true
+        # aa-ebpf build.rs invokes nightly (not installed here) — exclude it.
+        # The SonarCloud Rust plugin also re-runs clippy internally; the same
+        # exclusion is applied via sonar.exclusions so aa-ebpf sources are skipped.
+        run: cargo clippy --all-targets --all-features --exclude aa-ebpf --message-format=json 2>&1 | tee clippy-report.json || true
 
       - name: Generate coverage report (LCOV for SonarCloud)
         # aa-ebpf requires nightly and has no testable userspace logic — excluded.
