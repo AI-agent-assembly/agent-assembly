@@ -62,6 +62,23 @@ pub fn save_to_disk_atomic(path: &std::path::Path, budget: &PersistedBudget) -> 
     Ok(())
 }
 
+/// Spawn a tokio task that saves tracker state every 60 seconds.
+pub fn start_background_writer(
+    tracker: std::sync::Arc<crate::budget::tracker::BudgetTracker>,
+    path: std::path::PathBuf,
+) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
+        loop {
+            interval.tick().await;
+            let snapshot = tracker.snapshot();
+            if let Err(e) = save_to_disk_atomic(&path, &snapshot) {
+                eprintln!("aa-gateway budget: persistence error: {e}");
+            }
+        }
+    })
+}
+
 /// Encode an `AgentId` as a 32-char lowercase hex string.
 pub fn agent_id_to_hex(id: &aa_core::AgentId) -> String {
     id.as_bytes().iter().map(|b| format!("{:02x}", b)).collect()
@@ -180,5 +197,19 @@ mod tests {
         assert_eq!(hex.len(), 32);
         let restored = hex_to_agent_id(&hex).unwrap();
         assert_eq!(id, restored);
+    }
+
+    #[test]
+    fn start_background_writer_returns_join_handle() {
+        use crate::budget::{pricing::PricingTable, tracker::BudgetTracker};
+        use std::sync::Arc;
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            let tracker = Arc::new(BudgetTracker::new(PricingTable::default_table(), None));
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("budget.json");
+            let handle = start_background_writer(tracker, path);
+            handle.abort(); // immediately abort — just verifying it compiles and starts
+        });
     }
 }

@@ -10,7 +10,8 @@ pub use pricing::{PricingEntry, PricingLoadError, PricingTable};
 
 pub mod persistence;
 pub use persistence::{
-    default_budget_path, load_from_disk, save_to_disk_atomic, PersistedAgentEntry, PersistedBudget, PersistenceError,
+    default_budget_path, load_from_disk, save_to_disk_atomic, start_background_writer, PersistedAgentEntry,
+    PersistedBudget, PersistenceError,
 };
 
 pub mod tracker;
