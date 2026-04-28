@@ -163,6 +163,41 @@ fn try_sys_write(ctx: &ProbeContext) -> Result<u32, u32> {
     Ok(0)
 }
 
+/// kprobe on `sys_unlinkat` — captures the filename directly from the
+/// syscall argument and emits an Unlink event.
+#[kprobe]
+pub fn aa_sys_unlink(ctx: ProbeContext) -> u32 {
+    match try_sys_unlink(&ctx) {
+        Ok(ret) => ret,
+        Err(ret) => ret,
+    }
+}
+
+fn try_sys_unlink(ctx: &ProbeContext) -> Result<u32, u32> {
+    let (tgid, pid) = get_pid_tgid();
+    if !should_monitor(tgid) {
+        return Ok(0);
+    }
+
+    // unlinkat(int dirfd, const char *pathname, int flags) — arg1 = pathname
+    let filename_ptr: *const u8 = unsafe { ctx.arg(1).ok_or(1u32)? };
+
+    let mut buf = [0u8; MAX_PATH_LEN];
+    unsafe {
+        let _ = bpf_probe_read_user_str_bytes(filename_ptr, &mut buf);
+    }
+
+    let flags = if unsafe { PATH_BLOCKLIST.get(&buf).is_some() } {
+        1u32
+    } else {
+        0u32
+    };
+
+    emit_event(ctx, tgid, pid, SyscallType::Unlink, &buf, flags, 0);
+
+    Ok(0)
+}
+
 #[panic_handler]
 fn panic(_info: &core::panic::PanicInfo) -> ! {
     unsafe { core::hint::unreachable_unchecked() }
