@@ -43,6 +43,7 @@ dependencies = [
  "anyhow",
  "aya",
  "aya-log",
+ "bytes",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
@@ -90,6 +91,7 @@ dependencies = [
  "serde_yaml",
  "tempfile",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
