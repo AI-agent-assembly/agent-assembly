@@ -135,7 +135,7 @@ mod tests {
 
     #[test]
     fn persistence_error_io_displays_message() {
-        let e = PersistenceError::Io(std::io::Error::new(std::io::ErrorKind::Other, "disk full"));
+        let e = PersistenceError::Io(std::io::Error::other("disk full"));
         assert!(e.to_string().contains("budget I/O error"));
     }
 
