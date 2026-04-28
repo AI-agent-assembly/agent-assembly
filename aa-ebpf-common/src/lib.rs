@@ -6,6 +6,8 @@
 
 #![no_std]
 
+// ── AAASM-39: Process lineage types ──────────────────────────────────
+
 /// In-kernel node for the PID lineage map (`BpfHashMap<u32, ProcessNode>`).
 ///
 /// Each entry maps a child PID to its parent and the command that spawned it.
@@ -82,4 +84,24 @@ pub struct ShellInjectionAlert {
     pub alert_level: AlertLevel,
     /// Kernel timestamp in nanoseconds.
     pub timestamp_ns: u64,
+}
+
+// ── AAASM-38: File I/O types ─────────────────────────────────────────
+
+/// Identifies which file-related syscall was intercepted.
+///
+/// Uses `#[repr(u32)]` for BPF compatibility (BPF maps require 4-byte alignment).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u32)]
+pub enum SyscallType {
+    /// `sys_openat` — open or create a file.
+    Openat = 0,
+    /// `sys_read` — read from a file descriptor.
+    Read = 1,
+    /// `sys_write` — write to a file descriptor.
+    Write = 2,
+    /// `sys_unlink` — delete a file.
+    Unlink = 3,
+    /// `sys_rename` — rename or move a file.
+    Rename = 4,
 }
