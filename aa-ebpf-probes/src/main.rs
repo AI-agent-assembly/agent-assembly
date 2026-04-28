@@ -12,7 +12,7 @@ use aya_ebpf::{
 };
 
 use crate::helpers::{emit_event, get_pid_tgid, should_monitor};
-use crate::maps::{FD_PATH_MAP, OPENAT_TMP, PATH_BLOCKLIST};
+use crate::maps::{FD_PATH_MAP, OPENAT_TMP, PATH_ALLOWLIST, PATH_BLOCKLIST};
 
 /// kprobe on `sys_openat` — captures the filename argument and stashes
 /// it in `OPENAT_TMP` keyed by `pid_tgid` so the kretprobe can pair it
@@ -94,6 +94,11 @@ fn try_sys_openat_ret(ctx: &RetProbeContext) -> Result<u32, u32> {
         let _ = FD_PATH_MAP.insert(&key, &event.path, 0);
     }
 
+    // Allowlist: if the path is explicitly allowed, suppress the event.
+    if unsafe { PATH_ALLOWLIST.get(&event.path).is_some() } {
+        return Ok(0);
+    }
+
     // Bit 0 = blocklist hit (sensitive path alert).
     if unsafe { PATH_BLOCKLIST.get(&event.path).is_some() } {
         event.flags = 1;
@@ -125,6 +130,12 @@ fn try_sys_read(ctx: &ProbeContext) -> Result<u32, u32> {
     let key = FdPathKey { pid: tgid, fd };
 
     let path = unsafe { FD_PATH_MAP.get(&key).ok_or(1u32)? };
+
+    // Allowlist: if the path is explicitly allowed, suppress the event.
+    if unsafe { PATH_ALLOWLIST.get(path).is_some() } {
+        return Ok(0);
+    }
+
     let mut event = FileIoEventRaw {
         pid: tgid,
         tid: pid,
@@ -165,6 +176,12 @@ fn try_sys_write(ctx: &ProbeContext) -> Result<u32, u32> {
     let key = FdPathKey { pid: tgid, fd };
 
     let path = unsafe { FD_PATH_MAP.get(&key).ok_or(1u32)? };
+
+    // Allowlist: if the path is explicitly allowed, suppress the event.
+    if unsafe { PATH_ALLOWLIST.get(path).is_some() } {
+        return Ok(0);
+    }
+
     let mut event = FileIoEventRaw {
         pid: tgid,
         tid: pid,
@@ -216,6 +233,11 @@ fn try_sys_unlink(ctx: &ProbeContext) -> Result<u32, u32> {
         let _ = bpf_probe_read_user_str_bytes(filename_ptr, &mut event.path);
     }
 
+    // Allowlist: if the path is explicitly allowed, suppress the event.
+    if unsafe { PATH_ALLOWLIST.get(&event.path).is_some() } {
+        return Ok(0);
+    }
+
     if unsafe { PATH_BLOCKLIST.get(&event.path).is_some() } {
         event.flags = 1;
     }
@@ -255,6 +277,11 @@ fn try_sys_rename(ctx: &ProbeContext) -> Result<u32, u32> {
     };
     unsafe {
         let _ = bpf_probe_read_user_str_bytes(oldpath_ptr, &mut event.path);
+    }
+
+    // Allowlist: if the path is explicitly allowed, suppress the event.
+    if unsafe { PATH_ALLOWLIST.get(&event.path).is_some() } {
+        return Ok(0);
     }
 
     if unsafe { PATH_BLOCKLIST.get(&event.path).is_some() } {

@@ -30,3 +30,10 @@ pub static OPENAT_TMP: HashMap<u64, [u8; MAX_PATH_LEN]> =
 #[map]
 pub static PATH_BLOCKLIST: HashMap<[u8; MAX_PATH_LEN], u8> =
     HashMap::with_max_entries(MAX_PATH_PATTERNS, 0);
+
+/// Path pattern allowlist: paths whose events should be suppressed.
+/// If a path matches this map, the kprobe skips event emission entirely.
+/// Key is the path (null-padded), value is 1 (allow / suppress).
+#[map]
+pub static PATH_ALLOWLIST: HashMap<[u8; MAX_PATH_LEN], u8> =
+    HashMap::with_max_entries(MAX_PATH_PATTERNS, 0);
