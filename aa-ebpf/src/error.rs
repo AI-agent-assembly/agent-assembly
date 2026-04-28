@@ -6,7 +6,6 @@ use thiserror::Error;
 #[derive(Debug, Error)]
 pub enum EbpfError {
     // ── aya-native variants (Linux only, used by uprobe/ringbuf) ────────
-
     /// Failed to load the eBPF program ELF object.
     #[cfg(target_os = "linux")]
     #[error("failed to load eBPF object: {0}")]
@@ -56,7 +55,6 @@ pub enum EbpfError {
     },
 
     // ── string-based variants (used by file I/O loader, cross-platform) ─
-
     /// Failed to load the compiled eBPF bytecode into the kernel.
     #[error("eBPF program load failed: {0}")]
     ProgramLoad(String),
@@ -104,7 +102,9 @@ mod tests {
 
     #[test]
     fn display_map_not_found() {
-        let err = EbpfError::MapNotFound { name: "PID_FILTER".into() };
+        let err = EbpfError::MapNotFound {
+            name: "PID_FILTER".into(),
+        };
         assert_eq!(err.to_string(), "eBPF map `PID_FILTER` not found in object");
     }
 

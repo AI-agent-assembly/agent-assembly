@@ -34,7 +34,7 @@ pub enum SyscallType {
 ///
 /// This struct is written by BPF programs into a `PerfEventArray` and read
 /// by the userspace loader. Both sides must agree on this exact layout.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 #[repr(C)]
 pub struct FileIoEventRaw {
     /// Process ID of the intercepted syscall.

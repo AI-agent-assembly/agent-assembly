@@ -245,36 +245,9 @@ impl EbpfLoader {
                 .as_mut()
                 .ok_or_else(|| EbpfError::MapUpdate("BPF not loaded — call load() first".into()))?;
 
-            let mut blocklist: aya::maps::HashMap<_, [u8; aa_ebpf_common::file::MAX_PATH_LEN], u8> =
-                aya::maps::HashMap::try_from(
-                    bpf.map_mut("PATH_BLOCKLIST")
-                        .ok_or_else(|| EbpfError::MapUpdate("PATH_BLOCKLIST map not found".into()))?,
-                )
-                .map_err(|e| EbpfError::MapUpdate(e.to_string()))?;
-
-            let mut allowlist: aya::maps::HashMap<_, [u8; aa_ebpf_common::file::MAX_PATH_LEN], u8> =
-                aya::maps::HashMap::try_from(
-                    bpf.map_mut("PATH_ALLOWLIST")
-                        .ok_or_else(|| EbpfError::MapUpdate("PATH_ALLOWLIST map not found".into()))?,
-                )
-                .map_err(|e| EbpfError::MapUpdate(e.to_string()))?;
-
-            // Clear existing entries by iterating keys and removing them.
-            let existing_blocklist_keys: Vec<[u8; aa_ebpf_common::file::MAX_PATH_LEN]> =
-                blocklist.keys().filter_map(|k| k.ok()).collect();
-            for key in &existing_blocklist_keys {
-                let _ = blocklist.remove(key);
-            }
-
-            let existing_allowlist_keys: Vec<[u8; aa_ebpf_common::file::MAX_PATH_LEN]> =
-                allowlist.keys().filter_map(|k| k.ok()).collect();
-            for key in &existing_allowlist_keys {
-                let _ = allowlist.remove(key);
-            }
-
-            // Insert patterns into the appropriate BPF map.
-            let mut deny_count = 0u32;
-            let mut allow_count = 0u32;
+            // Collect deny and allow patterns separately before borrowing maps.
+            let mut deny_keys = Vec::new();
+            let mut allow_keys = Vec::new();
             for pat in patterns {
                 let mut key = [0u8; aa_ebpf_common::file::MAX_PATH_LEN];
                 let bytes = pat.pattern.as_bytes();
@@ -282,20 +255,55 @@ impl EbpfLoader {
                 key[..len].copy_from_slice(&bytes[..len]);
 
                 match pat.verdict {
-                    PathVerdict::Deny => {
-                        blocklist
-                            .insert(key, 1, 0)
-                            .map_err(|e| EbpfError::MapUpdate(e.to_string()))?;
-                        deny_count += 1;
-                    }
-                    PathVerdict::Allow => {
-                        allowlist
-                            .insert(key, 1, 0)
-                            .map_err(|e| EbpfError::MapUpdate(e.to_string()))?;
-                        allow_count += 1;
-                    }
+                    PathVerdict::Deny => deny_keys.push(key),
+                    PathVerdict::Allow => allow_keys.push(key),
                 }
             }
+
+            // Update blocklist map (scoped to drop borrow before allowlist).
+            {
+                let mut blocklist: aya::maps::HashMap<_, [u8; aa_ebpf_common::file::MAX_PATH_LEN], u8> =
+                    aya::maps::HashMap::try_from(
+                        bpf.map_mut("PATH_BLOCKLIST")
+                            .ok_or_else(|| EbpfError::MapUpdate("PATH_BLOCKLIST map not found".into()))?,
+                    )
+                    .map_err(|e| EbpfError::MapUpdate(e.to_string()))?;
+
+                let existing_keys: Vec<[u8; aa_ebpf_common::file::MAX_PATH_LEN]> =
+                    blocklist.keys().filter_map(|k| k.ok()).collect();
+                for key in &existing_keys {
+                    let _ = blocklist.remove(key);
+                }
+                for key in &deny_keys {
+                    blocklist
+                        .insert(*key, 1, 0)
+                        .map_err(|e| EbpfError::MapUpdate(e.to_string()))?;
+                }
+            }
+
+            // Update allowlist map.
+            {
+                let mut allowlist: aya::maps::HashMap<_, [u8; aa_ebpf_common::file::MAX_PATH_LEN], u8> =
+                    aya::maps::HashMap::try_from(
+                        bpf.map_mut("PATH_ALLOWLIST")
+                            .ok_or_else(|| EbpfError::MapUpdate("PATH_ALLOWLIST map not found".into()))?,
+                    )
+                    .map_err(|e| EbpfError::MapUpdate(e.to_string()))?;
+
+                let existing_keys: Vec<[u8; aa_ebpf_common::file::MAX_PATH_LEN]> =
+                    allowlist.keys().filter_map(|k| k.ok()).collect();
+                for key in &existing_keys {
+                    let _ = allowlist.remove(key);
+                }
+                for key in &allow_keys {
+                    allowlist
+                        .insert(*key, 1, 0)
+                        .map_err(|e| EbpfError::MapUpdate(e.to_string()))?;
+                }
+            }
+
+            let deny_count = deny_keys.len();
+            let allow_count = allow_keys.len();
 
             tracing::info!(deny = deny_count, allow = allow_count, "updated path filters");
             Ok(())

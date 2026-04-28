@@ -59,7 +59,8 @@ async fn blocklisted_path_triggers_sensitive_flag() {
         let mut buf = perf_array.open(cpu_id, None).unwrap();
         let tx = tx.clone();
         tokio::spawn(async move {
-            let mut buffers = vec![BytesMut::with_capacity(core::mem::size_of::<aa_ebpf_common::file::FileIoEventRaw>()); 10];
+            let mut buffers =
+                vec![BytesMut::with_capacity(core::mem::size_of::<aa_ebpf_common::file::FileIoEventRaw>()); 10];
             loop {
                 let events = buf.read_events(&mut buffers).await.unwrap();
                 for i in 0..events.read {
