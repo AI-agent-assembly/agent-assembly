@@ -109,7 +109,15 @@ pub async fn run(config: RuntimeConfig) {
         let pm = pipeline_metrics.clone();
         let pipeline_policy = std::sync::Arc::clone(&policy);
         tracker.spawn(async move {
-            crate::pipeline::run(inbound_rx, broadcast_tx, pipeline_config, pm, pipeline_token, pipeline_policy).await;
+            crate::pipeline::run(
+                inbound_rx,
+                broadcast_tx,
+                pipeline_config,
+                pm,
+                pipeline_token,
+                pipeline_policy,
+            )
+            .await;
         });
         tracing::info!("pipeline task spawned");
     }

@@ -325,7 +325,14 @@ mod tests {
         let metrics = Arc::new(PipelineMetrics::default());
         let token = CancellationToken::new();
 
-        tokio::spawn(run(rx, broadcast_tx, config, metrics.clone(), token.clone(), Arc::new(PolicyRules::default())));
+        tokio::spawn(run(
+            rx,
+            broadcast_tx,
+            config,
+            metrics.clone(),
+            token.clone(),
+            Arc::new(PolicyRules::default()),
+        ));
 
         // Send 3 events — batch threshold reached, should flush before interval
         for _ in 0..3 {
@@ -351,7 +358,14 @@ mod tests {
         let metrics = Arc::new(PipelineMetrics::default());
         let token = CancellationToken::new();
 
-        tokio::spawn(run(rx, broadcast_tx, config, metrics.clone(), token.clone(), Arc::new(PolicyRules::default())));
+        tokio::spawn(run(
+            rx,
+            broadcast_tx,
+            config,
+            metrics.clone(),
+            token.clone(),
+            Arc::new(PolicyRules::default()),
+        ));
 
         // Send 5 events (less than batch_size=100) — should arrive after interval flush
         for _ in 0..5 {
@@ -377,7 +391,14 @@ mod tests {
         let metrics = Arc::new(PipelineMetrics::default());
         let token = CancellationToken::new();
 
-        tokio::spawn(run(rx, broadcast_tx, config, metrics.clone(), token.clone(), Arc::new(PolicyRules::default())));
+        tokio::spawn(run(
+            rx,
+            broadcast_tx,
+            config,
+            metrics.clone(),
+            token.clone(),
+            Arc::new(PolicyRules::default()),
+        ));
 
         // Send a violation — should arrive immediately, bypassing batch
         tx.send(IpcFrame::EventReport(violation_event())).await.unwrap();
@@ -400,7 +421,14 @@ mod tests {
         let metrics = Arc::new(PipelineMetrics::default());
         let token = CancellationToken::new();
 
-        let handle = tokio::spawn(run(rx, broadcast_tx, config, metrics.clone(), token.clone(), Arc::new(PolicyRules::default())));
+        let handle = tokio::spawn(run(
+            rx,
+            broadcast_tx,
+            config,
+            metrics.clone(),
+            token.clone(),
+            Arc::new(PolicyRules::default()),
+        ));
 
         // Send 5 events (batch won't flush yet)
         for _ in 0..5 {
@@ -444,7 +472,14 @@ mod tests {
         let metrics = Arc::new(PipelineMetrics::default());
         let token = CancellationToken::new();
 
-        tokio::spawn(run(rx, broadcast_tx, config, metrics.clone(), token.clone(), Arc::new(PolicyRules::default())));
+        tokio::spawn(run(
+            rx,
+            broadcast_tx,
+            config,
+            metrics.clone(),
+            token.clone(),
+            Arc::new(PolicyRules::default()),
+        ));
 
         // Send non-event frames
         tx.send(IpcFrame::Heartbeat).await.unwrap();
@@ -459,8 +494,8 @@ mod tests {
 
     #[tokio::test]
     async fn rule_match_bypasses_batch() {
-        use aa_proto::assembly::common::v1::ActionType;
         use crate::policy::{PolicyRule, PolicyRules};
+        use aa_proto::assembly::common::v1::ActionType;
 
         // Create a policy that blocks FILE_OPERATION
         let policy = std::sync::Arc::new(PolicyRules {
@@ -499,8 +534,8 @@ mod tests {
 
     #[tokio::test]
     async fn non_matching_action_stays_in_batch() {
-        use aa_proto::assembly::common::v1::ActionType;
         use crate::policy::{PolicyRule, PolicyRules};
+        use aa_proto::assembly::common::v1::ActionType;
 
         // Policy only blocks FILE_OPERATION
         let policy = std::sync::Arc::new(PolicyRules {
@@ -532,7 +567,10 @@ mod tests {
 
         // Should NOT arrive before the flush interval (100ms timeout)
         let result = tokio::time::timeout(Duration::from_millis(100), broadcast_rx.recv()).await;
-        assert!(result.is_err(), "non-matching event should stay in batch, not arrive immediately");
+        assert!(
+            result.is_err(),
+            "non-matching event should stay in batch, not arrive immediately"
+        );
 
         token.cancel();
     }
@@ -549,7 +587,14 @@ mod tests {
         let metrics = Arc::new(PipelineMetrics::default());
         let token = CancellationToken::new();
 
-        tokio::spawn(run(rx, broadcast_tx, config, metrics.clone(), token.clone(), Arc::new(PolicyRules::default())));
+        tokio::spawn(run(
+            rx,
+            broadcast_tx,
+            config,
+            metrics.clone(),
+            token.clone(),
+            Arc::new(PolicyRules::default()),
+        ));
 
         // Spawn a receiver that drains the broadcast channel
         tokio::spawn(async move { while broadcast_rx.recv().await.is_ok() {} });

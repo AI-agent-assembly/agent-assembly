@@ -58,7 +58,7 @@ spec:
 # To supply a policy file via Kubernetes ConfigMap:
 #
 # 1. Create the ConfigMap:
-#    kubectl create configmap aa-policy --from-file=policy.yaml=./policy.yaml
+#    kubectl create configmap aa-policy --from-file=policy.toml=./policy.toml
 #
 # 2. Add to spec.volumes:
 #   - name: aa-policy
@@ -67,6 +67,6 @@ spec:
 #
 # 3. Add to the aa-runtime container's volumeMounts:
 #   - name: aa-policy
-#     mountPath: /etc/aa/policy.yaml
-#     subPath: policy.yaml
+#     mountPath: /etc/aa/policy.toml
+#     subPath: policy.toml
 #     readOnly: true

@@ -16,7 +16,7 @@ services:
     volumes:
       - aa-runtime-socket:/tmp            # socket path hardcoded to /tmp/aa-runtime-<agent_id>.sock
       # Uncomment to mount a policy file:
-      # - ./policy.yaml:/etc/aa/policy.yaml:ro
+      # - ./policy.toml:/etc/aa/policy.toml:ro
     ports:
       - "8080:8080"                       # health + metrics
     # Note: requires a health-check-capable image or override; distroless images have no shell.

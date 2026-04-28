@@ -1,0 +1,24 @@
+# aa-runtime policy file — TOML format
+#
+# Mount this file into the aa-runtime container at /etc/aa/policy.toml
+# (the default path) or set AA_POLICY_PATH to a custom location.
+#
+# Each [[rules]] block defines one policy rule.  An event whose action_type
+# matches any entry in blocked_actions is emitted immediately (bypassing the
+# normal batching window) so downstream subscribers can react in real time.
+#
+# Action strings must match the proto enum name exactly (see ActionType in
+# proto/assembly/common/v1/common.proto):
+#   FILE_OPERATION, NETWORK_CALL, PROCESS_EXEC, TOOL_CALL, LLM_CALL, MEMORY_ACCESS
+
+[[rules]]
+name = "block-file-exfiltration"
+blocked_actions = ["FILE_OPERATION"]
+
+[[rules]]
+name = "block-network-egress"
+blocked_actions = ["NETWORK_CALL"]
+
+[[rules]]
+name = "block-code-execution"
+blocked_actions = ["PROCESS_EXEC"]
