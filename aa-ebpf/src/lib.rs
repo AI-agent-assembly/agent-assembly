@@ -82,6 +82,19 @@ pub static AA_FILE_IO_BPF: &[u8] = aya::include_bytes_aligned!(concat!(
     "/aa-ebpf-probes/bpfel-unknown-none/release/aa-file-io"
 ));
 
+/// Compiled BPF bytecode for the exec tracepoint programs (AAASM-39).
+///
+/// Embedded from `aa-ebpf-probes/src/exec_probes.rs` at build time.
+/// Contains two programs: `handle_sched_process_exec`, `handle_sched_process_exit`.
+/// Pass this slice to [`aya::Ebpf::load`] to obtain a handle.
+///
+/// Only meaningful on Linux — on other platforms this constant is absent.
+#[cfg(target_os = "linux")]
+pub static AA_EXEC_BPF: &[u8] = aya::include_bytes_aligned!(concat!(
+    env!("OUT_DIR"),
+    "/aa-ebpf-probes/bpfel-unknown-none/release/aa-exec-probes"
+));
+
 /// Compiled BPF bytecode for the TLS uprobe programs (AAASM-37).
 ///
 /// Embedded from `aa-ebpf-probes/src/ssl_probes.rs` at build time.
