@@ -221,7 +221,9 @@ impl PolicyEngine {
         } else {
             // Sort by offset for deterministic redaction order.
             all_findings.sort_by_key(|f| f.offset);
-            let merged = aa_core::ScanResult { findings: all_findings.clone() };
+            let merged = aa_core::ScanResult {
+                findings: all_findings.clone(),
+            };
             let redacted = merged.redact(text);
             // TODO(AAASM-31): wrap in EnrichedEvent::DataLeak(DataLeakEvent { ... }) and
             // send on the broadcast_tx once AAASM-31 adds the DataLeak variant to EnrichedEvent.
@@ -663,7 +665,10 @@ mod tests {
             kinds
         );
         let redacted = result.redacted_payload.expect("redacted_payload must be Some");
-        assert!(!redacted.contains("sk-abc123xyz"), "raw key leaked into redacted payload");
+        assert!(
+            !redacted.contains("sk-abc123xyz"),
+            "raw key leaked into redacted payload"
+        );
         assert!(redacted.contains("[REDACTED:OpenAiKey]"));
     }
 
@@ -700,7 +705,10 @@ mod tests {
             kinds
         );
         let redacted = result.redacted_payload.expect("redacted_payload must be Some");
-        assert!(!redacted.contains("supersecret123"), "raw value leaked into redacted payload");
+        assert!(
+            !redacted.contains("supersecret123"),
+            "raw value leaked into redacted payload"
+        );
     }
 
     #[test]
