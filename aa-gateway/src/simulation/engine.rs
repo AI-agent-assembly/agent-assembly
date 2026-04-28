@@ -28,7 +28,7 @@ impl SimulationEngine {
     /// Evaluate a single event against the loaded policy in dry-run mode.
     ///
     /// Returns the outcome without writing to the audit log or triggering alerts.
-    pub fn simulate_event(&self, index: usize, _event: &SimulationEvent) -> EventOutcome {
+    pub fn simulate_event(&self, _index: usize, _event: &SimulationEvent) -> EventOutcome {
         todo!("AAASM-73: evaluate event against policy sections")
     }
 
