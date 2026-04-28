@@ -725,9 +725,15 @@ mod tests {
 
     #[test]
     fn scan_100kb_payload_within_ci_time_bound() {
-        // The scanner must process a 100 KB clean payload in under 100 ms.
-        // This guards against O(n²) regressions in the Aho-Corasick or regex passes.
+        // Ticket AC (Technical Details): "scanning must not add > 2ms to the hot path for
+        // payloads < 100KB". The 2ms budget is enforced on release builds; debug builds use a
+        // looser bound because the Aho-Corasick automaton is not optimised in debug mode.
         use std::time::Instant;
+
+        #[cfg(debug_assertions)]
+        let budget_ms: u128 = 50; // debug: correctness only, not a perf gate
+        #[cfg(not(debug_assertions))]
+        let budget_ms: u128 = 2; // release: enforces the AC
 
         let engine = make_engine(empty_doc());
         let ctx = make_ctx();
@@ -742,9 +748,10 @@ mod tests {
         assert_eq!(result.decision, PolicyResult::Allow);
         assert!(result.credential_findings.is_empty());
         assert!(
-            elapsed.as_millis() < 100,
-            "scan took {}ms — exceeds 100ms CI budget",
-            elapsed.as_millis()
+            elapsed.as_millis() < budget_ms,
+            "scan took {}ms — exceeds {}ms budget",
+            elapsed.as_millis(),
+            budget_ms,
         );
     }
 }
