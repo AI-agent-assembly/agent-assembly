@@ -74,7 +74,7 @@ pub fn ssl_write(ctx: ProbeContext) -> u32 {
 }
 
 fn try_ssl_write(ctx: ProbeContext) -> Result<u32, i64> {
-    let pid_tgid = unsafe { bpf_get_current_pid_tgid() };
+    let pid_tgid = bpf_get_current_pid_tgid();
     let pid = (pid_tgid >> 32) as u32;
 
     if !pid_allowed(pid) {
@@ -82,8 +82,8 @@ fn try_ssl_write(ctx: ProbeContext) -> Result<u32, i64> {
     }
 
     // arg(1) = const void *buf, arg(2) = int num
-    let buf_ptr: u64 = unsafe { ctx.arg(1).ok_or(-1i64)? };
-    let num: i32 = unsafe { ctx.arg(2).ok_or(-1i64)? };
+    let buf_ptr: u64 = ctx.arg(1).ok_or(-1i64)?;
+    let num: i32 = ctx.arg(2).ok_or(-1i64)?;
 
     if num <= 0 {
         return Ok(0);
@@ -130,14 +130,14 @@ fn try_ssl_write(ctx: ProbeContext) -> Result<u32, i64> {
 /// [`ssl_read_exit`] can read it after the call returns.
 #[uprobe]
 pub fn ssl_read_entry(ctx: ProbeContext) -> u32 {
-    let pid_tgid = unsafe { bpf_get_current_pid_tgid() };
+    let pid_tgid = bpf_get_current_pid_tgid();
     let pid = (pid_tgid >> 32) as u32;
 
     if !pid_allowed(pid) {
         return 0;
     }
 
-    let buf_ptr: u64 = match unsafe { ctx.arg(1) } {
+    let buf_ptr: u64 = match ctx.arg(1) {
         Some(p) => p,
         None => return 0,
     };
@@ -165,7 +165,7 @@ pub fn ssl_read_exit(ctx: RetProbeContext) -> u32 {
 }
 
 fn try_ssl_read_exit(ctx: RetProbeContext) -> Result<u32, i64> {
-    let pid_tgid = unsafe { bpf_get_current_pid_tgid() };
+    let pid_tgid = bpf_get_current_pid_tgid();
     let pid = (pid_tgid >> 32) as u32;
 
     if !pid_allowed(pid) {
