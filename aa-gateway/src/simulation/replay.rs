@@ -15,3 +15,9 @@ pub struct SimulationEvent {
     /// Pre-serialized JSON payload from the original audit entry.
     pub payload: String,
 }
+
+/// Reads an audit log JSONL file and produces a sequence of `SimulationEvent`s.
+pub struct HistoricalReplay {
+    /// Parsed events from the audit log file.
+    events: Vec<SimulationEvent>,
+}
