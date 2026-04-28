@@ -358,6 +358,25 @@ mod tests {
         assert_eq!(out.document.tools["bash"].limit_per_hour, Some(10));
     }
 
+    // ── Data sensitive_patterns validation ─────────────────────────────────
+
+    #[test]
+    fn data_invalid_regex_pattern_is_an_error() {
+        let yaml = "data:\n  sensitive_patterns:\n    - \"[unclosed\"\n";
+        let result = PolicyValidator::from_yaml(yaml);
+        assert!(result.is_err());
+        let errs = result.unwrap_err();
+        assert!(errs.iter().any(|e| e.field == "data.sensitive_patterns[0]"));
+    }
+
+    #[test]
+    fn data_valid_regex_patterns_round_trip() {
+        let yaml = "data:\n  sensitive_patterns:\n    - \"sk-[a-zA-Z0-9]{48}\"\n";
+        let out = PolicyValidator::from_yaml(yaml).unwrap();
+        let dp = out.document.data.unwrap();
+        assert_eq!(dp.sensitive_patterns.len(), 1);
+    }
+
     // ── Malformed YAML ──────────────────────────────────────────────────────
 
     #[test]
