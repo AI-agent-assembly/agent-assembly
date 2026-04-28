@@ -4,8 +4,8 @@
 //! BPF ring buffer map.  `RingBufReader` multiplexes the three event types
 //! and dispatches them to registered callbacks.
 
-use aya::Bpf;
 use aa_ebpf_common::{exec::ExecEvent, file::FileEvent, tls::TlsCaptureEvent};
+use aya::Bpf;
 
 use crate::error::EbpfError;
 
