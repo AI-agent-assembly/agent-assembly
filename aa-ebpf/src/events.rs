@@ -70,6 +70,22 @@ impl FileIoEvent {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use aa_ebpf_common::MAX_PATH_LEN;
+
+    fn make_raw(path: &str, syscall: SyscallType, flags: u32) -> FileIoEventRaw {
+        let mut path_buf = [0u8; MAX_PATH_LEN];
+        let bytes = path.as_bytes();
+        path_buf[..bytes.len()].copy_from_slice(bytes);
+        FileIoEventRaw {
+            pid: 42,
+            tid: 43,
+            timestamp_ns: 1_000_000,
+            syscall,
+            flags,
+            return_code: 3,
+            path: path_buf,
+        }
+    }
 
     #[test]
     fn file_io_event_construction() {
@@ -81,9 +97,67 @@ mod tests {
             path: "/etc/shadow".into(),
             flags: 0,
             return_code: 0,
+            is_sensitive: false,
         };
         assert_eq!(event.pid, 1234);
         assert_eq!(event.syscall, SyscallKind::Openat);
         assert_eq!(event.path, "/etc/shadow");
+    }
+
+    #[test]
+    fn from_raw_parses_openat() {
+        let raw = make_raw("/tmp/test.txt", SyscallType::Openat, 0);
+        let event = FileIoEvent::from_raw(&raw).unwrap();
+        assert_eq!(event.pid, 42);
+        assert_eq!(event.tid, 43);
+        assert_eq!(event.timestamp_ns, 1_000_000);
+        assert_eq!(event.syscall, SyscallKind::Openat);
+        assert_eq!(event.path, "/tmp/test.txt");
+        assert_eq!(event.return_code, 3);
+        assert!(!event.is_sensitive);
+    }
+
+    #[test]
+    fn from_raw_parses_all_syscall_types() {
+        let cases = [
+            (SyscallType::Openat, SyscallKind::Openat),
+            (SyscallType::Read, SyscallKind::Read),
+            (SyscallType::Write, SyscallKind::Write),
+            (SyscallType::Unlink, SyscallKind::Unlink),
+            (SyscallType::Rename, SyscallKind::Rename),
+        ];
+        for (raw_kind, expected_kind) in cases {
+            let raw = make_raw("/x", raw_kind, 0);
+            let event = FileIoEvent::from_raw(&raw).unwrap();
+            assert_eq!(event.syscall, expected_kind);
+        }
+    }
+
+    #[test]
+    fn from_raw_sensitive_flag() {
+        let raw = make_raw("/etc/shadow", SyscallType::Openat, 1);
+        let event = FileIoEvent::from_raw(&raw).unwrap();
+        assert!(event.is_sensitive);
+    }
+
+    #[test]
+    fn from_raw_no_sensitive_flag() {
+        let raw = make_raw("/tmp/ok", SyscallType::Read, 0);
+        let event = FileIoEvent::from_raw(&raw).unwrap();
+        assert!(!event.is_sensitive);
+    }
+
+    #[test]
+    fn from_raw_truncates_at_null() {
+        let raw = make_raw("/a", SyscallType::Write, 0);
+        let event = FileIoEvent::from_raw(&raw).unwrap();
+        assert_eq!(event.path, "/a");
+    }
+
+    #[test]
+    fn from_raw_empty_path() {
+        let raw = make_raw("", SyscallType::Unlink, 0);
+        let event = FileIoEvent::from_raw(&raw).unwrap();
+        assert_eq!(event.path, "");
     }
 }
