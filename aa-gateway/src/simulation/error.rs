@@ -9,6 +9,8 @@ pub enum SimulationError {
     PolicyLoad(String),
     /// The audit log file could not be parsed.
     AuditParse(String),
+    /// An I/O error occurred reading a file.
+    IoError(std::io::Error),
 }
 
 impl fmt::Display for SimulationError {
@@ -16,8 +18,15 @@ impl fmt::Display for SimulationError {
         match self {
             Self::PolicyLoad(msg) => write!(f, "policy load error: {msg}"),
             Self::AuditParse(msg) => write!(f, "audit log parse error: {msg}"),
+            Self::IoError(err) => write!(f, "I/O error: {err}"),
         }
     }
 }
 
 impl std::error::Error for SimulationError {}
+
+impl From<std::io::Error> for SimulationError {
+    fn from(err: std::io::Error) -> Self {
+        Self::IoError(err)
+    }
+}
