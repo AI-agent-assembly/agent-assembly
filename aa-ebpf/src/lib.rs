@@ -72,6 +72,8 @@ pub static AA_HELLO_BPF: &[u8] = aya::include_bytes_aligned!(concat!(
     "/aa-ebpf-probes/bpfel-unknown-none/release/aa-hello"
 ));
 
+pub mod error;
 pub mod syscall;
 
+pub use error::EbpfError;
 pub use syscall::SyscallKind;
