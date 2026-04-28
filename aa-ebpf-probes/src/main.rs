@@ -95,6 +95,40 @@ fn try_sys_openat_ret(ctx: &ProbeContext) -> Result<u32, u32> {
     Ok(0)
 }
 
+/// kprobe on `sys_read` — resolves the fd to a file path via
+/// `FD_PATH_MAP` and emits a read event.
+#[kprobe]
+pub fn aa_sys_read(ctx: ProbeContext) -> u32 {
+    match try_sys_read(&ctx) {
+        Ok(ret) => ret,
+        Err(ret) => ret,
+    }
+}
+
+fn try_sys_read(ctx: &ProbeContext) -> Result<u32, u32> {
+    let (tgid, pid) = get_pid_tgid();
+    if !should_monitor(tgid) {
+        return Ok(0);
+    }
+
+    // arg0 = unsigned int fd
+    let fd: u64 = unsafe { ctx.arg(0).ok_or(1u32)? };
+    let key = FdPathKey { pid: tgid, fd };
+
+    let path = unsafe { FD_PATH_MAP.get(&key).ok_or(1u32)? };
+    let path_copy = *path;
+
+    let flags = if unsafe { PATH_BLOCKLIST.get(&path_copy).is_some() } {
+        1u32
+    } else {
+        0u32
+    };
+
+    emit_event(ctx, tgid, pid, SyscallType::Read, &path_copy, flags, 0);
+
+    Ok(0)
+}
+
 #[panic_handler]
 fn panic(_info: &core::panic::PanicInfo) -> ! {
     unsafe { core::hint::unreachable_unchecked() }
