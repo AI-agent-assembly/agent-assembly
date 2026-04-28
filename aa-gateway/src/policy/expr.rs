@@ -1,0 +1,435 @@
+//! Mini boolean expression parser for `requires_approval_if` conditions.
+//!
+//! Public surface: [`evaluate`].
+//!
+//! Grammar (flat, no parentheses in v1):
+//! ```text
+//! expr       := clause (combinator clause)*
+//! clause     := field op literal
+//! combinator := "AND" | "OR"
+//! field      := "tool" | "path" | "url" | "method" | "command"
+//! op         := "==" | "!=" | ">" | ">=" | "<" | "<=" | "contains" | "starts_with"
+//! literal    := quoted_string | integer | float
+//! ```
+//!
+//! **Fail-safe**: any parse/tokenization error returns `true`
+//! (triggers RequiresApproval — the safe default).
+
+// The private helpers below are only consumed via `evaluate` which is
+// `pub(crate)`.  Until a caller in this crate wires up the evaluator,
+// rustc sees them as dead code.  The allow is intentional and temporary.
+#![allow(dead_code)]
+
+use aa_core::GovernanceAction;
+
+// ---------------------------------------------------------------------------
+// Internal token types
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, PartialEq)]
+enum FieldRef {
+    Tool,
+    Path,
+    Url,
+    Method,
+    Command,
+}
+
+#[derive(Debug, PartialEq)]
+enum OpKind {
+    Eq,
+    Ne,
+    Gt,
+    Gte,
+    Lt,
+    Lte,
+    Contains,
+    StartsWith,
+}
+
+#[derive(Debug, PartialEq)]
+enum LiteralVal {
+    Str(String),
+    Num(f64),
+}
+
+#[derive(Debug, PartialEq)]
+enum Token {
+    Field(FieldRef),
+    Op(OpKind),
+    Literal(LiteralVal),
+    And,
+    Or,
+}
+
+// ---------------------------------------------------------------------------
+// Tokenizer
+// ---------------------------------------------------------------------------
+
+fn tokenize(expr: &str) -> Option<Vec<Token>> {
+    let mut tokens = Vec::new();
+    let mut chars = expr.chars().peekable();
+
+    while let Some(&ch) = chars.peek() {
+        // Skip whitespace
+        if ch.is_whitespace() {
+            chars.next();
+            continue;
+        }
+
+        // Quoted string literal
+        if ch == '"' {
+            chars.next(); // consume opening quote
+            let mut s = String::new();
+            loop {
+                match chars.next() {
+                    Some('"') => break,
+                    Some('\\') => {
+                        // basic escape: \" and \\
+                        match chars.next() {
+                            Some('"') => s.push('"'),
+                            Some('\\') => s.push('\\'),
+                            Some(c) => {
+                                s.push('\\');
+                                s.push(c);
+                            }
+                            None => return None, // unterminated escape
+                        }
+                    }
+                    Some(c) => s.push(c),
+                    None => return None, // unterminated string
+                }
+            }
+            tokens.push(Token::Literal(LiteralVal::Str(s)));
+            continue;
+        }
+
+        // Operator tokens that start with '<', '>', '=', '!'
+        if ch == '<' || ch == '>' || ch == '=' || ch == '!' {
+            chars.next();
+            let op = if chars.peek() == Some(&'=') {
+                chars.next();
+                match ch {
+                    '<' => OpKind::Lte,
+                    '>' => OpKind::Gte,
+                    '=' => OpKind::Eq,
+                    '!' => OpKind::Ne,
+                    _ => return None,
+                }
+            } else {
+                match ch {
+                    '<' => OpKind::Lt,
+                    '>' => OpKind::Gt,
+                    _ => return None, // bare '=' or '!' without '=' is invalid
+                }
+            };
+            tokens.push(Token::Op(op));
+            continue;
+        }
+
+        // Word tokens: keywords, field names, operators, numeric literals
+        if ch.is_alphanumeric() || ch == '_' || ch == '-' || ch == '.' {
+            let mut word = String::new();
+            while let Some(&c) = chars.peek() {
+                if c.is_alphanumeric() || c == '_' || c == '-' || c == '.' {
+                    word.push(c);
+                    chars.next();
+                } else {
+                    break;
+                }
+            }
+
+            let token = match word.as_str() {
+                "AND" => Token::And,
+                "OR" => Token::Or,
+                "tool" => Token::Field(FieldRef::Tool),
+                "path" => Token::Field(FieldRef::Path),
+                "url" => Token::Field(FieldRef::Url),
+                "method" => Token::Field(FieldRef::Method),
+                "command" => Token::Field(FieldRef::Command),
+                "contains" => Token::Op(OpKind::Contains),
+                "starts_with" => Token::Op(OpKind::StartsWith),
+                other => {
+                    // Try to parse as a number
+                    if let Ok(n) = other.parse::<f64>() {
+                        Token::Literal(LiteralVal::Num(n))
+                    } else {
+                        return None; // unknown word
+                    }
+                }
+            };
+            tokens.push(token);
+            continue;
+        }
+
+        // Unknown character
+        return None;
+    }
+
+    Some(tokens)
+}
+
+// ---------------------------------------------------------------------------
+// Field value extraction
+// ---------------------------------------------------------------------------
+
+fn field_value<'a>(field: &FieldRef, action: &'a GovernanceAction) -> &'a str {
+    match (field, action) {
+        (FieldRef::Tool, GovernanceAction::ToolCall { name, .. }) => name.as_str(),
+        (FieldRef::Path, GovernanceAction::FileAccess { path, .. }) => path.as_str(),
+        (FieldRef::Url, GovernanceAction::NetworkRequest { url, .. }) => url.as_str(),
+        (FieldRef::Method, GovernanceAction::NetworkRequest { method, .. }) => method.as_str(),
+        (FieldRef::Command, GovernanceAction::ProcessExec { command }) => command.as_str(),
+        // Field does not match the action variant → treat as empty string
+        _ => "",
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Clause evaluation
+// ---------------------------------------------------------------------------
+
+fn eval_clause_safe(field: &FieldRef, op: &OpKind, literal: &LiteralVal, action: &GovernanceAction) -> bool {
+    let lhs = field_value(field, action);
+
+    match op {
+        OpKind::Contains => {
+            if let LiteralVal::Str(rhs) = literal {
+                lhs.contains(rhs.as_str())
+            } else {
+                false
+            }
+        }
+        OpKind::StartsWith => {
+            if let LiteralVal::Str(rhs) = literal {
+                lhs.starts_with(rhs.as_str())
+            } else {
+                false
+            }
+        }
+        OpKind::Eq => match literal {
+            LiteralVal::Num(rhs) => {
+                if let Ok(lhs_num) = lhs.parse::<f64>() {
+                    (lhs_num - rhs).abs() < f64::EPSILON
+                } else {
+                    false
+                }
+            }
+            LiteralVal::Str(rhs) => lhs == rhs.as_str(),
+        },
+        OpKind::Ne => match literal {
+            LiteralVal::Num(rhs) => {
+                if let Ok(lhs_num) = lhs.parse::<f64>() {
+                    (lhs_num - rhs).abs() >= f64::EPSILON
+                } else {
+                    true // can't parse as number, so not equal numerically
+                }
+            }
+            LiteralVal::Str(rhs) => lhs != rhs.as_str(),
+        },
+        OpKind::Gt => {
+            let rhs = numeric_literal(literal);
+            let lhs_n = lhs.parse::<f64>().ok();
+            match (lhs_n, rhs) {
+                (Some(l), Some(r)) => l > r,
+                _ => false,
+            }
+        }
+        OpKind::Gte => {
+            let rhs = numeric_literal(literal);
+            let lhs_n = lhs.parse::<f64>().ok();
+            match (lhs_n, rhs) {
+                (Some(l), Some(r)) => l >= r,
+                _ => false,
+            }
+        }
+        OpKind::Lt => {
+            let rhs = numeric_literal(literal);
+            let lhs_n = lhs.parse::<f64>().ok();
+            match (lhs_n, rhs) {
+                (Some(l), Some(r)) => l < r,
+                _ => false,
+            }
+        }
+        OpKind::Lte => {
+            let rhs = numeric_literal(literal);
+            let lhs_n = lhs.parse::<f64>().ok();
+            match (lhs_n, rhs) {
+                (Some(l), Some(r)) => l <= r,
+                _ => false,
+            }
+        }
+    }
+}
+
+fn numeric_literal(lit: &LiteralVal) -> Option<f64> {
+    match lit {
+        LiteralVal::Num(n) => Some(*n),
+        LiteralVal::Str(s) => s.parse::<f64>().ok(),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Token evaluation  (AND binds tighter than OR)
+// ---------------------------------------------------------------------------
+
+/// A single parsed clause: `field op literal`.
+struct Clause<'t> {
+    field: &'t FieldRef,
+    op: &'t OpKind,
+    literal: &'t LiteralVal,
+}
+
+fn eval_tokens(tokens: &[Token], action: &GovernanceAction) -> bool {
+    // Parse tokens into a sequence of clauses separated by AND/OR.
+    // Strategy: split into OR-groups where each group is a slice of
+    // AND-connected clauses.  Result = any OR-group where all clauses are true.
+
+    // First, extract clauses and combinators in order.
+    // Expected pattern: Clause (AND|OR Clause)*
+    // A "Clause" is three consecutive tokens: Field, Op, Literal.
+
+    let mut or_groups: Vec<Vec<Clause>> = vec![Vec::new()];
+
+    let mut i = 0;
+    while i < tokens.len() {
+        // Expect: Field Op Literal
+        if i + 2 >= tokens.len() && i + 2 != tokens.len() - 1 {
+            // Could be an error; handle below
+        }
+        match (&tokens[i], tokens.get(i + 1), tokens.get(i + 2)) {
+            (Token::Field(f), Some(Token::Op(op)), Some(Token::Literal(lit))) => {
+                let clause = Clause {
+                    field: f,
+                    op,
+                    literal: lit,
+                };
+                or_groups.last_mut().unwrap().push(clause);
+                i += 3;
+
+                // Now expect AND | OR | end
+                match tokens.get(i) {
+                    None => break,
+                    Some(Token::And) => {
+                        i += 1; // continue in the same OR group
+                    }
+                    Some(Token::Or) => {
+                        i += 1;
+                        or_groups.push(Vec::new()); // start a new OR group
+                    }
+                    _ => return true, // unexpected token → fail-safe
+                }
+            }
+            _ => return true, // unexpected structure → fail-safe
+        }
+    }
+
+    // If nothing was parsed, that's a fail-safe trigger (empty expr)
+    if or_groups.is_empty() || or_groups.iter().all(|g| g.is_empty()) {
+        return true;
+    }
+
+    // Evaluate: OR across groups, AND within each group
+    or_groups
+        .iter()
+        .any(|group| group.iter().all(|c| eval_clause_safe(c.field, c.op, c.literal, action)))
+}
+
+// ---------------------------------------------------------------------------
+// Public entry point
+// ---------------------------------------------------------------------------
+
+/// Evaluate a flat boolean expression against a [`GovernanceAction`].
+///
+/// Returns `true` if the expression matches (approval required).
+/// Returns `true` on ANY parse/tokenization error (fail-safe).
+pub(crate) fn evaluate(expr: &str, action: &GovernanceAction) -> bool {
+    let tokens = match tokenize(expr) {
+        Some(t) if !t.is_empty() => t,
+        _ => return true, // fail-safe
+    };
+    eval_tokens(&tokens, action)
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use aa_core::{FileMode, GovernanceAction};
+
+    fn tool(name: &str) -> GovernanceAction {
+        GovernanceAction::ToolCall {
+            name: name.to_string(),
+            args: String::new(),
+        }
+    }
+
+    fn file(path: &str) -> GovernanceAction {
+        GovernanceAction::FileAccess {
+            path: path.to_string(),
+            mode: FileMode::Read,
+        }
+    }
+
+    fn network(url: &str, method: &str) -> GovernanceAction {
+        GovernanceAction::NetworkRequest {
+            url: url.to_string(),
+            method: method.to_string(),
+        }
+    }
+
+    fn process(command: &str) -> GovernanceAction {
+        GovernanceAction::ProcessExec {
+            command: command.to_string(),
+        }
+    }
+
+    #[test]
+    fn eq_operator_matches_tool_name() {
+        assert!(evaluate(r#"tool == "search""#, &tool("search")));
+    }
+
+    #[test]
+    fn ne_operator_false_when_equal() {
+        assert!(!evaluate(r#"tool != "search""#, &tool("search")));
+    }
+
+    #[test]
+    fn contains_operator_on_url() {
+        assert!(evaluate(r#"url contains "evil""#, &network("https://evil.com", "GET")));
+    }
+
+    #[test]
+    fn starts_with_operator_on_path() {
+        assert!(evaluate(r#"path starts_with "/etc""#, &file("/etc/passwd")));
+    }
+
+    #[test]
+    fn and_combinator_all_true() {
+        assert!(evaluate(r#"tool == "search" AND tool == "search""#, &tool("search")));
+    }
+
+    #[test]
+    fn and_combinator_short_circuits() {
+        assert!(!evaluate(r#"tool == "search" AND tool == "other""#, &tool("search")));
+    }
+
+    #[test]
+    fn or_combinator_first_true() {
+        assert!(evaluate(r#"tool == "x" OR tool == "search""#, &tool("search")));
+    }
+
+    #[test]
+    fn fail_safe_on_bad_expr() {
+        assert!(evaluate("not valid @@@ expr", &tool("anything")));
+    }
+
+    #[test]
+    fn field_absent_for_action_variant_returns_false() {
+        // `tool` field is "" for ProcessExec → should NOT match "foo"
+        assert!(!evaluate(r#"tool == "foo""#, &process("ls")));
+    }
+}
