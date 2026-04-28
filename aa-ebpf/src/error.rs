@@ -27,3 +27,38 @@ impl fmt::Display for EbpfError {
 }
 
 impl std::error::Error for EbpfError {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn display_program_load() {
+        let err = EbpfError::ProgramLoad("missing privileges".into());
+        assert_eq!(err.to_string(), "eBPF program load failed: missing privileges");
+    }
+
+    #[test]
+    fn display_probe_attach() {
+        let err = EbpfError::ProbeAttach("sys_openat not found".into());
+        assert_eq!(err.to_string(), "kprobe attach failed: sys_openat not found");
+    }
+
+    #[test]
+    fn display_map_update() {
+        let err = EbpfError::MapUpdate("map full".into());
+        assert_eq!(err.to_string(), "BPF map update failed: map full");
+    }
+
+    #[test]
+    fn display_event_parse() {
+        let err = EbpfError::EventParse("truncated buffer".into());
+        assert_eq!(err.to_string(), "event parse failed: truncated buffer");
+    }
+
+    #[test]
+    fn implements_std_error() {
+        let err = EbpfError::ProgramLoad("test".into());
+        let _: &dyn std::error::Error = &err;
+    }
+}
