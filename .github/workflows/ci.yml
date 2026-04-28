@@ -257,6 +257,12 @@ jobs:
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
         with:
           workspaces: aa-ebpf-probes
+      - name: Install bpf-linker
+        # bpf-linker is the custom linker required for the bpfel-unknown-none target.
+        # It is not bundled with the Rust toolchain and must be installed separately.
+        # --no-default-features uses the system LLVM already present on ubuntu-latest,
+        # which is significantly faster than compiling the bundled LLVM from source.
+        run: cargo install bpf-linker --no-default-features
       - name: Build eBPF probes
         run: cargo build --release
       - name: Clippy on eBPF probes
