@@ -52,4 +52,8 @@ pub enum EbpfError {
         /// Target PID, or `None` for system-wide search.
         pid: Option<i32>,
     },
+
+    /// An I/O error occurred during async ring-buffer polling or /proc parsing.
+    #[error("I/O error: {0}")]
+    Io(#[from] std::io::Error),
 }
