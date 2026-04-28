@@ -149,7 +149,11 @@ mod tests {
         assert_eq!(alert.alert_level, AlertLevel::Critical);
         assert_eq!(alert.timestamp_ns, 5000);
         // Check executable contains the path.
-        let nul = alert.executable.iter().position(|&b| b == 0).unwrap_or(alert.executable.len());
+        let nul = alert
+            .executable
+            .iter()
+            .position(|&b| b == 0)
+            .unwrap_or(alert.executable.len());
         let exe_str = core::str::from_utf8(&alert.executable[..nul]).unwrap();
         assert_eq!(exe_str, "/bin/bash");
     }

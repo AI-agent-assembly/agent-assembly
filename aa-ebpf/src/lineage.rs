@@ -36,9 +36,7 @@ pub struct ProcessLineageTracker {
 impl ProcessLineageTracker {
     /// Create an empty lineage tracker.
     pub fn new() -> Self {
-        Self {
-            nodes: HashMap::new(),
-        }
+        Self { nodes: HashMap::new() }
     }
 
     /// Record a new process exec event.

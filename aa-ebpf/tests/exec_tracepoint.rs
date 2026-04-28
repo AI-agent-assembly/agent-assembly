@@ -31,7 +31,9 @@ fn aa_exec_probes_loads_and_attaches() {
         .try_into()
         .expect("handle_sched_process_exec is not a TracePoint program");
 
-    exec_program.load().expect("kernel verifier rejected handle_sched_process_exec");
+    exec_program
+        .load()
+        .expect("kernel verifier rejected handle_sched_process_exec");
 
     let _exec_link = exec_program
         .attach("sched", "sched_process_exec")
@@ -44,7 +46,9 @@ fn aa_exec_probes_loads_and_attaches() {
         .try_into()
         .expect("handle_sched_process_exit is not a TracePoint program");
 
-    exit_program.load().expect("kernel verifier rejected handle_sched_process_exit");
+    exit_program
+        .load()
+        .expect("kernel verifier rejected handle_sched_process_exit");
 
     let _exit_link = exit_program
         .attach("sched", "sched_process_exit")

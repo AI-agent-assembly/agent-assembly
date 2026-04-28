@@ -52,9 +52,9 @@ impl TracepointManager {
             program
                 .load()
                 .map_err(|e| EbpfError::ProbeAttach(format!("{prog_name} load failed: {e}")))?;
-            program
-                .attach(category, tp_name)
-                .map_err(|e| EbpfError::ProbeAttach(format!("{prog_name} attach to {category}/{tp_name} failed: {e}")))?;
+            program.attach(category, tp_name).map_err(|e| {
+                EbpfError::ProbeAttach(format!("{prog_name} attach to {category}/{tp_name} failed: {e}"))
+            })?;
 
             tracing::info!(program = prog_name, tracepoint = %format!("{category}/{tp_name}"), "tracepoint attached");
         }

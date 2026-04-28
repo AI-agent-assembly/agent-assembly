@@ -66,9 +66,9 @@ pub use events::FileIoEvent;
 pub use lineage::ProcessLineageTracker;
 pub use loader::{EbpfLoader, ExecLoader, FileIoLoader};
 pub use maps::{PathPattern, PathVerdict, MAX_PATH_LEN, MAX_PATH_PATTERNS};
-pub use shell_detect::ShellDetector;
 #[cfg(target_os = "linux")]
 pub use ringbuf::EbpfEvent;
+pub use shell_detect::ShellDetector;
 pub use syscall::SyscallKind;
 
 /// Compiled BPF bytecode for the file I/O probe program.

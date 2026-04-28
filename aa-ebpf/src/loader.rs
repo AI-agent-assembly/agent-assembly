@@ -398,8 +398,7 @@ impl ExecLoader {
         #[cfg(target_os = "linux")]
         {
             tracing::info!(pid = self.target_pid, "loading exec tracepoint BPF programs");
-            let mut bpf =
-                aya::Ebpf::load(crate::AA_EXEC_BPF).map_err(|e| EbpfError::ProgramLoad(e.to_string()))?;
+            let mut bpf = aya::Ebpf::load(crate::AA_EXEC_BPF).map_err(|e| EbpfError::ProgramLoad(e.to_string()))?;
 
             // Insert the target PID into the exec PID filter map.
             let mut pid_filter: aya::maps::HashMap<_, u32, u8> = aya::maps::HashMap::try_from(
