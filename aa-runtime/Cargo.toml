@@ -10,6 +10,8 @@ description = "Tokio async runtime wrapper and lifecycle management for Agent As
 aa-core                     = { path = "../aa-core" }
 aa-proto                    = { path = "../aa-proto" }
 axum                        = "0.7"
+dashmap                     = "6"
+uuid                        = { version = "1", features = ["v4"] }
 metrics                     = "0.24"
 metrics-exporter-prometheus = "0.16"
 prost                       = "0.13"
