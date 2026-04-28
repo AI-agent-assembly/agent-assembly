@@ -26,11 +26,7 @@ impl HistoryConfig {
     pub fn default_config() -> Self {
         let base = std::env::var("AA_DATA_DIR")
             .map(PathBuf::from)
-            .unwrap_or_else(|_| {
-                dirs::home_dir()
-                    .unwrap_or_else(|| PathBuf::from("."))
-                    .join(".aa")
-            });
+            .unwrap_or_else(|_| dirs::home_dir().unwrap_or_else(|| PathBuf::from(".")).join(".aa"));
 
         Self {
             history_dir: base.join(HISTORY_DIR_NAME),

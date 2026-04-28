@@ -17,11 +17,7 @@ pub trait PolicyHistoryStore: Send + Sync {
     /// The store computes the SHA-256 hash of `yaml`, writes the YAML
     /// snapshot and its `.meta.json` sidecar, then prunes old versions
     /// if the configured maximum is exceeded.
-    async fn save(
-        &self,
-        yaml: &str,
-        applied_by: Option<&str>,
-    ) -> Result<PolicyVersionMeta, PolicyHistoryError>;
+    async fn save(&self, yaml: &str, applied_by: Option<&str>) -> Result<PolicyVersionMeta, PolicyHistoryError>;
 
     /// List the most recent policy versions, newest first.
     ///
