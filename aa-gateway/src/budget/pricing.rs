@@ -81,6 +81,17 @@ impl PricingTable {
         Ok(table)
     }
 
+    /// Load from a file path. Returns `default_table()` silently on any I/O or parse error.
+    pub fn load_from_file(path: &std::path::Path) -> Self {
+        match std::fs::read_to_string(path) {
+            Ok(json) => Self::load_from_json_str(&json).unwrap_or_else(|e| {
+                eprintln!("aa-gateway: pricing.json parse error ({e}); using defaults");
+                Self::default_table()
+            }),
+            Err(_) => Self::default_table(),
+        }
+    }
+
     /// Look up pricing for a `(provider, model)` pair.
     pub fn entry(
         &self,
@@ -110,6 +121,14 @@ impl std::error::Error for PricingLoadError {}
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn load_from_file_falls_back_to_defaults_on_missing_file() {
+        let path = std::path::Path::new("/nonexistent/path/pricing.json");
+        let table = PricingTable::load_from_file(path);
+        use crate::budget::types::{Model, Provider};
+        assert!(table.entry(Provider::OpenAi, Model::Gpt4o).is_some());
+    }
 
     #[test]
     fn load_from_json_str_overrides_gpt4o_input_price() {
