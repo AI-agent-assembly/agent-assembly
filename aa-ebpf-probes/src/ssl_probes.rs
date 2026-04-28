@@ -5,7 +5,7 @@
 //!
 //! - `ssl_write`      — uprobe on `SSL_write`; captures outbound plaintext.
 //! - `ssl_read_entry` — uprobe on `SSL_read`; saves the `buf` pointer so the
-//!                      uretprobe can read it after the call returns.
+//!   uretprobe can read it after the call returns.
 //! - `ssl_read_exit`  — uretprobe on `SSL_read`; captures inbound plaintext.
 //!
 //! ## Stack-limit workaround
@@ -67,10 +67,7 @@ fn pid_allowed(pid: u32) -> bool {
 /// buffer and submits a [`TlsCaptureEvent`] with `direction = 0` (outbound).
 #[uprobe]
 pub fn ssl_write(ctx: ProbeContext) -> u32 {
-    match try_ssl_write(ctx) {
-        Ok(ret) => ret,
-        Err(_) => 0,
-    }
+    try_ssl_write(ctx).unwrap_or_default()
 }
 
 fn try_ssl_write(ctx: ProbeContext) -> Result<u32, i64> {
@@ -130,10 +127,7 @@ pub fn ssl_read_entry(ctx: ProbeContext) -> u32 {
 /// [`TlsCaptureEvent`] with `direction = 1` (inbound).
 #[uretprobe]
 pub fn ssl_read_exit(ctx: RetProbeContext) -> u32 {
-    match try_ssl_read_exit(ctx) {
-        Ok(ret) => ret,
-        Err(_) => 0,
-    }
+    try_ssl_read_exit(ctx).unwrap_or_default()
 }
 
 fn try_ssl_read_exit(ctx: RetProbeContext) -> Result<u32, i64> {
