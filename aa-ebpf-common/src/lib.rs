@@ -105,3 +105,32 @@ pub enum SyscallType {
     /// `sys_rename` — rename or move a file.
     Rename = 4,
 }
+
+/// Maximum byte length of a file path stored in a BPF event or map entry.
+pub const MAX_PATH_LEN: usize = 256;
+
+/// A file I/O event emitted by a kprobe, in BPF-compatible layout.
+///
+/// This struct is written by BPF programs into a `PerfEventArray` and read
+/// by the userspace loader. Both sides must agree on this exact layout.
+#[derive(Clone, Copy)]
+#[repr(C)]
+pub struct FileIoEventRaw {
+    /// Process ID of the intercepted syscall.
+    pub pid: u32,
+    /// Thread ID of the intercepted syscall.
+    pub tid: u32,
+    /// Kernel timestamp in nanoseconds (from `bpf_ktime_get_ns`).
+    pub timestamp_ns: u64,
+    /// Which syscall was intercepted.
+    pub syscall: SyscallType,
+    /// Syscall-specific flags (e.g., `O_RDONLY` for `openat`).
+    pub flags: u32,
+    /// Syscall return code.
+    pub return_code: i64,
+    /// File path as a null-terminated byte array.
+    pub path: [u8; MAX_PATH_LEN],
+}
+
+unsafe impl Send for FileIoEventRaw {}
+unsafe impl Sync for FileIoEventRaw {}
