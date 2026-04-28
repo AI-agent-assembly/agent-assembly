@@ -63,6 +63,11 @@ impl BudgetTracker {
             alert_tx,
         }
     }
+
+    /// Subscribe to budget threshold alert events (80% and 95% crossings).
+    pub fn subscribe_alerts(&self) -> broadcast::Receiver<BudgetAlert> {
+        self.alert_tx.subscribe()
+    }
 }
 
 #[cfg(test)]
@@ -79,6 +84,12 @@ mod tests {
     fn new_tracker_has_empty_per_agent_map() {
         let t = new_tracker();
         assert!(t.per_agent.is_empty());
+    }
+
+    #[test]
+    fn subscribe_alerts_returns_receiver() {
+        let t = new_tracker();
+        let _rx = t.subscribe_alerts(); // compiles and doesn't panic
     }
 
     #[test]
