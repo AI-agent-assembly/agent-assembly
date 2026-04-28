@@ -15,7 +15,6 @@ pub struct PricingEntry {
 
 /// Flat JSON record used only for deserialization.
 #[derive(serde::Deserialize)]
-#[allow(dead_code)] // used in load_from_json_str (added in next task)
 struct PricingJsonRow {
     provider: crate::budget::types::Provider,
     model: crate::budget::types::Model,
@@ -66,6 +65,22 @@ impl PricingTable {
         Self { entries }
     }
 
+    /// Load pricing overrides from a JSON string, merging on top of the defaults.
+    pub fn load_from_json_str(json: &str) -> Result<Self, PricingLoadError> {
+        let rows: Vec<PricingJsonRow> = serde_json::from_str(json).map_err(PricingLoadError::Json)?;
+        let mut table = Self::default_table();
+        for row in rows {
+            table.entries.insert(
+                (row.provider, row.model),
+                PricingEntry {
+                    input_per_1k_usd: row.input_per_1k_usd,
+                    output_per_1k_usd: row.output_per_1k_usd,
+                },
+            );
+        }
+        Ok(table)
+    }
+
     /// Look up pricing for a `(provider, model)` pair.
     pub fn entry(
         &self,
@@ -95,6 +110,23 @@ impl std::error::Error for PricingLoadError {}
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn load_from_json_str_overrides_gpt4o_input_price() {
+        use crate::budget::types::{Model, Provider};
+        fn d(s: &str) -> rust_decimal::Decimal {
+            s.parse().unwrap()
+        }
+        let json = r#"[
+          { "provider": "open_ai", "model": "gpt4o",
+            "input_per_1k_usd": "0.999", "output_per_1k_usd": "0.015" }
+        ]"#;
+        let table = PricingTable::load_from_json_str(json).unwrap();
+        let entry = table.entry(Provider::OpenAi, Model::Gpt4o).unwrap();
+        assert_eq!(entry.input_per_1k_usd, d("0.999"));
+        // Non-overridden models keep defaults
+        assert!(table.entry(Provider::Anthropic, Model::Claude3Opus).is_some());
+    }
 
     #[test]
     fn default_table_contains_all_eight_models() {
