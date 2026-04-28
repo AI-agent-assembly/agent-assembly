@@ -21,7 +21,7 @@ aya     = { version = "0.13", optional = true }
 aya-log = { version = "0.2", optional = true }
 bytes   = "1"
 thiserror = "2"
-tokio   = { version = "1", features = ["rt", "macros", "signal"], optional = true }
+tokio   = { version = "1", features = ["rt", "sync", "macros", "signal"], optional = true }
 tracing = "0.1"
 
 # aya is Linux-only: it uses libc symbols (CLOCK_BOOTTIME, etc.) absent on macOS/Windows.
@@ -30,7 +30,7 @@ tracing = "0.1"
 [target.'cfg(target_os = "linux")'.dependencies]
 aya     = { version = "0.13", features = ["async_tokio"] }
 aya-log = "0.2"
-tokio   = { version = "1", features = ["rt", "macros", "signal"] }
+tokio   = { version = "1", features = ["rt", "sync", "macros", "signal"] }
 
 [lints]
 workspace = true
