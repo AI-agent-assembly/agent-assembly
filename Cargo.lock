@@ -41,6 +41,7 @@ dependencies = [
  "aa-core",
  "aya",
  "aya-log",
+ "tokio",
 ]
 
 [[package]]
