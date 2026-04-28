@@ -5,6 +5,5 @@
 //! convenience so userspace code can import directly from `aa_ebpf`.
 
 pub use aa_ebpf_common::exec::{
-    AlertLevel, ProcessNode, ProcessSpawnEvent, ShellInjectionAlert, MAX_ARGV_ENTRIES,
-    MAX_ARGV_LEN, MAX_EXECUTABLE_LEN,
+    AlertLevel, ProcessNode, ProcessSpawnEvent, ShellInjectionAlert, MAX_ARGV_ENTRIES, MAX_ARGV_LEN, MAX_EXECUTABLE_LEN,
 };

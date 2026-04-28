@@ -17,13 +17,13 @@
 #![no_std]
 #![no_main]
 
+use aa_ebpf_common::tls::{TlsCaptureEvent, MAX_PAYLOAD_LEN};
 use aya_ebpf::{
     helpers::{bpf_get_current_pid_tgid, bpf_ktime_get_ns, bpf_probe_read_user_buf},
     macros::{map, uprobe, uretprobe},
     maps::{Array, HashMap, RingBuf},
     programs::{ProbeContext, RetProbeContext},
 };
-use aa_ebpf_common::tls::{TlsCaptureEvent, MAX_PAYLOAD_LEN};
 
 // ---------------------------------------------------------------------------
 // BPF maps
