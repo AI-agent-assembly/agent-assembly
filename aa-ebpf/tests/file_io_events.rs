@@ -51,8 +51,7 @@ async fn openat_etc_passwd_generates_event() {
     let _link_ret = program.attach("__x64_sys_openat", 0).unwrap();
 
     // Set up the perf event reader.
-    let mut perf_array =
-        AsyncPerfEventArray::try_from(bpf.map_mut("EVENTS").unwrap()).unwrap();
+    let mut perf_array = AsyncPerfEventArray::try_from(bpf.map_mut("EVENTS").unwrap()).unwrap();
 
     let cpus = online_cpus().unwrap();
     let (tx, mut rx) = tokio::sync::mpsc::channel::<FileIoEvent>(64);
@@ -61,16 +60,11 @@ async fn openat_etc_passwd_generates_event() {
         let mut buf = perf_array.open(cpu_id, None).unwrap();
         let tx = tx.clone();
         tokio::spawn(async move {
-            let mut buffers = vec![
-                BytesMut::with_capacity(core::mem::size_of::<aa_ebpf_common::FileIoEventRaw>());
-                10
-            ];
+            let mut buffers = vec![BytesMut::with_capacity(core::mem::size_of::<aa_ebpf_common::FileIoEventRaw>()); 10];
             loop {
                 let events = buf.read_events(&mut buffers).await.unwrap();
                 for i in 0..events.read {
-                    let raw = unsafe {
-                        &*(buffers[i].as_ptr() as *const aa_ebpf_common::FileIoEventRaw)
-                    };
+                    let raw = unsafe { &*(buffers[i].as_ptr() as *const aa_ebpf_common::FileIoEventRaw) };
                     if let Ok(event) = FileIoEvent::from_raw(raw) {
                         let _ = tx.send(event).await;
                     }

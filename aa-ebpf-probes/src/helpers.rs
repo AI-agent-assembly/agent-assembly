@@ -1,18 +1,16 @@
 //! Helper functions for BPF kprobe programs.
 
 use aa_ebpf_common::{FileIoEventRaw, SyscallType, MAX_PATH_LEN};
-use aya_ebpf::{helpers::bpf_ktime_get_ns, programs::ProbeContext};
+use aya_ebpf::{helpers::bpf_ktime_get_ns, EbpfContext};
 
 use crate::maps::EVENTS;
 
 /// Fill a [`FileIoEventRaw`] and submit it to the perf event array.
 ///
-/// # Safety
-///
-/// `path` must point to a valid, null-terminated byte buffer of at most
-/// [`MAX_PATH_LEN`] bytes.
-pub fn emit_event(
-    ctx: &ProbeContext,
+/// Generic over the BPF context type so it works from both kprobes
+/// (`ProbeContext`) and kretprobes (`RetProbeContext`).
+pub fn emit_event<C: EbpfContext>(
+    ctx: &C,
     pid: u32,
     tid: u32,
     syscall: SyscallType,
@@ -38,7 +36,7 @@ pub fn emit_event(
 /// the kernel thread ID.
 #[inline(always)]
 pub fn get_pid_tgid() -> (u32, u32) {
-    let pid_tgid = unsafe { aya_ebpf::helpers::bpf_get_current_pid_tgid() };
+    let pid_tgid = aya_ebpf::helpers::bpf_get_current_pid_tgid();
     let tgid = (pid_tgid >> 32) as u32;
     let pid = pid_tgid as u32;
     (tgid, pid)
