@@ -3,4 +3,4 @@
 //! Entry point: [`tracker::BudgetTracker::record_usage`].
 
 pub mod types;
-pub use types::{BudgetState, BudgetStatus, Model, Provider};
+pub use types::{BudgetAlert, BudgetState, BudgetStatus, Model, Provider};

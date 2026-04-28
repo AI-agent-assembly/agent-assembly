@@ -69,6 +69,19 @@ impl BudgetState {
     }
 }
 
+/// Alert emitted via broadcast when spend crosses 80% or 95% of the daily limit.
+#[derive(Debug, Clone)]
+pub struct BudgetAlert {
+    /// The agent whose spend triggered the alert.
+    pub agent_id: aa_core::AgentId,
+    /// Threshold percentage crossed: 80 or 95.
+    pub threshold_pct: u8,
+    /// Current total spend in USD.
+    pub spent_usd: f64,
+    /// Configured daily limit in USD.
+    pub limit_usd: f64,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -147,5 +160,19 @@ mod tests {
         };
         state.maybe_reset();
         assert_eq!(state.spent_usd, amount);
+    }
+
+    #[test]
+    fn budget_alert_stores_fields() {
+        use aa_core::AgentId;
+        let id = AgentId::from_bytes([1u8; 16]);
+        let alert = BudgetAlert {
+            agent_id: id,
+            threshold_pct: 80,
+            spent_usd: 8.0,
+            limit_usd: 10.0,
+        };
+        assert_eq!(alert.threshold_pct, 80);
+        assert!((alert.spent_usd - 8.0).abs() < f64::EPSILON);
     }
 }
