@@ -286,17 +286,19 @@ jobs:
         # CARGO_HOME, RUSTUP_HOME, and PATH so cargo uses the already-installed
         # nightly toolchain and bpf-linker.
         working-directory: ${{ github.workspace }}
-        # sudo runs as root, so it uses /root/.rustup and /root/.cargo by default.
-        # The nightly toolchain and bpf-linker were installed for the runner user
-        # (/home/runner). Pass PATH, RUSTUP_HOME, and CARGO_HOME explicitly so root
-        # finds the already-installed toolchain rather than downloading a new one.
-        # +nightly selects the toolchain since the workspace root has no rust-toolchain.toml.
-        run: >-
-          sudo env
-          "PATH=$PATH"
-          "RUSTUP_HOME=$RUSTUP_HOME"
-          "CARGO_HOME=$CARGO_HOME"
-          cargo +nightly test -p aa-ebpf --features integration-test --test load_hello -- --nocapture
+        # sudo runs as root (/root/.rustup, /root/.cargo) but the nightly toolchain
+        # was installed for the runner user. RUSTUP_HOME and CARGO_HOME are not set
+        # as env vars on GitHub runners — they default to ~/.rustup/~/.cargo, which
+        # expands to /root/... under sudo. Capture them from the runner's $HOME first,
+        # then pass explicit paths so root reuses the already-installed toolchain.
+        run: |
+          RUNNER_RUSTUP="${HOME}/.rustup"
+          RUNNER_CARGO="${HOME}/.cargo"
+          sudo env \
+            "PATH=$PATH" \
+            "RUSTUP_HOME=${RUNNER_RUSTUP}" \
+            "CARGO_HOME=${RUNNER_CARGO}" \
+            cargo +nightly test -p aa-ebpf --features integration-test --test load_hello -- --nocapture
 
   conformance:
     name: Rust conformance suite
