@@ -1,5 +1,7 @@
 //! Runtime configuration loaded from environment variables.
 
+use std::path::PathBuf;
+
 /// Configuration for the `aa-runtime` sidecar process.
 ///
 /// All fields are populated by [`RuntimeConfig::from_env`].
@@ -55,6 +57,14 @@ pub struct RuntimeConfig {
     ///
     /// Read from `AA_METRICS_ADDR`. Defaults to `"0.0.0.0:8080"`.
     pub metrics_addr: String,
+
+    /// Path to the policy file used for request enforcement.
+    ///
+    /// Read from `AA_POLICY_PATH`.
+    /// - Not set → `Some("/etc/aa/policy.toml")` (default path)
+    /// - Non-empty string → `Some(<value>)`
+    /// - Empty string → `None` (policy enforcement disabled)
+    pub policy_path: Option<PathBuf>,
 }
 
 impl RuntimeConfig {
@@ -77,6 +87,7 @@ impl RuntimeConfig {
     /// | `AA_PIPELINE_FLUSH_INTERVAL_MS` | `u64` | `100` |
     /// | `AA_PIPELINE_BROADCAST_CAPACITY` | `usize` | `1_024` |
     /// | `AA_METRICS_ADDR` | `String` | `"0.0.0.0:8080"` |
+    /// | `AA_POLICY_PATH` | `Option<PathBuf>` | `Some("/etc/aa/policy.toml")` |
     pub fn from_env() -> Result<Self, String> {
         let agent_id = std::env::var("AA_AGENT_ID").map_err(|_| "AA_AGENT_ID is required but not set".to_string())?;
 
@@ -130,6 +141,12 @@ impl RuntimeConfig {
 
         let metrics_addr = std::env::var("AA_METRICS_ADDR").unwrap_or_else(|_| "0.0.0.0:8080".to_string());
 
+        let policy_path = match std::env::var("AA_POLICY_PATH") {
+            Err(_) => Some(PathBuf::from("/etc/aa/policy.toml")),
+            Ok(v) if v.is_empty() => None,
+            Ok(v) => Some(PathBuf::from(v)),
+        };
+
         Ok(Self {
             agent_id,
             worker_threads,
@@ -140,6 +157,7 @@ impl RuntimeConfig {
             pipeline_flush_interval_ms,
             pipeline_broadcast_capacity,
             metrics_addr,
+            policy_path,
         })
     }
 }
@@ -449,5 +467,46 @@ mod tests {
         assert_eq!(config.metrics_addr, "0.0.0.0:8080");
 
         std::env::remove_var("AA_AGENT_ID");
+    }
+
+    #[test]
+    fn policy_path_defaults_when_unset() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        std::env::set_var("AA_AGENT_ID", "agent-policy-default");
+        std::env::remove_var("AA_POLICY_PATH");
+
+        let config = RuntimeConfig::from_env().unwrap();
+
+        assert_eq!(config.policy_path, Some(PathBuf::from("/etc/aa/policy.toml")));
+
+        std::env::remove_var("AA_AGENT_ID");
+    }
+
+    #[test]
+    fn policy_path_reads_from_env() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        std::env::set_var("AA_AGENT_ID", "agent-policy-custom");
+        std::env::set_var("AA_POLICY_PATH", "/custom/policy.toml");
+
+        let config = RuntimeConfig::from_env().unwrap();
+
+        assert_eq!(config.policy_path, Some(PathBuf::from("/custom/policy.toml")));
+
+        std::env::remove_var("AA_AGENT_ID");
+        std::env::remove_var("AA_POLICY_PATH");
+    }
+
+    #[test]
+    fn policy_path_none_when_empty_string() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        std::env::set_var("AA_AGENT_ID", "agent-policy-disabled");
+        std::env::set_var("AA_POLICY_PATH", "");
+
+        let config = RuntimeConfig::from_env().unwrap();
+
+        assert_eq!(config.policy_path, None);
+
+        std::env::remove_var("AA_AGENT_ID");
+        std::env::remove_var("AA_POLICY_PATH");
     }
 }

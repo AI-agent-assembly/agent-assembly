@@ -9,6 +9,7 @@ pub mod health;
 pub mod ipc;
 pub mod lifecycle;
 pub mod pipeline;
+pub mod policy;
 pub mod runtime;
 
 pub use runtime::run;
