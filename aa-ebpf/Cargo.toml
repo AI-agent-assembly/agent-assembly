@@ -10,7 +10,8 @@ description = "eBPF-based kernel-level monitoring hooks for Agent Assembly"
 aa-core = { path = "../aa-core" }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-aya = { version = "0.13", features = ["async_tokio"] }
+aya     = { version = "0.13", features = ["async_tokio"] }
+aya-log = "0.2"
 
 [lints]
 workspace = true
