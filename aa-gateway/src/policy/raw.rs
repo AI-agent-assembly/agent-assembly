@@ -58,6 +58,26 @@ pub struct RawDataPolicy {
     pub unknown: HashMap<String, serde_yaml::Value>,
 }
 
+/// Raw (unvalidated) top-level deserialization target for a policy document.
+#[derive(Debug, Deserialize)]
+pub struct RawPolicyDocument {
+    /// Version tag from the YAML front-matter.
+    pub version: Option<String>,
+    /// Network egress policy.
+    pub network: Option<RawNetworkPolicy>,
+    /// Schedule / active-hours policy.
+    pub schedule: Option<RawSchedulePolicy>,
+    /// Spend budget policy.
+    pub budget: Option<RawBudgetPolicy>,
+    /// Data / PII policy.
+    pub data: Option<RawDataPolicy>,
+    /// Per-tool policies keyed by tool name.
+    pub tools: Option<HashMap<String, RawToolPolicy>>,
+    /// Unknown top-level keys captured for warning emission.
+    #[serde(flatten)]
+    pub unknown: HashMap<String, serde_yaml::Value>,
+}
+
 /// Raw (unvalidated) deserialization target for a single entry in `tools`.
 #[derive(Debug, Deserialize)]
 pub struct RawToolPolicy {
@@ -101,6 +121,37 @@ mod tests {
         let yaml = "{}\n";
         let raw: RawNetworkPolicy = serde_yaml::from_str(yaml).unwrap();
         assert_eq!(raw.allowlist, None);
+    }
+
+    // ── RawPolicyDocument ───────────────────────────────────────────────────
+
+    #[test]
+    fn raw_policy_document_deserializes_version_and_sections() {
+        let yaml = "version: \"1.0\"\nnetwork:\n  allowlist:\n    - api.openai.com\nbudget:\n  daily_limit_usd: 10.0\n";
+        let raw: RawPolicyDocument = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(raw.version, Some("1.0".to_string()));
+        assert!(raw.network.is_some());
+        assert!(raw.budget.is_some());
+        assert!(raw.unknown.is_empty());
+    }
+
+    #[test]
+    fn raw_policy_document_all_sections_absent_is_none() {
+        let yaml = "{}\n";
+        let raw: RawPolicyDocument = serde_yaml::from_str(yaml).unwrap();
+        assert!(raw.version.is_none());
+        assert!(raw.network.is_none());
+        assert!(raw.schedule.is_none());
+        assert!(raw.budget.is_none());
+        assert!(raw.data.is_none());
+        assert!(raw.tools.is_none());
+    }
+
+    #[test]
+    fn raw_policy_document_captures_unknown_top_level_key() {
+        let yaml = "risk_tier: high\n";
+        let raw: RawPolicyDocument = serde_yaml::from_str(yaml).unwrap();
+        assert!(raw.unknown.contains_key("risk_tier"));
     }
 
     // ── RawSchedulePolicy / RawActiveHours ─────────────────────────────────
