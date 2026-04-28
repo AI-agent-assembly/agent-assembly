@@ -232,6 +232,26 @@ jobs:
       - name: Check compatibility matrix is updated when versions change
         run: bash .ci/check-compatibility-matrix.sh
 
+  ebpf-build:
+    name: eBPF probes build (Linux nightly)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: aa-ebpf-probes
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          targets: bpfel-unknown-none
+          components: rust-src
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          workspaces: aa-ebpf-probes
+      - name: Build eBPF probes
+        run: cargo build --release
+      - name: Clippy on eBPF probes
+        run: cargo clippy --all-targets -- -D warnings
+
   conformance:
     name: Rust conformance suite
     runs-on: ubuntu-latest
