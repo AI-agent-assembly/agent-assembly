@@ -4,7 +4,7 @@
 //! `aa-ebpf-programs` to the `SSL_write` and `SSL_read` symbols in every
 //! matching OpenSSL shared library loaded by the target process.
 
-use aya::Bpf;
+use aya::Ebpf;
 
 use crate::error::EbpfError;
 
@@ -31,9 +31,9 @@ impl UprobeManager {
     ///
     /// # Arguments
     ///
-    /// * `bpf` — live [`Bpf`] handle from [`crate::loader::EbpfLoader::load`].
+    /// * `bpf` — live [`Ebpf`] handle from [`crate::loader::EbpfLoader::load`].
     /// * `target_pid` — PID to attach to, or `None` for system-wide.
-    pub fn attach(bpf: &mut Bpf, target_pid: Option<i32>) -> Result<Self, EbpfError> {
+    pub fn attach(bpf: &mut Ebpf, target_pid: Option<i32>) -> Result<Self, EbpfError> {
         // TODO(AAASM-37): resolve OpenSSL library path for target_pid,
         // attach ssl_write_uprobe and ssl_read_uretprobe.
         let _ = (bpf, target_pid);

@@ -5,7 +5,7 @@
 //! and dispatches them to registered callbacks.
 
 use aa_ebpf_common::{exec::ExecEvent, file::FileEvent, tls::TlsCaptureEvent};
-use aya::Bpf;
+use aya::Ebpf;
 
 use crate::error::EbpfError;
 
@@ -13,7 +13,7 @@ use crate::error::EbpfError;
 #[derive(Debug)]
 pub enum EbpfEvent {
     /// TLS plaintext capture (AAASM-37).
-    Tls(TlsCaptureEvent),
+    Tls(Box<TlsCaptureEvent>),
     /// File I/O operation (AAASM-38).
     File(FileEvent),
     /// Process exec (AAASM-39).
@@ -26,18 +26,18 @@ pub enum EbpfEvent {
 /// inside a Tokio task.
 #[allow(dead_code)]
 pub struct RingBufReader {
-    bpf: Bpf,
+    bpf: Ebpf,
 }
 
 impl RingBufReader {
-    /// Construct a `RingBufReader` from a loaded [`Bpf`] handle.
+    /// Construct a `RingBufReader` from a loaded [`Ebpf`] handle.
     ///
     /// Looks up the `EVENTS` ring buffer map in the loaded object.
     ///
     /// # Errors
     ///
     /// Returns [`EbpfError::MapNotFound`] if the `EVENTS` map is absent.
-    pub fn new(bpf: Bpf) -> Result<Self, EbpfError> {
+    pub fn new(bpf: Ebpf) -> Result<Self, EbpfError> {
         // TODO(AAASM-37/38/39): obtain AsyncRingBuf handle from the EVENTS map.
         Ok(Self { bpf })
     }

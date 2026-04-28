@@ -7,7 +7,7 @@ use thiserror::Error;
 pub enum EbpfError {
     /// Failed to load the eBPF program ELF object.
     #[error("failed to load eBPF object: {0}")]
-    Load(#[from] aya::BpfError),
+    Load(#[from] aya::EbpfError),
 
     /// Failed to attach an uprobe or kprobe to a target symbol.
     #[error("failed to attach probe to `{symbol}`: {source}")]

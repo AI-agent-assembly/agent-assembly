@@ -1,6 +1,6 @@
 //! eBPF object loader: parses and loads the compiled eBPF ELF into the kernel.
 
-use aya::Bpf;
+use aya::Ebpf;
 
 use crate::error::EbpfError;
 
@@ -8,12 +8,12 @@ use crate::error::EbpfError;
 ///
 /// The object is embedded at build time by `build.rs` using `aya-build`.
 /// `EbpfLoader` is the entry point for all probe attachment in this crate:
-/// obtain a [`Bpf`] handle from [`EbpfLoader::load`] and pass it to the
+/// obtain an [`Ebpf`] handle from [`EbpfLoader::load`] and pass it to the
 /// individual managers ([`crate::uprobe::UprobeManager`], etc.).
 pub struct EbpfLoader;
 
 impl EbpfLoader {
-    /// Load the embedded eBPF ELF bytecode and return a live [`Bpf`] handle.
+    /// Load the embedded eBPF ELF bytecode and return a live [`Ebpf`] handle.
     ///
     /// # Errors
     ///
@@ -23,9 +23,9 @@ impl EbpfLoader {
     /// # Linux requirements
     ///
     /// Requires Linux 5.8+ with BTF enabled (`CONFIG_DEBUG_INFO_BTF=y`).
-    pub fn load() -> Result<Bpf, EbpfError> {
+    pub fn load() -> Result<Ebpf, EbpfError> {
         // TODO(AAASM-37): embed eBPF ELF via include_bytes_aligned! from
-        // OUT_DIR and call Bpf::load().
+        // OUT_DIR and call Ebpf::load().
         todo!("embed and load aa-ebpf-programs ELF")
     }
 }
