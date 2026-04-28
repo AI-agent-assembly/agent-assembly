@@ -13,9 +13,32 @@ pub struct PricingEntry {
     pub output_per_1k_usd: Decimal,
 }
 
+/// Error loading the pricing JSON config.
+#[derive(Debug)]
+pub enum PricingLoadError {
+    Json(serde_json::Error),
+}
+
+impl std::fmt::Display for PricingLoadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PricingLoadError::Json(e) => write!(f, "pricing JSON error: {e}"),
+        }
+    }
+}
+
+impl std::error::Error for PricingLoadError {}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pricing_load_error_displays_message() {
+        let raw = serde_json::from_str::<serde_json::Value>("not json").unwrap_err();
+        let err = PricingLoadError::Json(raw);
+        assert!(err.to_string().contains("pricing JSON error"));
+    }
 
     #[test]
     fn pricing_entry_stores_rates() {
