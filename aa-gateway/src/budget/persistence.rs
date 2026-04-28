@@ -50,6 +50,18 @@ pub fn load_from_disk(path: &std::path::Path) -> Result<PersistedBudget, Persist
     }
 }
 
+/// Write budget to path atomically: write to `<path>.json.tmp`, then rename.
+pub fn save_to_disk_atomic(path: &std::path::Path, budget: &PersistedBudget) -> Result<(), PersistenceError> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(PersistenceError::Io)?;
+    }
+    let tmp = path.with_extension("json.tmp");
+    let json = serde_json::to_string_pretty(budget).map_err(PersistenceError::Json)?;
+    std::fs::write(&tmp, &json).map_err(PersistenceError::Io)?;
+    std::fs::rename(&tmp, path).map_err(PersistenceError::Io)?;
+    Ok(())
+}
+
 pub fn agent_id_to_hex(id: &aa_core::AgentId) -> String {
     id.as_bytes().iter().map(|b| format!("{:02x}", b)).collect()
 }
@@ -107,6 +119,40 @@ mod tests {
         let p = std::path::Path::new("/nonexistent/budget.json");
         let b = load_from_disk(p).unwrap();
         assert!(b.per_agent.is_empty());
+    }
+
+    #[test]
+    fn save_then_load_round_trips_decimal_precisely() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("budget.json");
+        let budget = PersistedBudget {
+            per_agent: vec![PersistedAgentEntry {
+                agent_id_hex: "0102030405060708090a0b0c0d0e0f10".to_string(),
+                state: crate::budget::types::BudgetState {
+                    spent_usd: "12.345".parse().unwrap(),
+                    date: chrono::Utc::now().date_naive(),
+                },
+            }],
+            global: crate::budget::types::BudgetState::new_today(),
+        };
+        save_to_disk_atomic(&path, &budget).unwrap();
+        let loaded = load_from_disk(&path).unwrap();
+        assert_eq!(loaded.per_agent[0].state.spent_usd, budget.per_agent[0].state.spent_usd);
+    }
+
+    #[test]
+    fn save_to_disk_creates_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("budget.json");
+        save_to_disk_atomic(
+            &path,
+            &PersistedBudget {
+                per_agent: vec![],
+                global: crate::budget::types::BudgetState::new_today(),
+            },
+        )
+        .unwrap();
+        assert!(path.exists());
     }
 
     #[test]
