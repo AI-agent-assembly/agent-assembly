@@ -385,4 +385,92 @@ mod tests {
             other => panic!("expected Matched, got {:?}", other),
         }
     }
+
+    #[test]
+    fn correlate_unexpected_action_when_no_intent() {
+        let mut engine = CorrelationEngine::new(CorrelationConfig::default());
+        let action_id = Uuid::new_v4();
+
+        // Action with no preceding intent.
+        engine.ingest(CorrelationEvent::Action(ActionEvent {
+            event_id: action_id,
+            timestamp_ms: 1000,
+            pid: 1,
+            syscall: "unlink".to_string(),
+            details: "/tmp/foo".to_string(),
+        }));
+
+        let outcomes = engine.correlate();
+        assert_eq!(outcomes.len(), 1);
+        match &outcomes[0] {
+            CorrelationOutcome::UnexpectedAction { action_event_id } => {
+                assert_eq!(*action_event_id, action_id);
+            }
+            other => panic!("expected UnexpectedAction, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn correlate_unexpected_action_when_keyword_mismatch() {
+        let mut engine = CorrelationEngine::new(CorrelationConfig::default());
+        let action_id = Uuid::new_v4();
+
+        // Intent for file_delete, but action is process_exec.
+        engine.ingest(CorrelationEvent::Intent(IntentEvent {
+            event_id: Uuid::new_v4(),
+            timestamp_ms: 1000,
+            pid: 1,
+            intent_text: "delete file".to_string(),
+            action_keyword: "file_delete".to_string(),
+        }));
+        engine.ingest(CorrelationEvent::Action(ActionEvent {
+            event_id: action_id,
+            timestamp_ms: 1500,
+            pid: 1,
+            syscall: "execve".to_string(),
+            details: "/bin/sh".to_string(),
+        }));
+
+        let outcomes = engine.correlate();
+        let unexpected: Vec<_> = outcomes
+            .iter()
+            .filter(|o| matches!(o, CorrelationOutcome::UnexpectedAction { .. }))
+            .collect();
+        assert_eq!(unexpected.len(), 1);
+        match &unexpected[0] {
+            CorrelationOutcome::UnexpectedAction { action_event_id } => {
+                assert_eq!(*action_event_id, action_id);
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn correlate_unexpected_action_when_different_pid_family() {
+        let mut engine = CorrelationEngine::new(CorrelationConfig::default());
+        let action_id = Uuid::new_v4();
+
+        // Intent from PID 1, action from PID 2 (unrelated).
+        engine.ingest(CorrelationEvent::Intent(IntentEvent {
+            event_id: Uuid::new_v4(),
+            timestamp_ms: 1000,
+            pid: 1,
+            intent_text: "delete file".to_string(),
+            action_keyword: "file_delete".to_string(),
+        }));
+        engine.ingest(CorrelationEvent::Action(ActionEvent {
+            event_id: action_id,
+            timestamp_ms: 1500,
+            pid: 2,
+            syscall: "unlink".to_string(),
+            details: "/tmp/foo".to_string(),
+        }));
+
+        let outcomes = engine.correlate();
+        let unexpected: Vec<_> = outcomes
+            .iter()
+            .filter(|o| matches!(o, CorrelationOutcome::UnexpectedAction { .. }))
+            .collect();
+        assert_eq!(unexpected.len(), 1);
+    }
 }
