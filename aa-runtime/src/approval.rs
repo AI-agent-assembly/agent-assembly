@@ -441,4 +441,58 @@ mod tests {
         let decision = fut.await.expect("future should resolve after timeout");
         assert!(matches!(decision, ApprovalDecision::TimedOut { .. }));
     }
+
+    #[tokio::test]
+    async fn list_reflects_pending_and_clears_after_decide() {
+        let q = ApprovalQueue::new();
+        let req = make_request(60);
+        let id = req.request_id;
+        let (_rid, _fut) = q.submit(req);
+
+        let pending = q.list();
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].request_id, id);
+
+        q.decide(
+            id,
+            ApprovalDecision::Approved { by: "alice".to_string(), reason: None },
+        )
+        .expect("decide should succeed");
+
+        assert!(q.list().is_empty());
+    }
+
+    #[tokio::test]
+    async fn submit_100_concurrent_requests_all_resolve() {
+        use std::collections::HashMap;
+
+        let q = ApprovalQueue::new();
+        let n = 100_usize;
+
+        let mut futures_map = HashMap::new();
+        for _ in 0..n {
+            let req = make_request(60);
+            let id = req.request_id;
+            let (_rid, fut) = q.submit(req);
+            futures_map.insert(id, fut);
+        }
+
+        assert_eq!(q.list().len(), n);
+
+        let ids: Vec<_> = futures_map.keys().copied().collect();
+        for id in &ids {
+            q.decide(
+                *id,
+                ApprovalDecision::Approved { by: "operator".to_string(), reason: None },
+            )
+            .expect("decide should succeed for each request");
+        }
+
+        for (_id, fut) in futures_map {
+            let decision = fut.await.expect("future should resolve");
+            assert!(matches!(decision, ApprovalDecision::Approved { .. }));
+        }
+
+        assert!(q.list().is_empty());
+    }
 }
