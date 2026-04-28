@@ -44,7 +44,7 @@ cd aa-ebpf-probes
 cargo build --release
 ```
 
-On macOS the `aa-ebpf` crate builds without errors but `AA_HELLO_BPF` and all
+On macOS the `aa-ebpf` crate builds without errors but `AA_FILE_IO_BPF` and all
 other Linux-gated symbols are absent. This is expected.
 
 ## CI

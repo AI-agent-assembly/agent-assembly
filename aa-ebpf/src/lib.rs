@@ -32,16 +32,16 @@
 //! # Loading BPF programs
 //!
 //! The compiled BPF bytecode is embedded at build time and exposed as the
-//! [`AA_HELLO_BPF`] constant. Pass it to [`aya::Ebpf::load`] to load all
+//! [`AA_FILE_IO_BPF`] constant. Pass it to [`aya::Ebpf::load`] to load all
 //! programs defined in the `aa-ebpf-probes` crate:
 //!
 //! ```no_run
 //! # #[cfg(target_os = "linux")]
 //! # {
 //! use aya::Ebpf;
-//! use aa_ebpf::AA_HELLO_BPF;
+//! use aa_ebpf::AA_FILE_IO_BPF;
 //!
-//! let mut bpf = Ebpf::load(AA_HELLO_BPF).expect("failed to load BPF programs");
+//! let mut bpf = Ebpf::load(AA_FILE_IO_BPF).expect("failed to load BPF programs");
 //! # }
 //! ```
 //!
@@ -52,20 +52,18 @@
 //! A future degraded mode using DTrace may provide partial observability
 //! on macOS.
 
-/// Compiled BPF bytecode for the `aa-hello` probe program.
+/// Compiled BPF bytecode for the file I/O probe program.
 ///
 /// Embedded from `aa-ebpf-probes/src/main.rs` at build time via `aya-build`.
+/// Contains kprobes for openat, read, write, unlink, and rename syscalls.
 /// Pass this slice to [`aya::Ebpf::load`] to obtain a handle to all programs
 /// in the probe crate.
 ///
 /// Only meaningful on Linux — on other platforms this constant is absent.
 #[cfg(target_os = "linux")]
-pub static AA_HELLO_BPF: &[u8] = aya::include_bytes_aligned!(concat!(
+pub static AA_FILE_IO_BPF: &[u8] = aya::include_bytes_aligned!(concat!(
     env!("OUT_DIR"),
-    // Path layout: OUT_DIR/<package-name>/<target>/release/<binary-name>
-    // Package name is "aa-ebpf-probes" (from Cargo.toml [package].name).
-    // Binary name is "aa-hello" (from Cargo.toml [[bin]].name).
-    "/aa-ebpf-probes/bpfel-unknown-none/release/aa-hello"
+    "/aa-ebpf-probes/bpfel-unknown-none/release/aa-file-io"
 ));
 
 pub mod error;
