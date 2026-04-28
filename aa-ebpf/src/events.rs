@@ -8,7 +8,9 @@ pub use aa_ebpf_common::{
     MAX_ARGV_LEN, MAX_EXECUTABLE_LEN,
 };
 
+use crate::error::EbpfError;
 use crate::syscall::SyscallKind;
+use aa_ebpf_common::{FileIoEventRaw, SyscallType};
 
 /// A file I/O event captured by a kprobe.
 ///
@@ -30,6 +32,39 @@ pub struct FileIoEvent {
     pub flags: u32,
     /// Syscall return code (`0` for success on entry probes).
     pub return_code: i64,
+    /// Whether this event matched a blocklisted path (flags bit 0).
+    pub is_sensitive: bool,
+}
+
+impl FileIoEvent {
+    /// Parse a [`FileIoEventRaw`] received from the BPF perf event array
+    /// into a userspace-friendly [`FileIoEvent`].
+    pub fn from_raw(raw: &FileIoEventRaw) -> Result<Self, EbpfError> {
+        let syscall = match raw.syscall {
+            SyscallType::Openat => SyscallKind::Openat,
+            SyscallType::Read => SyscallKind::Read,
+            SyscallType::Write => SyscallKind::Write,
+            SyscallType::Unlink => SyscallKind::Unlink,
+            SyscallType::Rename => SyscallKind::Rename,
+        };
+
+        // Extract the null-terminated path from the fixed-size buffer.
+        let nul_pos = raw.path.iter().position(|&b| b == 0).unwrap_or(raw.path.len());
+        let path = core::str::from_utf8(&raw.path[..nul_pos])
+            .map_err(|e| EbpfError::EventParse(format!("invalid UTF-8 in path: {e}")))?
+            .to_string();
+
+        Ok(Self {
+            pid: raw.pid,
+            tid: raw.tid,
+            timestamp_ns: raw.timestamp_ns,
+            syscall,
+            path,
+            flags: raw.flags,
+            return_code: raw.return_code,
+            is_sensitive: raw.flags & 1 != 0,
+        })
+    }
 }
 
 #[cfg(test)]
