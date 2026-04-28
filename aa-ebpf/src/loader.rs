@@ -131,15 +131,18 @@ impl EbpfLoader {
             .as_mut()
             .ok_or_else(|| EbpfError::EventParse("BPF not loaded — call load() first".into()))?;
 
-        let perf_array = AsyncPerfEventArray::try_from(
-            bpf.map_mut("EVENTS")
+        // take_map returns an owned Map so the perf array (and its
+        // buffers) are not tied to the `&mut self` lifetime — required
+        // because buffers are moved into tokio::spawn('static).
+        let mut perf_array = AsyncPerfEventArray::try_from(
+            bpf.take_map("EVENTS")
                 .ok_or_else(|| EbpfError::EventParse("EVENTS map not found".into()))?,
         )
         .map_err(|e| EbpfError::EventParse(e.to_string()))?;
 
         let (tx, rx) = tokio::sync::mpsc::channel::<FileIoEvent>(256);
 
-        let cpus = online_cpus().map_err(|e| EbpfError::EventParse(format!("online_cpus: {e:?}")))?;
+        let cpus = online_cpus().map_err(|(_, e)| EbpfError::EventParse(e.to_string()))?;
         for cpu_id in cpus {
             let mut buf = perf_array
                 .open(cpu_id, None)
