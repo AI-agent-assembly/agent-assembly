@@ -23,30 +23,20 @@ use tokio::time::timeout;
 /// an Openat event with the correct path.
 #[tokio::test]
 async fn openat_etc_passwd_generates_event() {
-    let mut bpf = Ebpf::load(AA_FILE_IO_BPF)
-        .expect("failed to load BPF program — ensure the test is running as root");
+    let mut bpf = Ebpf::load(AA_FILE_IO_BPF).expect("failed to load BPF program — ensure the test is running as root");
 
     // Insert our PID into the PID filter so the probes monitor us.
     let pid = std::process::id();
-    let mut pid_filter: aya::maps::HashMap<_, u32, u8> =
-        aya::maps::HashMap::try_from(bpf.map_mut("PID_FILTER").unwrap()).unwrap();
+    let mut pid_filter: aya::maps::HashMap<_, u32, u8> = aya::maps::HashMap::try_from(bpf.map_mut("PID_FILTER").unwrap()).unwrap();
     pid_filter.insert(pid, 1, 0).unwrap();
 
     // Attach the openat entry kprobe.
-    let program: &mut KProbe = bpf
-        .program_mut("aa_sys_openat")
-        .unwrap()
-        .try_into()
-        .unwrap();
+    let program: &mut KProbe = bpf.program_mut("aa_sys_openat").unwrap().try_into().unwrap();
     program.load().unwrap();
     let _link_entry = program.attach("__x64_sys_openat", 0).unwrap();
 
     // Attach the openat return kprobe.
-    let program: &mut KProbe = bpf
-        .program_mut("aa_sys_openat_ret")
-        .unwrap()
-        .try_into()
-        .unwrap();
+    let program: &mut KProbe = bpf.program_mut("aa_sys_openat_ret").unwrap().try_into().unwrap();
     program.load().unwrap();
     let _link_ret = program.attach("__x64_sys_openat", 0).unwrap();
 

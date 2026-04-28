@@ -24,37 +24,26 @@ use tokio::time::timeout;
 /// and verify the event has the sensitive flag set.
 #[tokio::test]
 async fn blocklisted_path_triggers_sensitive_flag() {
-    let mut bpf = Ebpf::load(AA_FILE_IO_BPF)
-        .expect("failed to load BPF program — ensure the test is running as root");
+    let mut bpf = Ebpf::load(AA_FILE_IO_BPF).expect("failed to load BPF program — ensure the test is running as root");
 
     // Insert our PID into the PID filter.
     let pid = std::process::id();
-    let mut pid_filter: aya::maps::HashMap<_, u32, u8> =
-        aya::maps::HashMap::try_from(bpf.map_mut("PID_FILTER").unwrap()).unwrap();
+    let mut pid_filter: aya::maps::HashMap<_, u32, u8> = aya::maps::HashMap::try_from(bpf.map_mut("PID_FILTER").unwrap()).unwrap();
     pid_filter.insert(pid, 1, 0).unwrap();
 
     // Add /etc/passwd to the path blocklist.
-    let mut blocklist: aya::maps::HashMap<_, [u8; 256], u8> =
-        aya::maps::HashMap::try_from(bpf.map_mut("PATH_BLOCKLIST").unwrap()).unwrap();
+    let mut blocklist: aya::maps::HashMap<_, [u8; 256], u8> = aya::maps::HashMap::try_from(bpf.map_mut("PATH_BLOCKLIST").unwrap()).unwrap();
     let mut key = [0u8; 256];
     let path_bytes = b"/etc/passwd";
     key[..path_bytes.len()].copy_from_slice(path_bytes);
     blocklist.insert(key, 1, 0).unwrap();
 
     // Attach openat kprobes.
-    let program: &mut KProbe = bpf
-        .program_mut("aa_sys_openat")
-        .unwrap()
-        .try_into()
-        .unwrap();
+    let program: &mut KProbe = bpf.program_mut("aa_sys_openat").unwrap().try_into().unwrap();
     program.load().unwrap();
     let _link_entry = program.attach("__x64_sys_openat", 0).unwrap();
 
-    let program: &mut KProbe = bpf
-        .program_mut("aa_sys_openat_ret")
-        .unwrap()
-        .try_into()
-        .unwrap();
+    let program: &mut KProbe = bpf.program_mut("aa_sys_openat_ret").unwrap().try_into().unwrap();
     program.load().unwrap();
     let _link_ret = program.attach("__x64_sys_openat", 0).unwrap();
 

@@ -9,6 +9,11 @@ use crate::maps::EVENTS;
 ///
 /// Generic over the BPF context type so it works from both kprobes
 /// (`ProbeContext`) and kretprobes (`RetProbeContext`).
+///
+/// `#[inline(never)]` ensures this gets its own stack frame so the
+/// `FileIoEventRaw` (290+ bytes) doesn't share the caller's stack
+/// which already holds a 256-byte path buffer (BPF stack limit = 512).
+#[inline(never)]
 pub fn emit_event<C: EbpfContext>(
     ctx: &C,
     pid: u32,
