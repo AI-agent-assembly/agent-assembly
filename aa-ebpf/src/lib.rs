@@ -70,6 +70,7 @@ pub static AA_HELLO_BPF: &[u8] = aya::include_bytes_aligned!(concat!(
 
 pub mod error;
 pub mod events;
+pub mod kprobes;
 pub mod lineage;
 pub mod loader;
 pub mod maps;
