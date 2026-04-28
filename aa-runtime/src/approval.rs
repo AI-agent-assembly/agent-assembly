@@ -94,6 +94,27 @@ pub enum ApprovalDecision {
 }
 
 // ---------------------------------------------------------------------------
+// ApprovalError
+// ---------------------------------------------------------------------------
+
+/// Errors returned by [`ApprovalQueue::decide`].
+#[derive(Debug, PartialEq, Eq)]
+pub enum ApprovalError {
+    /// No pending request exists for the given ID (already resolved or never submitted).
+    NotFound,
+}
+
+impl std::fmt::Display for ApprovalError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NotFound => write!(f, "approval request not found"),
+        }
+    }
+}
+
+impl std::error::Error for ApprovalError {}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -127,6 +148,62 @@ mod tests {
         assert_eq!(req.agent_id, "agent-1");
         assert_eq!(req.timeout_secs, 30);
         assert!(!req.request_id.is_nil());
+    }
+
+    // --- ApprovalDecision ---
+
+    #[test]
+    fn approval_decision_approved_fields() {
+        let d = ApprovalDecision::Approved {
+            by: "alice".to_string(),
+            reason: Some("looks safe".to_string()),
+        };
+        if let ApprovalDecision::Approved { by, reason } = d {
+            assert_eq!(by, "alice");
+            assert_eq!(reason, Some("looks safe".to_string()));
+        } else {
+            panic!("wrong variant");
+        }
+    }
+
+    #[test]
+    fn approval_decision_rejected_fields() {
+        let d = ApprovalDecision::Rejected {
+            by: "bob".to_string(),
+            reason: "policy violation".to_string(),
+        };
+        if let ApprovalDecision::Rejected { by, reason } = d {
+            assert_eq!(by, "bob");
+            assert_eq!(reason, "policy violation");
+        } else {
+            panic!("wrong variant");
+        }
+    }
+
+    #[test]
+    fn approval_decision_timed_out_carries_fallback() {
+        let fallback = aa_core::PolicyResult::Deny {
+            reason: "expired".to_string(),
+        };
+        let d = ApprovalDecision::TimedOut { fallback: fallback.clone() };
+        if let ApprovalDecision::TimedOut { fallback: f } = d {
+            assert_eq!(f, fallback);
+        } else {
+            panic!("wrong variant");
+        }
+    }
+
+    // --- ApprovalError ---
+
+    #[test]
+    fn approval_error_not_found_display() {
+        let e = ApprovalError::NotFound;
+        assert_eq!(e.to_string(), "approval request not found");
+    }
+
+    #[test]
+    fn approval_error_not_found_eq() {
+        assert_eq!(ApprovalError::NotFound, ApprovalError::NotFound);
     }
 
     // --- PendingApprovalRequest ---
