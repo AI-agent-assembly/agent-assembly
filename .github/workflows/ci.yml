@@ -253,7 +253,8 @@ jobs:
           # Do NOT add bpfel-unknown-none to targets: there is no precompiled rust-std
           # for this target. BPF programs are built from source via -Zbuild-std=core
           # (configured in aa-ebpf-probes/.cargo/config.toml). Only rust-src is needed.
-          components: rust-src
+          # clippy is required for the "Clippy on eBPF probes" step below.
+          components: rust-src,clippy
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
         with:
           workspaces: aa-ebpf-probes
