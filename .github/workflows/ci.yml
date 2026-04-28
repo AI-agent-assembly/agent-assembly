@@ -257,15 +257,21 @@ jobs:
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
         with:
           workspaces: aa-ebpf-probes
-      - name: Install LLVM
-        # bpf-linker links against LLVM. Installing the system LLVM package provides
-        # llvm-config on PATH so bpf-linker can be built with --no-default-features,
-        # which is much faster than compiling the bundled LLVM from source.
-        run: sudo apt-get update -qq && sudo apt-get install -y llvm
+      - name: Cache bpf-linker binary
+        # Cache the compiled bpf-linker binary so subsequent CI runs skip the
+        # slow bundled-LLVM compile (~5-10 min). Key includes the version so a
+        # version bump automatically invalidates the cache.
+        uses: actions/cache@v4
+        id: cache-bpf-linker
+        with:
+          path: ~/.cargo/bin/bpf-linker
+          key: bpf-linker-${{ runner.os }}-0.10.3
       - name: Install bpf-linker
         # bpf-linker is the custom linker required for the bpfel-unknown-none target.
-        # --no-default-features links against the system LLVM installed above.
-        run: cargo install bpf-linker --no-default-features
+        # Using the bundled-LLVM default (no --no-default-features) avoids fragile
+        # system-LLVM package discovery. Only runs on cache miss.
+        if: steps.cache-bpf-linker.outputs.cache-hit != 'true'
+        run: cargo install bpf-linker
       - name: Build eBPF probes
         run: cargo build --release
       - name: Clippy on eBPF probes
