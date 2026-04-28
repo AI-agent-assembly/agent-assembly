@@ -3,7 +3,7 @@
 use crate::policy::document::PolicyDocument;
 
 use super::replay::SimulationEvent;
-use super::report::EventOutcome;
+use super::report::{EventOutcome, SimulationReport};
 
 /// A simulation engine that evaluates events against a policy without enforcing decisions.
 ///
@@ -30,5 +30,10 @@ impl SimulationEngine {
     /// Returns the outcome without writing to the audit log or triggering alerts.
     pub fn simulate_event(&self, index: usize, _event: &SimulationEvent) -> EventOutcome {
         todo!("AAASM-73: evaluate event against policy sections")
+    }
+
+    /// Run the simulation against a sequence of events, producing an aggregate report.
+    pub fn run(&self, _events: &[SimulationEvent]) -> SimulationReport {
+        todo!("AAASM-73: iterate events and collect into SimulationReport")
     }
 }
