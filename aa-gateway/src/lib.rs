@@ -8,4 +8,4 @@ pub mod budget;
 pub mod engine;
 pub mod policy;
 
-pub use engine::{PolicyEngine, PolicyLoadError};
+pub use engine::{EvaluationResult, PolicyEngine, PolicyLoadError};
