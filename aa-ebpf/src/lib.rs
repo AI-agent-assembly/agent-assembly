@@ -52,10 +52,6 @@
 //! A future degraded mode using DTrace may provide partial observability
 //! on macOS.
 
-pub mod events;
-pub mod lineage;
-pub mod loader;
-
 /// Compiled BPF bytecode for the `aa-hello` probe program.
 ///
 /// Embedded from `aa-ebpf-probes/src/main.rs` at build time via `aya-build`.
@@ -73,7 +69,11 @@ pub static AA_HELLO_BPF: &[u8] = aya::include_bytes_aligned!(concat!(
 ));
 
 pub mod error;
+pub mod events;
+pub mod lineage;
+pub mod loader;
 pub mod syscall;
 
 pub use error::EbpfError;
+pub use events::FileIoEvent;
 pub use syscall::SyscallKind;
