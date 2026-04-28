@@ -3,10 +3,7 @@
 use std::collections::HashMap;
 
 use crate::policy::{
-    document::{
-        ActiveHours, BudgetPolicy, DataPolicy, NetworkPolicy, PolicyDocument, SchedulePolicy,
-        ToolPolicy,
-    },
+    document::{ActiveHours, BudgetPolicy, DataPolicy, NetworkPolicy, PolicyDocument, SchedulePolicy, ToolPolicy},
     error::{ValidationError, ValidationWarning},
     raw::RawPolicyDocument,
 };
@@ -29,13 +26,10 @@ impl PolicyValidator {
     ///
     /// Returns `Err` with accumulated [`ValidationError`]s when at least one
     /// hard constraint is violated, or when the YAML cannot be parsed.
-    pub fn from_yaml(
-        yaml_str: &str,
-    ) -> Result<PolicyValidatorOutput, Vec<ValidationError>> {
+    pub fn from_yaml(yaml_str: &str) -> Result<PolicyValidatorOutput, Vec<ValidationError>> {
         // Step 1 — parse raw YAML
-        let raw: RawPolicyDocument = serde_yaml::from_str(yaml_str).map_err(|e| {
-            vec![ValidationError::new("(document)", format!("YAML parse error: {}", e))]
-        })?;
+        let raw: RawPolicyDocument = serde_yaml::from_str(yaml_str)
+            .map_err(|e| vec![ValidationError::new("(document)", format!("YAML parse error: {}", e))])?;
 
         let mut errors: Vec<ValidationError> = Vec::new();
         let mut warnings: Vec<ValidationWarning> = Vec::new();
@@ -79,7 +73,7 @@ impl PolicyValidator {
         let raw = raw?;
 
         for key in raw.unknown.keys() {
-            warnings.push(ValidationWarning::unknown_key(&format!("network.{}", key)));
+            warnings.push(ValidationWarning::unknown_key(format!("network.{}", key)));
         }
 
         let allowlist = raw.allowlist.unwrap_or_default();
@@ -103,13 +97,12 @@ impl PolicyValidator {
         let raw = raw?;
 
         for key in raw.unknown.keys() {
-            warnings.push(ValidationWarning::unknown_key(&format!("schedule.{}", key)));
+            warnings.push(ValidationWarning::unknown_key(format!("schedule.{}", key)));
         }
 
         let active_hours = raw
             .active_hours
-            .map(|ah| Self::validate_active_hours(ah, errors, warnings))
-            .flatten();
+            .and_then(|ah| Self::validate_active_hours(ah, errors, warnings));
 
         Some(SchedulePolicy { active_hours })
     }
@@ -120,10 +113,7 @@ impl PolicyValidator {
         warnings: &mut Vec<ValidationWarning>,
     ) -> Option<ActiveHours> {
         for key in raw.unknown.keys() {
-            warnings.push(ValidationWarning::unknown_key(&format!(
-                "schedule.active_hours.{}",
-                key
-            )));
+            warnings.push(ValidationWarning::unknown_key(format!("schedule.active_hours.{}", key)));
         }
 
         let start = match raw.start {
@@ -196,10 +186,7 @@ impl PolicyValidator {
 
         if let Some(limit) = raw.daily_limit_usd {
             if limit <= 0.0 {
-                errors.push(ValidationError::new(
-                    "budget.daily_limit_usd",
-                    "must be greater than 0",
-                ));
+                errors.push(ValidationError::new("budget.daily_limit_usd", "must be greater than 0"));
             }
         }
 
@@ -242,10 +229,7 @@ impl PolicyValidator {
         let mut tools = HashMap::new();
         for (name, rt) in raw {
             for key in rt.unknown.keys() {
-                warnings.push(ValidationWarning::unknown_key(&format!(
-                    "tools.{}.{}",
-                    name, key
-                )));
+                warnings.push(ValidationWarning::unknown_key(format!("tools.{}.{}", name, key)));
             }
 
             if let Some(expr) = &rt.requires_approval_if {
@@ -306,10 +290,7 @@ mod tests {
     fn tool_unknown_key_produces_warning() {
         let yaml = "tools:\n  bash:\n    allow: true\n    constraint: read-only\n";
         let out = PolicyValidator::from_yaml(yaml).unwrap();
-        assert!(out
-            .warnings
-            .iter()
-            .any(|w| w.field == "tools.bash.constraint"));
+        assert!(out.warnings.iter().any(|w| w.field == "tools.bash.constraint"));
     }
 
     // ── Network allowlist validation ────────────────────────────────────────
@@ -339,9 +320,7 @@ mod tests {
         let result = PolicyValidator::from_yaml(yaml);
         assert!(result.is_err());
         let errs = result.unwrap_err();
-        assert!(errs
-            .iter()
-            .any(|e| e.field == "tools.bash.requires_approval_if"));
+        assert!(errs.iter().any(|e| e.field == "tools.bash.requires_approval_if"));
     }
 
     #[test]
@@ -409,20 +388,16 @@ mod tests {
 
     #[test]
     fn schedule_invalid_start_format_is_an_error() {
-        let yaml =
-            "schedule:\n  active_hours:\n    start: \"9:00\"\n    end: \"18:00\"\n    timezone: \"UTC\"\n";
+        let yaml = "schedule:\n  active_hours:\n    start: \"9:00\"\n    end: \"18:00\"\n    timezone: \"UTC\"\n";
         let result = PolicyValidator::from_yaml(yaml);
         assert!(result.is_err());
         let errs = result.unwrap_err();
-        assert!(errs
-            .iter()
-            .any(|e| e.field == "schedule.active_hours.start"));
+        assert!(errs.iter().any(|e| e.field == "schedule.active_hours.start"));
     }
 
     #[test]
     fn schedule_end_not_after_start_is_an_error() {
-        let yaml =
-            "schedule:\n  active_hours:\n    start: \"18:00\"\n    end: \"09:00\"\n    timezone: \"UTC\"\n";
+        let yaml = "schedule:\n  active_hours:\n    start: \"18:00\"\n    end: \"09:00\"\n    timezone: \"UTC\"\n";
         let result = PolicyValidator::from_yaml(yaml);
         assert!(result.is_err());
         let errs = result.unwrap_err();
@@ -431,7 +406,8 @@ mod tests {
 
     #[test]
     fn schedule_valid_active_hours_round_trips() {
-        let yaml = "schedule:\n  active_hours:\n    start: \"09:00\"\n    end: \"18:00\"\n    timezone: \"Asia/Taipei\"\n";
+        let yaml =
+            "schedule:\n  active_hours:\n    start: \"09:00\"\n    end: \"18:00\"\n    timezone: \"Asia/Taipei\"\n";
         let out = PolicyValidator::from_yaml(yaml).unwrap();
         let sp = out.document.schedule.unwrap();
         let ah = sp.active_hours.unwrap();

@@ -60,8 +60,7 @@ mod tests {
 
     #[test]
     fn validation_error_with_line_sets_line() {
-        let e = ValidationError::new("network.allowlist[0]", "must not be empty")
-            .with_line(7);
+        let e = ValidationError::new("network.allowlist[0]", "must not be empty").with_line(7);
         assert_eq!(e.line, Some(7));
     }
 
