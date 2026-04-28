@@ -8,6 +8,34 @@ use tokio_util::task::TaskTracker;
 use crate::config::RuntimeConfig;
 use crate::lifecycle::wait_for_shutdown_signal;
 
+/// Load policy rules from `config.policy_path`, or return empty rules if disabled.
+///
+/// Exits the process with code 1 if the file exists but cannot be parsed —
+/// a malformed policy is a configuration error that must be fixed before startup.
+fn load_policy(policy_path: &Option<std::path::PathBuf>) -> std::sync::Arc<crate::policy::PolicyRules> {
+    let rules = match policy_path {
+        None => {
+            tracing::info!("policy enforcement disabled (AA_POLICY_PATH set to empty)");
+            crate::policy::PolicyRules::default()
+        }
+        Some(path) => match crate::policy::load_policy(path) {
+            Ok(rules) => {
+                tracing::info!(
+                    path = %path.display(),
+                    rule_count = rules.rules.len(),
+                    "policy loaded"
+                );
+                rules
+            }
+            Err(e) => {
+                tracing::error!(error = %e, path = %path.display(), "failed to parse policy file — aborting");
+                std::process::exit(1);
+            }
+        },
+    };
+    std::sync::Arc::new(rules)
+}
+
 /// Start the runtime and block until graceful shutdown completes.
 ///
 /// This is the main async entry point called from `main()`. It creates the
@@ -38,29 +66,7 @@ pub async fn run(config: RuntimeConfig) {
     tracing::info!("structured concurrency primitives initialised");
 
     // Load policy rules from the mounted volume (or use empty rules if disabled/absent).
-    let policy = {
-        let rules = match &config.policy_path {
-            None => {
-                tracing::info!("policy enforcement disabled (AA_POLICY_PATH set to empty)");
-                crate::policy::PolicyRules::default()
-            }
-            Some(path) => match crate::policy::load_policy(path) {
-                Ok(rules) => {
-                    tracing::info!(
-                        path = %path.display(),
-                        rule_count = rules.rules.len(),
-                        "policy loaded"
-                    );
-                    rules
-                }
-                Err(e) => {
-                    tracing::error!(error = %e, path = %path.display(), "failed to parse policy file — aborting");
-                    std::process::exit(1);
-                }
-            },
-        };
-        std::sync::Arc::new(rules)
-    };
+    let policy = load_policy(&config.policy_path);
 
     // Build pipeline config and create the inbound channel at the configured depth.
     let pipeline_config = crate::pipeline::PipelineConfig::from_runtime_config(&config);
@@ -184,6 +190,27 @@ mod tests {
 
     use tokio_util::sync::CancellationToken;
     use tokio_util::task::TaskTracker;
+
+    /// Verifies that `load_policy(None)` returns empty rules (enforcement disabled).
+    #[test]
+    fn load_policy_none_returns_empty_rules() {
+        let policy = super::load_policy(&None);
+        assert!(policy.rules.is_empty());
+    }
+
+    /// Verifies that `load_policy(Some(path))` loads rules from a valid TOML file.
+    #[test]
+    fn load_policy_some_loads_rules_from_file() {
+        use std::io::Write;
+        let mut tmp = tempfile::NamedTempFile::new().expect("tempfile");
+        writeln!(tmp, "[[rules]]").unwrap();
+        writeln!(tmp, r#"name = "test-rule""#).unwrap();
+        writeln!(tmp, r#"blocked_actions = ["FILE_OPERATION"]"#).unwrap();
+        tmp.flush().unwrap();
+        let policy = super::load_policy(&Some(tmp.path().to_path_buf()));
+        assert_eq!(policy.rules.len(), 1);
+        assert_eq!(policy.rules[0].name, "test-rule");
+    }
 
     /// Verifies the structured concurrency primitives drain cleanly under load.
     ///
