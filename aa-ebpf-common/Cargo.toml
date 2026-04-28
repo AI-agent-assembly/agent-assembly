@@ -6,9 +6,14 @@ license.workspace = true
 repository.workspace = true
 description = "Shared no_std types between eBPF kernel probes and userspace loader"
 
+# no_std by default so this crate can be compiled for both the host target
+# (by aa-ebpf) and the bpf target (by aa-ebpf-programs).
 [features]
 default = []
-user = []
+# Enable std types (timestamps, Display) for userspace use.
+std = []
+
+[dependencies]
 
 [lints]
 workspace = true
