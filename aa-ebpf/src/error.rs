@@ -81,19 +81,13 @@ mod tests {
     #[test]
     fn display_program_load() {
         let err = EbpfError::ProgramLoad("missing privileges".into());
-        assert_eq!(
-            err.to_string(),
-            "eBPF program load failed: missing privileges"
-        );
+        assert_eq!(err.to_string(), "eBPF program load failed: missing privileges");
     }
 
     #[test]
     fn display_probe_attach() {
         let err = EbpfError::ProbeAttach("sys_openat not found".into());
-        assert_eq!(
-            err.to_string(),
-            "kprobe attach failed: sys_openat not found"
-        );
+        assert_eq!(err.to_string(), "kprobe attach failed: sys_openat not found");
     }
 
     #[test]
@@ -113,10 +107,7 @@ mod tests {
         let err = EbpfError::MapNotFound {
             name: "PID_FILTER".into(),
         };
-        assert_eq!(
-            err.to_string(),
-            "eBPF map `PID_FILTER` not found in object"
-        );
+        assert_eq!(err.to_string(), "eBPF map `PID_FILTER` not found in object");
     }
 
     #[test]

@@ -54,15 +54,10 @@ impl RingBufReader {
     pub fn new(mut bpf: Ebpf) -> Result<Self, EbpfError> {
         let map = bpf
             .take_map("EVENTS")
-            .ok_or_else(|| EbpfError::MapNotFound {
-                name: "EVENTS".into(),
-            })?;
+            .ok_or_else(|| EbpfError::MapNotFound { name: "EVENTS".into() })?;
         let ring_buf = RingBuf::try_from(map)?;
         let async_fd = AsyncFd::new(ring_buf)?;
-        Ok(Self {
-            _bpf: bpf,
-            async_fd,
-        })
+        Ok(Self { _bpf: bpf, async_fd })
     }
 
     /// Read the next event from the ring buffer (async).
@@ -101,15 +96,9 @@ impl RingBufReader {
 /// - [`ExecEvent`]:  8 + 4 + 4 + 4 + 4 + 256 + 512 = 792 bytes
 fn parse_event(bytes: &[u8]) -> Result<EbpfEvent, EbpfError> {
     match bytes.len() {
-        n if n == mem::size_of::<TlsCaptureEvent>() => Ok(EbpfEvent::Tls(
-            Box::new(bytes_to::<TlsCaptureEvent>(bytes)),
-        )),
-        n if n == mem::size_of::<FileIoEventRaw>() => Ok(EbpfEvent::File(
-            Box::new(bytes_to::<FileIoEventRaw>(bytes)),
-        )),
-        n if n == mem::size_of::<ExecEvent>() => {
-            Ok(EbpfEvent::Exec(Box::new(bytes_to::<ExecEvent>(bytes))))
-        }
+        n if n == mem::size_of::<TlsCaptureEvent>() => Ok(EbpfEvent::Tls(Box::new(bytes_to::<TlsCaptureEvent>(bytes)))),
+        n if n == mem::size_of::<FileIoEventRaw>() => Ok(EbpfEvent::File(Box::new(bytes_to::<FileIoEventRaw>(bytes)))),
+        n if n == mem::size_of::<ExecEvent>() => Ok(EbpfEvent::Exec(Box::new(bytes_to::<ExecEvent>(bytes)))),
         got => Err(EbpfError::EventSize {
             expected: mem::size_of::<TlsCaptureEvent>(),
             got,
@@ -128,11 +117,7 @@ fn bytes_to<T: Copy>(bytes: &[u8]) -> T {
     // SAFETY: T is #[repr(C)] and Copy; size equality is checked above.
     let mut value = mem::MaybeUninit::<T>::uninit();
     unsafe {
-        std::ptr::copy_nonoverlapping(
-            bytes.as_ptr(),
-            value.as_mut_ptr().cast::<u8>(),
-            bytes.len(),
-        );
+        std::ptr::copy_nonoverlapping(bytes.as_ptr(), value.as_mut_ptr().cast::<u8>(), bytes.len());
         value.assume_init()
     }
 }
