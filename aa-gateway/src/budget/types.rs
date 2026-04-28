@@ -40,6 +40,26 @@ pub enum BudgetStatus {
     LimitExceeded,
 }
 
+/// Per-agent accumulated spend for a single UTC calendar day.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct BudgetState {
+    /// Total USD spent today using exact decimal arithmetic.
+    #[serde(with = "rust_decimal::serde::str")]
+    pub spent_usd: rust_decimal::Decimal,
+    /// UTC calendar date this state is valid for.
+    pub date: chrono::NaiveDate,
+}
+
+impl BudgetState {
+    /// Create a fresh zero-spend state stamped with today's UTC date.
+    pub fn new_today() -> Self {
+        Self {
+            spent_usd: rust_decimal::Decimal::ZERO,
+            date: chrono::Utc::now().date_naive(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -83,5 +103,14 @@ mod tests {
         let s = BudgetStatus::ThresholdAlert { pct: 80 };
         assert_eq!(s, BudgetStatus::ThresholdAlert { pct: 80 });
         assert_ne!(s, BudgetStatus::ThresholdAlert { pct: 95 });
+    }
+
+    #[test]
+    fn budget_state_new_today_has_zero_spend() {
+        use chrono::Utc;
+        use rust_decimal::Decimal;
+        let state = BudgetState::new_today();
+        assert_eq!(state.spent_usd, Decimal::ZERO);
+        assert_eq!(state.date, Utc::now().date_naive());
     }
 }
