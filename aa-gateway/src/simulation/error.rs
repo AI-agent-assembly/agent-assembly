@@ -11,6 +11,8 @@ pub enum SimulationError {
     AuditParse(String),
     /// An I/O error occurred reading a file.
     IoError(std::io::Error),
+    /// The duration string could not be parsed (e.g. `--duration 60s`).
+    InvalidDuration(String),
 }
 
 impl fmt::Display for SimulationError {
@@ -19,6 +21,7 @@ impl fmt::Display for SimulationError {
             Self::PolicyLoad(msg) => write!(f, "policy load error: {msg}"),
             Self::AuditParse(msg) => write!(f, "audit log parse error: {msg}"),
             Self::IoError(err) => write!(f, "I/O error: {err}"),
+            Self::InvalidDuration(msg) => write!(f, "invalid duration: {msg}"),
         }
     }
 }
