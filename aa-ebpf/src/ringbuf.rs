@@ -15,9 +15,9 @@ pub enum EbpfEvent {
     /// TLS plaintext capture (AAASM-37).
     Tls(Box<TlsCaptureEvent>),
     /// File I/O operation (AAASM-38).
-    File(FileEvent),
+    File(Box<FileEvent>),
     /// Process exec (AAASM-39).
-    Exec(ExecEvent),
+    Exec(Box<ExecEvent>),
 }
 
 /// Async consumer that reads [`EbpfEvent`]s from the BPF ring buffer.
