@@ -106,4 +106,54 @@ mod tests {
         lineage.remove(100);
         assert!(!lineage.parent_map.contains_key(&100));
     }
+
+    #[test]
+    fn same_pid_is_same_family() {
+        let lineage = PidLineage::new();
+        assert!(lineage.is_same_family(42, 42));
+    }
+
+    #[test]
+    fn parent_child_is_same_family() {
+        let mut lineage = PidLineage::new();
+        // 100 is child of 1
+        lineage.register(100, 1);
+        assert!(lineage.is_same_family(1, 100));
+        assert!(lineage.is_same_family(100, 1));
+    }
+
+    #[test]
+    fn grandparent_grandchild_is_same_family() {
+        let mut lineage = PidLineage::new();
+        // 1 → 100 → 200
+        lineage.register(100, 1);
+        lineage.register(200, 100);
+        assert!(lineage.is_same_family(1, 200));
+        assert!(lineage.is_same_family(200, 1));
+    }
+
+    #[test]
+    fn shared_ancestor_is_same_family() {
+        let mut lineage = PidLineage::new();
+        // 1 → 100, 1 → 200 (siblings)
+        lineage.register(100, 1);
+        lineage.register(200, 1);
+        assert!(lineage.is_same_family(100, 200));
+        assert!(lineage.is_same_family(200, 100));
+    }
+
+    #[test]
+    fn unrelated_pids_are_not_same_family() {
+        let mut lineage = PidLineage::new();
+        // Two separate trees: 1→100 and 2→200
+        lineage.register(100, 1);
+        lineage.register(200, 2);
+        assert!(!lineage.is_same_family(100, 200));
+    }
+
+    #[test]
+    fn unknown_pids_are_not_same_family() {
+        let lineage = PidLineage::new();
+        assert!(!lineage.is_same_family(1, 2));
+    }
 }
