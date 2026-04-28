@@ -6,16 +6,20 @@ pub mod metrics;
 pub use event::{EnrichedEvent, EventSource};
 pub use metrics::PipelineMetrics;
 
+use crate::approval::{ApprovalDecision as RuntimeApprovalDecision, ApprovalQueue, ApprovalRequest};
 use crate::config::RuntimeConfig;
 use crate::ipc::{IpcFrame, IpcResponse, ResponseRouter};
 use crate::policy::PolicyRules;
 use aa_proto::assembly::audit::v1::{audit_event::Detail, AuditEvent, PolicyViolation};
-use aa_proto::assembly::common::v1::ActionType;
+use aa_proto::assembly::common::v1::{ActionType, Decision};
+use aa_proto::assembly::event::v1::ApprovalDecision as ProtoApprovalDecision;
+use aa_proto::assembly::policy::v1::CheckActionResponse;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::{broadcast, mpsc};
 use tokio_util::sync::CancellationToken;
+use uuid::Uuid;
 
 /// Configuration for the event aggregation pipeline.
 ///
@@ -61,6 +65,7 @@ pub async fn run(
     token: CancellationToken,
     policy: Arc<PolicyRules>,
     response_router: ResponseRouter,
+    approval_queue: Arc<ApprovalQueue>,
 ) {
     let seq = AtomicU64::new(0);
     let mut batch: Vec<EnrichedEvent> = Vec::with_capacity(config.batch_size);
@@ -80,25 +85,38 @@ pub async fn run(
             }
 
             Some((connection_id, frame)) = rx.recv() => {
-                if let IpcFrame::EventReport(event) = frame {
-                    let enriched = enrich(event, &config.agent_id, connection_id, &seq);
-                    tracing::debug!(sequence_number = enriched.sequence_number, connection_id, "event enriched");
-                    metrics.record_processed(1);
-                    ::metrics::counter!("aa_events_received_total").increment(1);
-                    if is_policy_violation(&enriched, &policy) {
-                        // Bypass the batch — emit immediately.
-                        ::metrics::counter!("aa_policy_violations_total").increment(1);
-                        // Push a ViolationAlert back to the originating SDK connection.
-                        push_violation_alert(&enriched, &response_router).await;
-                        let _ = broadcast_tx.send(enriched);
-                    } else {
-                        batch.push(enriched);
-                        if batch.len() >= config.batch_size {
-                            flush(&mut batch, &broadcast_tx, &metrics);
+                match frame {
+                    IpcFrame::EventReport(event) => {
+                        let enriched = enrich(event, &config.agent_id, connection_id, &seq);
+                        tracing::debug!(sequence_number = enriched.sequence_number, connection_id, "event enriched");
+                        metrics.record_processed(1);
+                        ::metrics::counter!("aa_events_received_total").increment(1);
+                        if is_policy_violation(&enriched, &policy) {
+                            // Bypass the batch — emit immediately.
+                            ::metrics::counter!("aa_policy_violations_total").increment(1);
+                            // Push a ViolationAlert back to the originating SDK connection.
+                            push_violation_alert(&enriched, &response_router).await;
+                            let _ = broadcast_tx.send(enriched);
+                        } else {
+                            batch.push(enriched);
+                            if batch.len() >= config.batch_size {
+                                flush(&mut batch, &broadcast_tx, &metrics);
+                            }
                         }
                     }
+                    IpcFrame::PolicyQuery(req) => {
+                        handle_policy_query(
+                            connection_id,
+                            req,
+                            &policy,
+                            &approval_queue,
+                            &response_router,
+                        )
+                        .await;
+                    }
+                    // ApprovalResponse, Heartbeat: not pipeline events, ignored.
+                    _ => {}
                 }
-                // PolicyQuery, ApprovalResponse, Heartbeat: not pipeline events, ignored.
             }
 
             _ = ticker.tick() => {
@@ -189,6 +207,137 @@ async fn push_violation_alert(event: &EnrichedEvent, router: &crate::ipc::Respon
             );
         }
     }
+}
+
+/// Send an [`IpcResponse`] to the SDK connection identified by `connection_id`.
+///
+/// If the connection has already disconnected the message is silently dropped.
+async fn send_ipc_response(connection_id: u64, response: IpcResponse, router: &ResponseRouter) {
+    let sender = {
+        let map = router.read().await;
+        map.get(&connection_id).cloned()
+    };
+    if let Some(tx) = sender {
+        if tx.send(response).await.is_err() {
+            tracing::debug!(connection_id, "IpcResponse dropped — connection already closed");
+        }
+    }
+}
+
+/// Evaluate a [`IpcFrame::PolicyQuery`] against the loaded policy and respond.
+///
+/// Decision priority (first match wins):
+/// 1. `requires_approval_actions` → `PENDING` + submit to [`ApprovalQueue`]; spawn a task to
+///    push an [`IpcResponse::ApprovalDecision`] back once the request is resolved.
+/// 2. `blocked_actions` → `DENY`.
+/// 3. No match → `ALLOW`.
+async fn handle_policy_query(
+    connection_id: u64,
+    req: aa_proto::assembly::policy::v1::CheckActionRequest,
+    policy: &PolicyRules,
+    approval_queue: &Arc<ApprovalQueue>,
+    response_router: &ResponseRouter,
+) {
+    let action_str = ActionType::try_from(req.action_type)
+        .map(|a| a.as_str_name())
+        .unwrap_or("");
+    let agent_id_str = req
+        .agent_id
+        .as_ref()
+        .map(|a| a.agent_id.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    // 1. Check requires_approval_actions.
+    for rule in &policy.rules {
+        if rule.requires_approval_actions.iter().any(|a| a == action_str) {
+            let request_id = Uuid::new_v4();
+            let submitted_at = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or(Duration::ZERO)
+                .as_secs();
+            let approval_req = ApprovalRequest {
+                request_id,
+                agent_id: agent_id_str.clone(),
+                action: action_str.to_string(),
+                condition_triggered: rule.name.clone(),
+                submitted_at,
+                timeout_secs: rule.approval_timeout_secs as u64,
+                fallback: aa_core::PolicyResult::Deny {
+                    reason: "approval timed out".to_string(),
+                },
+            };
+            let (rid, fut) = approval_queue.submit(approval_req);
+
+            send_ipc_response(
+                connection_id,
+                IpcResponse::PolicyResponse(CheckActionResponse {
+                    decision: Decision::Pending as i32,
+                    approval_id: rid.to_string(),
+                    policy_rule: rule.name.clone(),
+                    ..Default::default()
+                }),
+                response_router,
+            )
+            .await;
+
+            // Spawn a task that awaits resolution and pushes the decision back.
+            let router = Arc::clone(response_router);
+            tokio::spawn(async move {
+                if let Ok(decision) = fut.await {
+                    let (approved, decided_by, reason) = match decision {
+                        RuntimeApprovalDecision::Approved { by, reason } => (true, by, reason.unwrap_or_default()),
+                        RuntimeApprovalDecision::Rejected { by, reason } => (false, by, reason),
+                        RuntimeApprovalDecision::TimedOut { .. } => {
+                            (false, "timeout".to_string(), "approval timed out".to_string())
+                        }
+                    };
+                    let decided_at_unix_ms = SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap_or(Duration::ZERO)
+                        .as_millis() as i64;
+                    let proto = ProtoApprovalDecision {
+                        approval_id: rid.to_string(),
+                        approved,
+                        decided_by,
+                        reason,
+                        decided_at_unix_ms,
+                    };
+                    send_ipc_response(connection_id, IpcResponse::ApprovalDecision(proto), &router).await;
+                }
+            });
+            return;
+        }
+    }
+
+    // 2. Check blocked_actions.
+    for rule in &policy.rules {
+        if rule.blocked_actions.iter().any(|ba| ba == action_str) {
+            send_ipc_response(
+                connection_id,
+                IpcResponse::PolicyResponse(CheckActionResponse {
+                    decision: Decision::Deny as i32,
+                    reason: format!("blocked by rule: {}", rule.name),
+                    policy_rule: rule.name.clone(),
+                    ..Default::default()
+                }),
+                response_router,
+            )
+            .await;
+            return;
+        }
+    }
+
+    // 3. Default: allow.
+    send_ipc_response(
+        connection_id,
+        IpcResponse::PolicyResponse(CheckActionResponse {
+            decision: Decision::Allow as i32,
+            ..Default::default()
+        }),
+        response_router,
+    )
+    .await;
 }
 
 /// Broadcast all events in `batch` and record metrics.
@@ -387,6 +536,7 @@ mod tests {
             token.clone(),
             Arc::new(PolicyRules::default()),
             crate::ipc::new_response_router(),
+            crate::approval::ApprovalQueue::new(),
         ));
 
         // Send 3 events — batch threshold reached, should flush before interval
@@ -421,6 +571,7 @@ mod tests {
             token.clone(),
             Arc::new(PolicyRules::default()),
             crate::ipc::new_response_router(),
+            crate::approval::ApprovalQueue::new(),
         ));
 
         // Send 5 events (less than batch_size=100) — should arrive after interval flush
@@ -455,6 +606,7 @@ mod tests {
             token.clone(),
             Arc::new(PolicyRules::default()),
             crate::ipc::new_response_router(),
+            crate::approval::ApprovalQueue::new(),
         ));
 
         // Send a violation — should arrive immediately, bypassing batch
@@ -486,6 +638,7 @@ mod tests {
             token.clone(),
             Arc::new(PolicyRules::default()),
             crate::ipc::new_response_router(),
+            crate::approval::ApprovalQueue::new(),
         ));
 
         // Send 5 events (batch won't flush yet)
@@ -538,6 +691,7 @@ mod tests {
             token.clone(),
             Arc::new(PolicyRules::default()),
             crate::ipc::new_response_router(),
+            crate::approval::ApprovalQueue::new(),
         ));
 
         // Send non-event frames
@@ -561,6 +715,7 @@ mod tests {
             rules: vec![PolicyRule {
                 name: "block-files".to_string(),
                 blocked_actions: vec![ActionType::FileOperation.as_str_name().to_string()],
+                ..Default::default()
             }],
         });
 
@@ -579,6 +734,7 @@ mod tests {
             token.clone(),
             policy,
             crate::ipc::new_response_router(),
+            crate::approval::ApprovalQueue::new(),
         ));
 
         // Build an AuditEvent with action_type = FILE_OPERATION
@@ -609,6 +765,7 @@ mod tests {
             rules: vec![PolicyRule {
                 name: "block-files".to_string(),
                 blocked_actions: vec![ActionType::FileOperation.as_str_name().to_string()],
+                ..Default::default()
             }],
         });
 
@@ -627,6 +784,7 @@ mod tests {
             token.clone(),
             policy,
             crate::ipc::new_response_router(),
+            crate::approval::ApprovalQueue::new(),
         ));
 
         // Yield briefly so the pipeline's interval fires its immediate first tick
@@ -667,6 +825,7 @@ mod tests {
             token.clone(),
             Arc::new(PolicyRules::default()),
             crate::ipc::new_response_router(),
+            crate::approval::ApprovalQueue::new(),
         ));
 
         for _ in 0..3 {
@@ -708,6 +867,7 @@ mod tests {
             token.clone(),
             Arc::new(PolicyRules::default()),
             crate::ipc::new_response_router(),
+            crate::approval::ApprovalQueue::new(),
         ));
 
         // First batch of 2
@@ -771,6 +931,7 @@ mod tests {
             token.clone(),
             Arc::new(PolicyRules::default()),
             crate::ipc::new_response_router(),
+            crate::approval::ApprovalQueue::new(),
         ));
 
         // Spawn a receiver that drains the broadcast channel
@@ -807,6 +968,240 @@ mod tests {
         );
 
         assert!(elapsed.as_secs() < 5, "100k events took more than 5s: {:?}", elapsed);
+        token.cancel();
+    }
+
+    // -----------------------------------------------------------------------
+    // PolicyQuery handling tests
+    // -----------------------------------------------------------------------
+
+    /// Helper: build a router with a live receiver for `connection_id = 0`.
+    fn make_router_with_receiver() -> (ResponseRouter, tokio::sync::mpsc::Receiver<IpcResponse>) {
+        let router = crate::ipc::new_response_router();
+        let (tx, rx) = tokio::sync::mpsc::channel::<IpcResponse>(16);
+        router.try_write().unwrap().insert(0, tx);
+        (router, rx)
+    }
+
+    fn policy_query_frame(action_type: aa_proto::assembly::common::v1::ActionType) -> IpcFrame {
+        IpcFrame::PolicyQuery(aa_proto::assembly::policy::v1::CheckActionRequest {
+            action_type: action_type as i32,
+            ..Default::default()
+        })
+    }
+
+    #[tokio::test]
+    async fn policy_query_no_rules_responds_allow() {
+        use aa_proto::assembly::common::v1::{ActionType, Decision};
+
+        let config = test_config(100, 10_000);
+        let (tx, rx) = mpsc::channel::<(u64, IpcFrame)>(64);
+        let (broadcast_tx, _rx) = broadcast::channel::<EnrichedEvent>(64);
+        let metrics = Arc::new(PipelineMetrics::default());
+        let token = CancellationToken::new();
+        let (router, mut resp_rx) = make_router_with_receiver();
+        let approval_queue = crate::approval::ApprovalQueue::new();
+
+        tokio::spawn(run(
+            rx,
+            broadcast_tx,
+            config,
+            metrics,
+            token.clone(),
+            Arc::new(PolicyRules::default()),
+            router,
+            approval_queue,
+        ));
+
+        tx.send((0, policy_query_frame(ActionType::ToolCall))).await.unwrap();
+
+        let resp = tokio::time::timeout(Duration::from_millis(200), resp_rx.recv())
+            .await
+            .expect("response timed out")
+            .expect("channel closed");
+
+        if let IpcResponse::PolicyResponse(r) = resp {
+            assert_eq!(r.decision, Decision::Allow as i32);
+        } else {
+            panic!("expected PolicyResponse, got {resp:?}");
+        }
+        token.cancel();
+    }
+
+    #[tokio::test]
+    async fn policy_query_blocked_action_responds_deny() {
+        use crate::policy::{PolicyRule, PolicyRules};
+        use aa_proto::assembly::common::v1::{ActionType, Decision};
+
+        let policy = Arc::new(PolicyRules {
+            rules: vec![PolicyRule {
+                name: "block-tool".to_string(),
+                blocked_actions: vec![ActionType::ToolCall.as_str_name().to_string()],
+                ..Default::default()
+            }],
+        });
+
+        let config = test_config(100, 10_000);
+        let (tx, rx) = mpsc::channel::<(u64, IpcFrame)>(64);
+        let (broadcast_tx, _rx) = broadcast::channel::<EnrichedEvent>(64);
+        let metrics = Arc::new(PipelineMetrics::default());
+        let token = CancellationToken::new();
+        let (router, mut resp_rx) = make_router_with_receiver();
+        let approval_queue = crate::approval::ApprovalQueue::new();
+
+        tokio::spawn(run(
+            rx,
+            broadcast_tx,
+            config,
+            metrics,
+            token.clone(),
+            policy,
+            router,
+            approval_queue,
+        ));
+
+        tx.send((0, policy_query_frame(ActionType::ToolCall))).await.unwrap();
+
+        let resp = tokio::time::timeout(Duration::from_millis(200), resp_rx.recv())
+            .await
+            .expect("response timed out")
+            .expect("channel closed");
+
+        if let IpcResponse::PolicyResponse(r) = resp {
+            assert_eq!(r.decision, Decision::Deny as i32);
+        } else {
+            panic!("expected PolicyResponse, got {resp:?}");
+        }
+        token.cancel();
+    }
+
+    #[tokio::test]
+    async fn policy_query_requires_approval_responds_pending_and_adds_to_queue() {
+        use crate::policy::{PolicyRule, PolicyRules};
+        use aa_proto::assembly::common::v1::{ActionType, Decision};
+
+        let policy = Arc::new(PolicyRules {
+            rules: vec![PolicyRule {
+                name: "approve-tool".to_string(),
+                requires_approval_actions: vec![ActionType::ToolCall.as_str_name().to_string()],
+                approval_timeout_secs: 60,
+                ..Default::default()
+            }],
+        });
+
+        let config = test_config(100, 10_000);
+        let (tx, rx) = mpsc::channel::<(u64, IpcFrame)>(64);
+        let (broadcast_tx, _rx) = broadcast::channel::<EnrichedEvent>(64);
+        let metrics = Arc::new(PipelineMetrics::default());
+        let token = CancellationToken::new();
+        let (router, mut resp_rx) = make_router_with_receiver();
+        let approval_queue = crate::approval::ApprovalQueue::new();
+        let queue_ref = Arc::clone(&approval_queue);
+
+        tokio::spawn(run(
+            rx,
+            broadcast_tx,
+            config,
+            metrics,
+            token.clone(),
+            policy,
+            router,
+            approval_queue,
+        ));
+
+        tx.send((0, policy_query_frame(ActionType::ToolCall))).await.unwrap();
+
+        let resp = tokio::time::timeout(Duration::from_millis(200), resp_rx.recv())
+            .await
+            .expect("response timed out")
+            .expect("channel closed");
+
+        if let IpcResponse::PolicyResponse(r) = resp {
+            assert_eq!(r.decision, Decision::Pending as i32);
+            assert!(!r.approval_id.is_empty(), "approval_id should be set");
+        } else {
+            panic!("expected PolicyResponse(PENDING), got {resp:?}");
+        }
+
+        // One pending entry should now be in the queue.
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        assert_eq!(queue_ref.list().len(), 1);
+
+        token.cancel();
+    }
+
+    #[tokio::test]
+    async fn policy_query_pending_resolution_pushes_approval_decision() {
+        use crate::approval::ApprovalDecision as RuntimeApprovalDecision;
+        use crate::policy::{PolicyRule, PolicyRules};
+        use aa_proto::assembly::common::v1::ActionType;
+
+        let policy = Arc::new(PolicyRules {
+            rules: vec![PolicyRule {
+                name: "approve-tool".to_string(),
+                requires_approval_actions: vec![ActionType::ToolCall.as_str_name().to_string()],
+                approval_timeout_secs: 60,
+                ..Default::default()
+            }],
+        });
+
+        let config = test_config(100, 10_000);
+        let (tx, rx) = mpsc::channel::<(u64, IpcFrame)>(64);
+        let (broadcast_tx, _rx) = broadcast::channel::<EnrichedEvent>(64);
+        let metrics = Arc::new(PipelineMetrics::default());
+        let token = CancellationToken::new();
+        let (router, mut resp_rx) = make_router_with_receiver();
+        let approval_queue = crate::approval::ApprovalQueue::new();
+        let queue_ref = Arc::clone(&approval_queue);
+
+        tokio::spawn(run(
+            rx,
+            broadcast_tx,
+            config,
+            metrics,
+            token.clone(),
+            policy,
+            router,
+            approval_queue,
+        ));
+
+        // Send the query — get back PENDING with approval_id.
+        tx.send((0, policy_query_frame(ActionType::ToolCall))).await.unwrap();
+        let pending_resp = tokio::time::timeout(Duration::from_millis(200), resp_rx.recv())
+            .await
+            .expect("response timed out")
+            .expect("channel closed");
+        let approval_id = if let IpcResponse::PolicyResponse(r) = pending_resp {
+            uuid::Uuid::parse_str(&r.approval_id).expect("invalid UUID in approval_id")
+        } else {
+            panic!("expected PolicyResponse(PENDING), got {pending_resp:?}");
+        };
+
+        // Approve it via the queue.
+        queue_ref
+            .decide(
+                approval_id,
+                RuntimeApprovalDecision::Approved {
+                    by: "test-operator".to_string(),
+                    reason: Some("looks safe".to_string()),
+                },
+            )
+            .expect("decide should succeed");
+
+        // The spawned resolution task should push an ApprovalDecision response.
+        let decision_resp = tokio::time::timeout(Duration::from_millis(200), resp_rx.recv())
+            .await
+            .expect("ApprovalDecision push timed out")
+            .expect("channel closed");
+
+        if let IpcResponse::ApprovalDecision(proto) = decision_resp {
+            assert!(proto.approved);
+            assert_eq!(proto.decided_by, "test-operator");
+            assert_eq!(proto.approval_id, approval_id.to_string());
+        } else {
+            panic!("expected IpcResponse::ApprovalDecision, got {decision_resp:?}");
+        }
+
         token.cancel();
     }
 }

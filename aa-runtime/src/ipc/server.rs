@@ -653,6 +653,7 @@ mod tests {
             pipeline_token,
             Arc::new(crate::policy::PolicyRules::default()),
             pipeline_router,
+            crate::approval::ApprovalQueue::new(),
         ));
 
         // Connect a client.
@@ -741,6 +742,7 @@ mod tests {
             pipeline_token,
             Arc::new(crate::policy::PolicyRules::default()),
             pipeline_router,
+            crate::approval::ApprovalQueue::new(),
         ));
 
         // Connect a client.
