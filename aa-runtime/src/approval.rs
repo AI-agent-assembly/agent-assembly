@@ -178,7 +178,20 @@ impl ApprovalQueue {
     /// if the entry was already gone (idempotent — a second call for the same
     /// `id` is a safe no-op).
     fn resolve(&self, id: ApprovalRequestId, decision: ApprovalDecision) -> bool {
-        if let Some((_key, (_req, tx))) = self.pending.remove(&id) {
+        if let Some((_key, (req, tx))) = self.pending.remove(&id) {
+            let (event_type, decided_by) = match &decision {
+                ApprovalDecision::Approved { by, .. } => ("ApprovalGranted", by.clone()),
+                ApprovalDecision::Rejected { by, .. } => ("ApprovalDenied", by.clone()),
+                ApprovalDecision::TimedOut { .. } => ("ApprovalTimedOut", "timeout".to_string()),
+            };
+            tracing::info!(
+                event_type,
+                request_id = %req.request_id,
+                agent_id = %req.agent_id,
+                action = %req.action,
+                decided_by = %decided_by,
+                "approval decision recorded"
+            );
             // Ignore send errors: the receiver may have been dropped (caller
             // gave up waiting), which is not a failure on our side.
             let _ = tx.send(decision);
@@ -204,6 +217,16 @@ impl ApprovalQueue {
         let id = request.request_id;
         let timeout_secs = request.timeout_secs;
         let fallback = request.fallback.clone();
+
+        tracing::info!(
+            event_type = "ApprovalRequested",
+            request_id = %id,
+            agent_id = %request.agent_id,
+            action = %request.action,
+            condition_triggered = %request.condition_triggered,
+            timeout_secs,
+            "approval requested"
+        );
 
         let (tx, rx) = oneshot::channel();
         self.pending.insert(id, (request, tx));
