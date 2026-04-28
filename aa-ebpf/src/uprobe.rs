@@ -7,7 +7,7 @@
 #[cfg(target_os = "linux")]
 use aya::{
     maps::Array,
-    programs::{uprobe::UProbeLink, UProbe},
+    programs::{uprobe::UProbeLinkIdId, UProbe},
     Ebpf,
 };
 
@@ -16,7 +16,7 @@ use crate::error::EbpfError;
 /// Attaches and manages OpenSSL uprobe/uretprobe programs.
 ///
 /// Create via [`UprobeManager::attach`]. The probes stay active until the
-/// `UprobeManager` is dropped — dropping releases all [`UProbeLink`]s,
+/// `UprobeManager` is dropped — dropping releases all [`UProbeLinkId`]s,
 /// which detaches the probes from the kernel.
 pub struct UprobeManager {
     /// Target PID to monitor. `None` means monitor all processes.
@@ -24,7 +24,7 @@ pub struct UprobeManager {
     /// Live uprobe/uretprobe links.  Must be kept alive for probes to remain
     /// attached; dropping them detaches the probes immediately.
     #[cfg(target_os = "linux")]
-    _links: Vec<UProbeLink>,
+    _links: Vec<UProbeLinkId>,
 }
 
 impl UprobeManager {
@@ -57,7 +57,7 @@ impl UprobeManager {
         // 2. Find the OpenSSL shared library for the target process.
         let ssl_path = find_openssl_path(target_pid)?;
 
-        let mut links: Vec<UProbeLink> = Vec::with_capacity(3);
+        let mut links: Vec<UProbeLinkId> = Vec::with_capacity(3);
 
         // 3. Attach ssl_write uprobe (captures outbound TLS plaintext).
         {
