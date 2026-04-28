@@ -648,6 +648,99 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn sequence_numbers_are_consecutive_within_a_batch() {
+        // batch_size=3 so we get a single flush of 3 events and can check ordering.
+        let config = test_config(3, 10_000);
+        let (tx, rx) = mpsc::channel::<(u64, IpcFrame)>(64);
+        let (broadcast_tx, mut broadcast_rx) = broadcast::channel::<EnrichedEvent>(64);
+        let metrics = Arc::new(PipelineMetrics::default());
+        let token = CancellationToken::new();
+
+        tokio::spawn(run(
+            rx,
+            broadcast_tx,
+            config,
+            metrics.clone(),
+            token.clone(),
+            Arc::new(PolicyRules::default()),
+            crate::ipc::new_response_router(),
+        ));
+
+        for _ in 0..3 {
+            tx.send((0, IpcFrame::EventReport(normal_event()))).await.unwrap();
+        }
+
+        let mut seq_numbers = Vec::new();
+        for _ in 0..3 {
+            let event = tokio::time::timeout(Duration::from_millis(500), broadcast_rx.recv())
+                .await
+                .expect("timed out waiting for event")
+                .expect("broadcast error");
+            seq_numbers.push(event.sequence_number);
+        }
+
+        // Sequence numbers must be strictly monotonically increasing, starting at 0.
+        assert_eq!(seq_numbers, vec![0, 1, 2], "expected consecutive sequence numbers 0, 1, 2");
+        token.cancel();
+    }
+
+    #[tokio::test]
+    async fn sequence_numbers_are_monotonic_across_batches() {
+        // Two separate batch flushes — sequence counter must not reset between them.
+        let config = test_config(2, 10_000); // batch_size=2
+        let (tx, rx) = mpsc::channel::<(u64, IpcFrame)>(64);
+        let (broadcast_tx, mut broadcast_rx) = broadcast::channel::<EnrichedEvent>(64);
+        let metrics = Arc::new(PipelineMetrics::default());
+        let token = CancellationToken::new();
+
+        tokio::spawn(run(
+            rx,
+            broadcast_tx,
+            config,
+            metrics.clone(),
+            token.clone(),
+            Arc::new(PolicyRules::default()),
+            crate::ipc::new_response_router(),
+        ));
+
+        // First batch of 2
+        for _ in 0..2 {
+            tx.send((0, IpcFrame::EventReport(normal_event()))).await.unwrap();
+        }
+        let first_batch: Vec<u64> = {
+            let mut v = Vec::new();
+            for _ in 0..2 {
+                let e = tokio::time::timeout(Duration::from_millis(500), broadcast_rx.recv())
+                    .await
+                    .expect("timed out waiting for first batch")
+                    .expect("broadcast error");
+                v.push(e.sequence_number);
+            }
+            v
+        };
+
+        // Second batch of 2
+        for _ in 0..2 {
+            tx.send((0, IpcFrame::EventReport(normal_event()))).await.unwrap();
+        }
+        let second_batch: Vec<u64> = {
+            let mut v = Vec::new();
+            for _ in 0..2 {
+                let e = tokio::time::timeout(Duration::from_millis(500), broadcast_rx.recv())
+                    .await
+                    .expect("timed out waiting for second batch")
+                    .expect("broadcast error");
+                v.push(e.sequence_number);
+            }
+            v
+        };
+
+        assert_eq!(first_batch, vec![0, 1]);
+        assert_eq!(second_batch, vec![2, 3], "sequence counter must not reset between batches");
+        token.cancel();
+    }
+
+    #[tokio::test]
     #[ignore]
     async fn pipeline_load_benchmark() {
         // Run with: cargo test -p aa-runtime -- --ignored pipeline_load_benchmark --nocapture
