@@ -71,3 +71,7 @@ pub static AA_HELLO_BPF: &[u8] = aya::include_bytes_aligned!(concat!(
     // Binary name is "aa-hello" (from Cargo.toml [[bin]].name).
     "/aa-ebpf-probes/bpfel-unknown-none/release/aa-hello"
 ));
+
+pub mod syscall;
+
+pub use syscall::SyscallKind;
