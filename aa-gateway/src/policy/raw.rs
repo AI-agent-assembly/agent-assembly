@@ -43,6 +43,8 @@ pub struct RawSchedulePolicy {
 pub struct RawBudgetPolicy {
     /// Maximum USD spend per calendar day; `None` means no limit.
     pub daily_limit_usd: Option<f64>,
+    /// Optional IANA timezone for daily reset boundary. Defaults to UTC if absent.
+    pub timezone: Option<String>,
     /// Unknown keys captured for warning emission.
     #[serde(flatten)]
     pub unknown: HashMap<String, serde_yaml::Value>,
