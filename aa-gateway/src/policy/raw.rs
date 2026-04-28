@@ -14,6 +14,30 @@ pub struct RawNetworkPolicy {
     pub unknown: HashMap<String, serde_yaml::Value>,
 }
 
+/// Raw (unvalidated) deserialization target for `schedule.active_hours`.
+#[derive(Debug, Deserialize)]
+pub struct RawActiveHours {
+    /// Window start in `HH:MM` 24-hour format.
+    pub start: Option<String>,
+    /// Window end in `HH:MM` 24-hour format.
+    pub end: Option<String>,
+    /// IANA timezone name (e.g. `"Asia/Taipei"`).
+    pub timezone: Option<String>,
+    /// Unknown keys captured for warning emission.
+    #[serde(flatten)]
+    pub unknown: HashMap<String, serde_yaml::Value>,
+}
+
+/// Raw (unvalidated) deserialization target for the `schedule` policy section.
+#[derive(Debug, Deserialize)]
+pub struct RawSchedulePolicy {
+    /// Time window during which the agent is permitted to run.
+    pub active_hours: Option<RawActiveHours>,
+    /// Unknown keys captured for warning emission.
+    #[serde(flatten)]
+    pub unknown: HashMap<String, serde_yaml::Value>,
+}
+
 /// Raw (unvalidated) deserialization target for the `budget` policy section.
 #[derive(Debug, Deserialize)]
 pub struct RawBudgetPolicy {
@@ -77,6 +101,25 @@ mod tests {
         let yaml = "{}\n";
         let raw: RawNetworkPolicy = serde_yaml::from_str(yaml).unwrap();
         assert_eq!(raw.allowlist, None);
+    }
+
+    // ── RawSchedulePolicy / RawActiveHours ─────────────────────────────────
+
+    #[test]
+    fn raw_active_hours_deserializes_all_fields() {
+        let yaml = "start: \"09:00\"\nend: \"18:00\"\ntimezone: \"Asia/Taipei\"\n";
+        let raw: RawActiveHours = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(raw.start, Some("09:00".to_string()));
+        assert_eq!(raw.end, Some("18:00".to_string()));
+        assert_eq!(raw.timezone, Some("Asia/Taipei".to_string()));
+        assert!(raw.unknown.is_empty());
+    }
+
+    #[test]
+    fn raw_schedule_active_hours_absent_is_none() {
+        let yaml = "{}\n";
+        let raw: RawSchedulePolicy = serde_yaml::from_str(yaml).unwrap();
+        assert!(raw.active_hours.is_none());
     }
 
     // ── RawBudgetPolicy ─────────────────────────────────────────────────────
