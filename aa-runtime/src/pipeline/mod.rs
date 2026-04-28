@@ -557,7 +557,15 @@ mod tests {
         let metrics = Arc::new(PipelineMetrics::default());
         let token = CancellationToken::new();
 
-        tokio::spawn(run(rx, broadcast_tx, config, metrics.clone(), token.clone(), policy, crate::ipc::new_response_router()));
+        tokio::spawn(run(
+            rx,
+            broadcast_tx,
+            config,
+            metrics.clone(),
+            token.clone(),
+            policy,
+            crate::ipc::new_response_router(),
+        ));
 
         // Build an AuditEvent with action_type = FILE_OPERATION
         let event = AuditEvent {
@@ -597,7 +605,15 @@ mod tests {
         let metrics = Arc::new(PipelineMetrics::default());
         let token = CancellationToken::new();
 
-        tokio::spawn(run(rx, broadcast_tx, config, metrics.clone(), token.clone(), policy, crate::ipc::new_response_router()));
+        tokio::spawn(run(
+            rx,
+            broadcast_tx,
+            config,
+            metrics.clone(),
+            token.clone(),
+            policy,
+            crate::ipc::new_response_router(),
+        ));
 
         // Yield briefly so the pipeline's interval fires its immediate first tick
         // (tokio::time::interval ticks once immediately on creation).

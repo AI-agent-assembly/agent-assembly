@@ -184,7 +184,15 @@ pub(super) fn spawn_connection(
     let reader_frame_tx = frame_tx;
     tracker.spawn(async move {
         let _permit = permit; // held until reader task completes
-        run_reader(read_half, reader_frame_tx, reader_token, active_connections, connection_id, response_router).await;
+        run_reader(
+            read_half,
+            reader_frame_tx,
+            reader_token,
+            active_connections,
+            connection_id,
+            response_router,
+        )
+        .await;
     });
 
     // Writer task: outbound responses → socket.
@@ -315,7 +323,9 @@ mod tests {
         let tracker = TaskTracker::new();
         let tracker_clone = tracker.clone();
         tracker.spawn(async move {
-            server.run(tracker_clone, token, tx, active_connections, router_clone).await;
+            server
+                .run(tracker_clone, token, tx, active_connections, router_clone)
+                .await;
         });
         (rx, router)
     }
@@ -598,7 +608,10 @@ mod tests {
             }
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
-        assert_eq!(observed_len, 0, "router entry should be removed after client disconnects");
+        assert_eq!(
+            observed_len, 0,
+            "router entry should be removed after client disconnects"
+        );
 
         token.cancel();
     }
@@ -618,8 +631,7 @@ mod tests {
         let socket_path = temp_socket_path("violation-alert");
         let token = CancellationToken::new();
         let counter = Arc::new(AtomicI64::new(0));
-        let (inbound_rx, router) =
-            start_server(socket_path.clone(), token.clone(), Arc::clone(&counter)).await;
+        let (inbound_rx, router) = start_server(socket_path.clone(), token.clone(), Arc::clone(&counter)).await;
 
         // Spin up the pipeline.
         let pipeline_config = PipelineConfig {
@@ -630,8 +642,7 @@ mod tests {
             agent_id: "test-agent".to_string(),
         };
         let pipeline_metrics = Arc::new(PipelineMetrics::default());
-        let (broadcast_tx, _broadcast_rx) =
-            tokio::sync::broadcast::channel::<crate::pipeline::EnrichedEvent>(64);
+        let (broadcast_tx, _broadcast_rx) = tokio::sync::broadcast::channel::<crate::pipeline::EnrichedEvent>(64);
         let pipeline_router = Arc::clone(&router);
         let pipeline_token = token.clone();
         tokio::spawn(crate::pipeline::run(
@@ -708,8 +719,7 @@ mod tests {
         let socket_path = temp_socket_path("no-alert");
         let token = CancellationToken::new();
         let counter = Arc::new(AtomicI64::new(0));
-        let (inbound_rx, router) =
-            start_server(socket_path.clone(), token.clone(), Arc::clone(&counter)).await;
+        let (inbound_rx, router) = start_server(socket_path.clone(), token.clone(), Arc::clone(&counter)).await;
 
         // Spin up the pipeline.
         let pipeline_config = PipelineConfig {
@@ -720,8 +730,7 @@ mod tests {
             agent_id: "test-agent".to_string(),
         };
         let pipeline_metrics = Arc::new(PipelineMetrics::default());
-        let (broadcast_tx, _broadcast_rx) =
-            tokio::sync::broadcast::channel::<crate::pipeline::EnrichedEvent>(64);
+        let (broadcast_tx, _broadcast_rx) = tokio::sync::broadcast::channel::<crate::pipeline::EnrichedEvent>(64);
         let pipeline_router = Arc::clone(&router);
         let pipeline_token = token.clone();
         tokio::spawn(crate::pipeline::run(
@@ -765,8 +774,7 @@ mod tests {
         write_half.flush().await.unwrap();
 
         // No ViolationAlert should arrive — read should time out.
-        let result =
-            tokio::time::timeout(Duration::from_millis(100), read_half.read_u8()).await;
+        let result = tokio::time::timeout(Duration::from_millis(100), read_half.read_u8()).await;
         assert!(
             result.is_err(),
             "expected no response for a normal event, but received one"

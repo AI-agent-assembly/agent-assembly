@@ -18,7 +18,9 @@ use prost::Message;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use crate::ipc::message::{IpcFrame, IpcResponse};
-use aa_proto::assembly::audit::v1::{AuditEvent, PolicyViolation};
+use aa_proto::assembly::audit::v1::AuditEvent;
+#[cfg(test)]
+use aa_proto::assembly::audit::v1::PolicyViolation;
 use aa_proto::assembly::event::v1::ApprovalDecision;
 use aa_proto::assembly::policy::v1::CheckActionRequest;
 #[cfg(test)]
