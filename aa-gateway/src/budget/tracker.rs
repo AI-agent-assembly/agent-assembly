@@ -146,6 +146,14 @@ impl BudgetTracker {
 
         status
     }
+
+    /// Return a snapshot of the current global (all-agents combined) budget state.
+    pub fn global_state(&self) -> BudgetState {
+        self.global
+            .lock()
+            .map(|g| g.clone())
+            .unwrap_or_else(|_| BudgetState::new_today())
+    }
 }
 
 #[cfg(test)]
@@ -276,5 +284,16 @@ mod tests {
         let t = BudgetTracker::with_state(PricingTable::default_table(), None, persisted);
         let entry = t.per_agent.get(&id).unwrap();
         assert_eq!(entry.spent_usd, state.spent_usd);
+    }
+
+    #[test]
+    fn global_state_accumulates_all_agents() {
+        use crate::budget::types::{Model, Provider};
+        let t = new_tracker();
+        t.record_usage(agent(5), Provider::OpenAi, Model::Gpt4o, 1_000, 0); // $0.005
+        t.record_usage(agent(6), Provider::OpenAi, Model::Gpt4o, 1_000, 0); // $0.005
+        let g = t.global_state();
+        let expected: Decimal = "0.010".parse().unwrap();
+        assert_eq!(g.spent_usd, expected);
     }
 }
