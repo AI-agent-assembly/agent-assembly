@@ -1,0 +1,12 @@
+# Cargo config for aa-ebpf-programs.
+#
+# This crate must be compiled for the eBPF virtual machine, not the host.
+# `bpfel-unknown-none` is the little-endian eBPF target used on x86-64 and
+# arm64 Linux hosts.  The `build-std` unstable feature is required because
+# the standard library is not pre-compiled for this target.
+
+[build]
+target = "bpfel-unknown-none"
+
+[unstable]
+build-std = ["core"]
