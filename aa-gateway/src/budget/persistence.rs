@@ -62,29 +62,37 @@ pub fn save_to_disk_atomic(path: &std::path::Path, budget: &PersistedBudget) -> 
     Ok(())
 }
 
+/// Encode an `AgentId` as a 32-char lowercase hex string.
 pub fn agent_id_to_hex(id: &aa_core::AgentId) -> String {
     id.as_bytes().iter().map(|b| format!("{:02x}", b)).collect()
 }
 
-pub fn hex_to_agent_id(hex: &str) -> Result<aa_core::AgentId, std::io::Error> {
+/// Decode a 32-char hex string back to an `AgentId`.
+pub fn hex_to_agent_id(hex: &str) -> Result<aa_core::AgentId, PersistenceError> {
     if hex.len() != 32 {
-        return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "bad hex len"));
+        return Err(PersistenceError::Io(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("expected 32 hex chars, got {}", hex.len()),
+        )));
     }
     let mut bytes = [0u8; 16];
     for (i, chunk) in hex.as_bytes().chunks(2).enumerate() {
-        let hi = hex_nibble(chunk[0]).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-        let lo = hex_nibble(chunk[1]).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+        let hi = hex_nibble(chunk[0])?;
+        let lo = hex_nibble(chunk[1])?;
         bytes[i] = (hi << 4) | lo;
     }
     Ok(aa_core::AgentId::from_bytes(bytes))
 }
 
-fn hex_nibble(b: u8) -> Result<u8, String> {
+fn hex_nibble(b: u8) -> Result<u8, PersistenceError> {
     match b {
         b'0'..=b'9' => Ok(b - b'0'),
         b'a'..=b'f' => Ok(b - b'a' + 10),
         b'A'..=b'F' => Ok(b - b'A' + 10),
-        _ => Err(format!("invalid hex byte: {b}")),
+        _ => Err(PersistenceError::Io(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("invalid hex byte: {b}"),
+        ))),
     }
 }
 
@@ -162,5 +170,15 @@ mod tests {
             global: BudgetState::new_today(),
         };
         assert!(budget.per_agent.is_empty());
+    }
+
+    #[test]
+    fn agent_id_hex_round_trip() {
+        use aa_core::AgentId;
+        let id = AgentId::from_bytes([0xABu8; 16]);
+        let hex = agent_id_to_hex(&id);
+        assert_eq!(hex.len(), 32);
+        let restored = hex_to_agent_id(&hex).unwrap();
+        assert_eq!(id, restored);
     }
 }
