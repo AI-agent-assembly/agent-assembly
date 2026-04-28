@@ -10,12 +10,10 @@ pub enum EbpfError {
     #[cfg(target_os = "linux")]
     #[error("failed to load eBPF object: {0}")]
     Load(#[from] aya::EbpfError),
-
     /// An eBPF map operation failed (e.g. writing to a PID filter map).
     #[cfg(target_os = "linux")]
     #[error("eBPF map operation failed: {0}")]
     Map(#[from] aya::maps::MapError),
-
     /// An eBPF program operation failed (e.g. load or attach).
     #[cfg(target_os = "linux")]
     #[error("eBPF program operation failed: {0}")]
@@ -54,6 +52,10 @@ pub enum EbpfError {
         pid: Option<i32>,
     },
 
+    /// An I/O error occurred during async ring-buffer polling or /proc parsing.
+    #[error("I/O error: {0}")]
+    Io(#[from] std::io::Error),
+
     // ── string-based variants (used by file I/O loader, cross-platform) ─
     /// Failed to load the compiled eBPF bytecode into the kernel.
     #[error("eBPF program load failed: {0}")]
@@ -79,13 +81,19 @@ mod tests {
     #[test]
     fn display_program_load() {
         let err = EbpfError::ProgramLoad("missing privileges".into());
-        assert_eq!(err.to_string(), "eBPF program load failed: missing privileges");
+        assert_eq!(
+            err.to_string(),
+            "eBPF program load failed: missing privileges"
+        );
     }
 
     #[test]
     fn display_probe_attach() {
         let err = EbpfError::ProbeAttach("sys_openat not found".into());
-        assert_eq!(err.to_string(), "kprobe attach failed: sys_openat not found");
+        assert_eq!(
+            err.to_string(),
+            "kprobe attach failed: sys_openat not found"
+        );
     }
 
     #[test]
@@ -105,7 +113,10 @@ mod tests {
         let err = EbpfError::MapNotFound {
             name: "PID_FILTER".into(),
         };
-        assert_eq!(err.to_string(), "eBPF map `PID_FILTER` not found in object");
+        assert_eq!(
+            err.to_string(),
+            "eBPF map `PID_FILTER` not found in object"
+        );
     }
 
     #[test]

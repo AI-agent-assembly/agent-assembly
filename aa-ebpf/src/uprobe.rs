@@ -12,11 +12,16 @@ use crate::error::EbpfError;
 /// Attaches and manages OpenSSL uprobe/uretprobe programs.
 ///
 /// Create via [`UprobeManager::attach`]. The probes stay active until the
-/// `UprobeManager` is dropped.
-#[allow(dead_code)]
+/// `UprobeManager` is dropped — dropping the stored link handles detaches
+/// all probes from the kernel.
 pub struct UprobeManager {
     /// Target PID to monitor. `None` means monitor all processes.
     target_pid: Option<i32>,
+    /// Live uprobe/uretprobe link handles.  Stored as type-erased `Box<dyn
+    /// Any>` to avoid depending on aya's internal link-id type name, which
+    /// has changed across patch releases.  Dropping them detaches the probes.
+    #[cfg(target_os = "linux")]
+    _links: Vec<Box<dyn std::any::Any>>,
 }
 
 impl UprobeManager {
@@ -49,6 +54,8 @@ impl UprobeManager {
         // 2. Find the OpenSSL shared library for the target process.
         let ssl_path = find_openssl_path(target_pid)?;
 
+        let mut links: Vec<Box<dyn std::any::Any>> = Vec::with_capacity(3);
+
         // 3. Attach ssl_write uprobe (captures outbound TLS plaintext).
         {
             let prog: &mut UProbe = bpf
@@ -58,7 +65,7 @@ impl UprobeManager {
                 })?
                 .try_into()?;
             prog.load()?;
-            prog.attach(Some("SSL_write"), 0, &ssl_path, target_pid)?;
+            links.push(Box::new(prog.attach(Some("SSL_write"), 0, &ssl_path, target_pid)?));
         }
 
         // 4. Attach ssl_read_entry uprobe (saves SSL_read buf ptr for step 5).
@@ -70,7 +77,7 @@ impl UprobeManager {
                 })?
                 .try_into()?;
             prog.load()?;
-            prog.attach(Some("SSL_read"), 0, &ssl_path, target_pid)?;
+            links.push(Box::new(prog.attach(Some("SSL_read"), 0, &ssl_path, target_pid)?));
         }
 
         // 5. Attach ssl_read_exit uretprobe (captures inbound TLS plaintext).
@@ -82,10 +89,13 @@ impl UprobeManager {
                 })?
                 .try_into()?;
             prog.load()?;
-            prog.attach(Some("SSL_read"), 0, &ssl_path, target_pid)?;
+            links.push(Box::new(prog.attach(Some("SSL_read"), 0, &ssl_path, target_pid)?));
         }
 
-        Ok(Self { target_pid })
+        Ok(Self {
+            target_pid,
+            _links: links,
+        })
     }
 
     /// Stub for non-Linux platforms — uprobe attachment requires Linux.
@@ -97,12 +107,75 @@ impl UprobeManager {
     }
 }
 
+/// Target well-known `libssl.so` filesystem paths tried when the library is
+/// not yet mapped into `/proc/<pid>/maps` (e.g. system-wide mode before the
+/// first TLS call or when attaching prior to process start).
+#[cfg(target_os = "linux")]
+static LIBSSL_FALLBACK_PATHS: &[&str] = &[
+    // Debian / Ubuntu — OpenSSL 3.x
+    "/usr/lib/x86_64-linux-gnu/libssl.so.3",
+    // Debian / Ubuntu — OpenSSL 1.1.x
+    "/usr/lib/x86_64-linux-gnu/libssl.so.1.1",
+    // RHEL / Fedora / Amazon Linux — OpenSSL 3.x
+    "/usr/lib64/libssl.so.3",
+    // RHEL / Fedora — OpenSSL 1.1.x
+    "/usr/lib64/libssl.so.1.1",
+    // Alpine / generic
+    "/usr/lib/libssl.so.3",
+    "/usr/lib/libssl.so.1.1",
+    // Local builds
+    "/usr/local/lib/libssl.so",
+    "/usr/local/lib64/libssl.so",
+];
+
 /// Find the path to the OpenSSL shared library for the given PID.
 ///
-/// Scans `/proc/<pid>/maps` for a line containing `libssl.so`.
+/// Search order:
+/// 1. Scan `/proc/<pid>/maps` (or `/proc/self/maps` when `target_pid` is
+///    `None`) for any mapped region whose pathname contains `libssl.so`.
+/// 2. If nothing is found in maps (common when `target_pid` is `None` and the
+///    calling process does not use OpenSSL itself), walk the well-known
+///    filesystem paths in [`LIBSSL_FALLBACK_PATHS`] and return the first one
+///    that exists on disk.
+///
+/// Supports both OpenSSL 1.1.x (`libssl.so.1.1`) and 3.x (`libssl.so.3`).
+///
+/// # Errors
+///
+/// Returns [`EbpfError::OpenSslNotFound`] if no `libssl` path can be found.
+/// Returns [`EbpfError::Io`] if `/proc/<pid>/maps` cannot be read and the
+/// target PID was specified (i.e. the process does not exist).
 #[cfg(target_os = "linux")]
 fn find_openssl_path(target_pid: Option<i32>) -> Result<String, EbpfError> {
-    // TODO(AAASM-37): implement /proc/<pid>/maps parsing to find libssl path.
-    let _ = target_pid;
-    todo!("find OpenSSL library path for target PID")
+    let pid_str = target_pid.map(|p| p.to_string()).unwrap_or_else(|| "self".to_string());
+    let maps_path = format!("/proc/{}/maps", pid_str);
+
+    // For a specific PID, propagate I/O errors (process may not exist).
+    // For system-wide (self), silently fall through to the filesystem search.
+    let maps_result = std::fs::read_to_string(&maps_path);
+    match (maps_result, target_pid) {
+        (Err(e), Some(_)) => return Err(EbpfError::Io(e)),
+        (Ok(content), _) => {
+            for line in content.lines() {
+                // Each maps line: addr-addr perms offset dev inode [pathname]
+                // The pathname is the last whitespace-separated field and may
+                // be absent for anonymous mappings — skip those.
+                if let Some(pathname) = line.split_whitespace().last() {
+                    if pathname.contains("libssl.so") {
+                        return Ok(pathname.to_string());
+                    }
+                }
+            }
+        }
+        (Err(_), None) => { /* /proc/self/maps unreadable — fall through */ }
+    }
+
+    // Filesystem fallback: check well-known installation paths.
+    for &path in LIBSSL_FALLBACK_PATHS {
+        if std::path::Path::new(path).exists() {
+            return Ok(path.to_string());
+        }
+    }
+
+    Err(EbpfError::OpenSslNotFound { pid: target_pid })
 }

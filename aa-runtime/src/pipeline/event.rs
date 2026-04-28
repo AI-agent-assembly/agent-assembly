@@ -32,6 +32,12 @@ pub struct EnrichedEvent {
     /// ID of the IPC connection that submitted this event.
     /// Used to route `IpcResponse::ViolationAlert` back to the originating SDK client.
     pub connection_id: u64,
+    /// Monotonically increasing sequence number assigned by the pipeline at event
+    /// arrival time (not flush time). Starts at 0 when the pipeline task starts.
+    /// Downstream subscribers can use this to detect gaps caused by broadcast ring
+    /// buffer overflow (`RecvError::Lagged(n)` tells how many were dropped but not
+    /// which ones — sequence numbers identify the missing range).
+    pub sequence_number: u64,
 }
 
 #[cfg(test)]
@@ -52,6 +58,7 @@ mod tests {
             source: source.clone(),
             agent_id: agent_id.clone(),
             connection_id,
+            sequence_number: 0,
         };
 
         assert_eq!(enriched_event.inner, audit_event);
@@ -59,6 +66,7 @@ mod tests {
         assert_eq!(enriched_event.source, source);
         assert_eq!(enriched_event.agent_id, agent_id);
         assert_eq!(enriched_event.connection_id, connection_id);
+        assert_eq!(enriched_event.sequence_number, 0);
     }
 
     #[test]
@@ -77,6 +85,7 @@ mod tests {
             source: EventSource::EBpf,
             agent_id: "original-agent".to_string(),
             connection_id: 7,
+            sequence_number: 3,
         };
 
         let cloned = original.clone();

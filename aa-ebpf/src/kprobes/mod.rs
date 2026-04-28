@@ -2,7 +2,7 @@
 //!
 //! Each submodule implements the attachment and event handling logic for
 //! one syscall kprobe. The actual eBPF program bytecode is compiled
-//! separately (see `aa-ebpf-probes`) and loaded by [`crate::loader::EbpfLoader`].
+//! separately (see `aa-ebpf-probes`) and loaded by [`crate::loader::FileIoLoader`].
 
 pub mod openat;
 pub mod read;
