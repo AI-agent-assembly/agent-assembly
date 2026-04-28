@@ -25,6 +25,7 @@ impl PolicyServiceImpl {
     }
 
     /// Evaluate a single request against the engine, returning the gRPC response.
+    #[allow(clippy::result_large_err)] // tonic::Status is the standard gRPC error type
     fn evaluate_one(&self, req: &CheckActionRequest) -> Result<CheckActionResponse, Status> {
         let (ctx, action) = convert::request_to_core(req).map_err(|e| {
             tracing::error!(error = %e, "failed to convert CheckActionRequest");
