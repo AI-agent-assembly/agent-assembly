@@ -181,7 +181,7 @@ fn try_ssl_read_exit(ctx: RetProbeContext) -> Result<u32, i64> {
 /// Returns `Err(-1)` only if the ring buffer is full.
 #[inline(always)]
 fn emit_tls_event(pid_tgid: u64, pid: u32, buf_ptr: u64, data_len: u32, direction: u8) -> Result<u32, i64> {
-    let ts = bpf_ktime_get_ns();
+    let ts = unsafe { bpf_ktime_get_ns() };
 
     // Bounded loop — the BPF verifier can prove termination because
     // MAX_CHUNKS is a compile-time constant and `seq` is incremented each
