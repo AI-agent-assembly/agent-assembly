@@ -5,3 +5,4 @@
 //! the governance pipeline without requiring code changes in agents.
 
 pub mod events;
+pub mod lineage;
