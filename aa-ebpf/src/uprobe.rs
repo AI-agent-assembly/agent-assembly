@@ -1,14 +1,11 @@
 //! Uprobe/uretprobe management for OpenSSL TLS plaintext capture (AAASM-37).
 //!
 //! Attaches `ssl_write_uprobe` and `ssl_read_uretprobe` from
-//! `aa-ebpf-programs` to the `SSL_write` and `SSL_read` symbols in every
+//! `aa-ebpf-probes` to the `SSL_write` and `SSL_read` symbols in every
 //! matching OpenSSL shared library loaded by the target process.
 
-use aya::{
-    maps::Array,
-    programs::UProbe,
-    Ebpf,
-};
+#[cfg(target_os = "linux")]
+use aya::{maps::Array, programs::UProbe, Ebpf};
 
 use crate::error::EbpfError;
 
@@ -37,6 +34,7 @@ impl UprobeManager {
     ///
     /// * `bpf` — live [`Ebpf`] handle from [`crate::loader::EbpfLoader::load`].
     /// * `target_pid` — PID to attach to, or `None` for system-wide.
+    #[cfg(target_os = "linux")]
     pub fn attach(bpf: &mut Ebpf, target_pid: Option<i32>) -> Result<Self, EbpfError> {
         // 1. Write the target PID into the BPF-side filter map.
         {
@@ -55,9 +53,7 @@ impl UprobeManager {
         {
             let prog: &mut UProbe = bpf
                 .program_mut("ssl_write")
-                .ok_or_else(|| EbpfError::MapNotFound {
-                    name: "ssl_write".into(),
-                })?
+                .ok_or_else(|| EbpfError::MapNotFound { name: "ssl_write".into() })?
                 .try_into()?;
             prog.load()?;
             prog.attach(Some("SSL_write"), 0, &ssl_path, target_pid)?;
@@ -67,9 +63,7 @@ impl UprobeManager {
         {
             let prog: &mut UProbe = bpf
                 .program_mut("ssl_read_entry")
-                .ok_or_else(|| EbpfError::MapNotFound {
-                    name: "ssl_read_entry".into(),
-                })?
+                .ok_or_else(|| EbpfError::MapNotFound { name: "ssl_read_entry".into() })?
                 .try_into()?;
             prog.load()?;
             prog.attach(Some("SSL_read"), 0, &ssl_path, target_pid)?;
@@ -79,9 +73,7 @@ impl UprobeManager {
         {
             let prog: &mut UProbe = bpf
                 .program_mut("ssl_read_exit")
-                .ok_or_else(|| EbpfError::MapNotFound {
-                    name: "ssl_read_exit".into(),
-                })?
+                .ok_or_else(|| EbpfError::MapNotFound { name: "ssl_read_exit".into() })?
                 .try_into()?;
             prog.load()?;
             prog.attach(Some("SSL_read"), 0, &ssl_path, target_pid)?;
@@ -89,12 +81,20 @@ impl UprobeManager {
 
         Ok(Self { target_pid })
     }
+
+    /// Stub for non-Linux platforms — uprobe attachment requires Linux.
+    #[cfg(not(target_os = "linux"))]
+    pub fn attach(_bpf: &mut (), _target_pid: Option<i32>) -> Result<Self, EbpfError> {
+        Err(EbpfError::MapNotFound {
+            name: "uprobe attachment requires Linux".into(),
+        })
+    }
 }
 
 /// Find the path to the OpenSSL shared library for the given PID.
 ///
-/// Scans `/proc/<pid>/maps` for a line containing `libssl.so` or
-/// `/proc/1/maps` (the init process) as a fallback for system-wide mode.
+/// Scans `/proc/<pid>/maps` for a line containing `libssl.so`.
+#[cfg(target_os = "linux")]
 fn find_openssl_path(target_pid: Option<i32>) -> Result<String, EbpfError> {
     // TODO(AAASM-37): implement /proc/<pid>/maps parsing to find libssl path.
     let _ = target_pid;

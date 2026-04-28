@@ -4,6 +4,7 @@
 //! `aa-ebpf-programs` to the corresponding kernel functions, filtered by
 //! the target PID stored in a BPF map.
 
+#[cfg(target_os = "linux")]
 use aya::Ebpf;
 
 use crate::error::EbpfError;
@@ -30,6 +31,7 @@ impl KprobeManager {
     ///
     /// * `bpf` — live [`Ebpf`] handle from [`crate::loader::EbpfLoader::load`].
     /// * `target_pid` — PID to filter, or `None` for system-wide monitoring.
+    #[cfg(target_os = "linux")]
     pub fn attach(bpf: &mut Ebpf, target_pid: Option<i32>) -> Result<Self, EbpfError> {
         // TODO(AAASM-38): attach openat_kprobe, write_kprobe, unlink_kprobe
         // and write target_pid into the PID filter BPF map.

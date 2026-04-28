@@ -1,5 +1,6 @@
 //! eBPF object loader: parses and loads the compiled eBPF ELF into the kernel.
 
+#[cfg(target_os = "linux")]
 use aya::Ebpf;
 
 use crate::error::EbpfError;

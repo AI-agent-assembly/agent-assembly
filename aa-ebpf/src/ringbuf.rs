@@ -7,6 +7,7 @@
 use std::mem;
 
 use aa_ebpf_common::{exec::ExecEvent, file::FileEvent, tls::TlsCaptureEvent};
+#[cfg(target_os = "linux")]
 use aya::Ebpf;
 
 use crate::error::EbpfError;

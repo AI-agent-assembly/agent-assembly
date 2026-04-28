@@ -32,34 +32,34 @@
 //! [`aa_ebpf_common`].  They are `#[repr(C)]` and `no_std` so they compile
 //! for both targets without modification.
 //!
-//! ## Usage
+//! ## Platform support
 //!
-//! ```rust,ignore
-//! use aa_ebpf::{loader::EbpfLoader, ringbuf::RingBufReader};
-//! use aa_ebpf::{uprobe::UprobeManager, kprobe::KprobeManager};
-//! use aa_ebpf::tracepoint::TracepointManager;
-//!
-//! let mut bpf = EbpfLoader::load()?;
-//! let _uprobes  = UprobeManager::attach(&mut bpf, Some(target_pid))?;
-//! let _kprobes  = KprobeManager::attach(&mut bpf, Some(target_pid))?;
-//! let _tp       = TracepointManager::attach(&mut bpf)?;
-//! let mut reader = RingBufReader::new(bpf)?;
-//!
-//! while let Some(event) = reader.next().await? {
-//!     // forward event to aa-runtime governance pipeline
-//! }
-//! ```
+//! eBPF is Linux-only. On macOS, this crate compiles but all aya-dependent
+//! modules (`loader`, `uprobe`, `kprobe`, `tracepoint`, `ringbuf`) are gated
+//! with `#[cfg(target_os = "linux")]`.  The `events` and `lineage` modules
+//! are unconditional and available on all platforms.
 
-pub mod error;
+// Shared event type re-exports — unconditional (no aya dependency).
 pub mod events;
-pub mod kprobe;
 pub mod lineage;
+
+// aya-dependent modules — Linux only.
+#[cfg(target_os = "linux")]
+pub mod error;
+#[cfg(target_os = "linux")]
+pub mod kprobe;
+#[cfg(target_os = "linux")]
 pub mod loader;
+#[cfg(target_os = "linux")]
 pub mod ringbuf;
+#[cfg(target_os = "linux")]
 pub mod tracepoint;
+#[cfg(target_os = "linux")]
 pub mod uprobe;
 
+#[cfg(target_os = "linux")]
 pub use error::EbpfError;
+#[cfg(target_os = "linux")]
 pub use ringbuf::EbpfEvent;
 
 /// Compiled BPF bytecode for the `aa-hello` probe program.

@@ -3,6 +3,7 @@
 //! Attaches the `sched_process_exec` tracepoint from `aa-ebpf-programs` to
 //! the Linux `sched/sched_process_exec` kernel tracepoint.
 
+#[cfg(target_os = "linux")]
 use aya::Ebpf;
 
 use crate::error::EbpfError;
@@ -28,6 +29,7 @@ impl TracepointManager {
     /// # Arguments
     ///
     /// * `bpf` — live [`Ebpf`] handle from [`crate::loader::EbpfLoader::load`].
+    #[cfg(target_os = "linux")]
     pub fn attach(bpf: &mut Ebpf) -> Result<Self, EbpfError> {
         // TODO(AAASM-39): attach sched_process_exec tracepoint.
         let _ = bpf;
