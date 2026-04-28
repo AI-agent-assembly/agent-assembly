@@ -1,6 +1,10 @@
 //! Historical audit log replay for dry-run policy simulation.
 
+use std::path::Path;
+
 use serde::Deserialize;
+
+use super::error::SimulationError;
 
 /// A single event extracted from an audit log for simulation replay.
 ///
@@ -20,4 +24,14 @@ pub struct SimulationEvent {
 pub struct HistoricalReplay {
     /// Parsed events from the audit log file.
     events: Vec<SimulationEvent>,
+}
+
+impl HistoricalReplay {
+    /// Parse an audit log JSONL file into a replay sequence.
+    ///
+    /// Each line of the file is expected to be a JSON object matching
+    /// the `SimulationEvent` schema.
+    pub fn from_file(_path: &Path) -> Result<Self, SimulationError> {
+        todo!("AAASM-73: read JSONL file and deserialize lines into SimulationEvent")
+    }
 }
