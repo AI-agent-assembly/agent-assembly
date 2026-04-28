@@ -1,0 +1,14 @@
+[package]
+name = "aa-ebpf-probes"
+version = "0.0.1"
+edition = "2021"
+publish = false
+
+[dependencies]
+aya-ebpf = "0.1"
+aya-log-ebpf = "0.1"
+
+# BPF programs are no_std binaries; there is no std or test harness.
+[[bin]]
+name = "aa-hello"
+path = "src/main.rs"
