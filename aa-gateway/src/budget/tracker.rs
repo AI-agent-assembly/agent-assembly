@@ -8,12 +8,39 @@ use tokio::sync::broadcast;
 
 use aa_core::AgentId;
 
+use rust_decimal::prelude::ToPrimitive;
+
 use crate::budget::{
     pricing::PricingTable,
-    types::{BudgetAlert, BudgetState},
+    types::{BudgetAlert, BudgetState, BudgetStatus},
 };
 
 const ALERT_CHANNEL_CAPACITY: usize = 64;
+const ALERT_PCT_HIGH: u8 = 95;
+const ALERT_PCT_LOW: u8 = 80;
+
+#[allow(dead_code)]
+fn compute_status(spent: Decimal, limit: Decimal) -> BudgetStatus {
+    if spent >= limit {
+        return BudgetStatus::LimitExceeded;
+    }
+    let pct = (spent / limit * Decimal::ONE_HUNDRED)
+        .round_dp(0)
+        .to_u8()
+        .unwrap_or(100);
+    let spent_f = spent.to_f64().unwrap_or(0.0);
+    let limit_f = limit.to_f64().unwrap_or(0.0);
+    if pct >= ALERT_PCT_HIGH {
+        BudgetStatus::ThresholdAlert { pct: ALERT_PCT_HIGH }
+    } else if pct >= ALERT_PCT_LOW {
+        BudgetStatus::ThresholdAlert { pct: ALERT_PCT_LOW }
+    } else {
+        BudgetStatus::WithinBudget {
+            spent_usd: spent_f,
+            remaining_usd: limit_f - spent_f,
+        }
+    }
+}
 
 /// Per-agent and global budget tracker. All methods take `&self` — safe to share via `Arc`.
 #[allow(dead_code)]
@@ -84,6 +111,46 @@ mod tests {
     fn new_tracker_has_empty_per_agent_map() {
         let t = new_tracker();
         assert!(t.per_agent.is_empty());
+    }
+
+    #[test]
+    fn compute_status_returns_within_budget_below_80() {
+        use crate::budget::types::BudgetStatus;
+        fn d(s: &str) -> Decimal {
+            s.parse().unwrap()
+        }
+        let status = compute_status(d("7.00"), d("10.00")); // 70%
+        assert!(matches!(status, BudgetStatus::WithinBudget { .. }));
+    }
+
+    #[test]
+    fn compute_status_returns_alert_at_80() {
+        use crate::budget::types::BudgetStatus;
+        fn d(s: &str) -> Decimal {
+            s.parse().unwrap()
+        }
+        let status = compute_status(d("8.00"), d("10.00")); // exactly 80%
+        assert_eq!(status, BudgetStatus::ThresholdAlert { pct: 80 });
+    }
+
+    #[test]
+    fn compute_status_returns_alert_at_95() {
+        use crate::budget::types::BudgetStatus;
+        fn d(s: &str) -> Decimal {
+            s.parse().unwrap()
+        }
+        let status = compute_status(d("9.50"), d("10.00")); // exactly 95%
+        assert_eq!(status, BudgetStatus::ThresholdAlert { pct: 95 });
+    }
+
+    #[test]
+    fn compute_status_returns_limit_exceeded_at_100() {
+        use crate::budget::types::BudgetStatus;
+        fn d(s: &str) -> Decimal {
+            s.parse().unwrap()
+        }
+        assert_eq!(compute_status(d("10.00"), d("10.00")), BudgetStatus::LimitExceeded);
+        assert_eq!(compute_status(d("11.00"), d("10.00")), BudgetStatus::LimitExceeded);
     }
 
     #[test]
