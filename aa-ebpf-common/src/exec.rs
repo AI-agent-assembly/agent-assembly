@@ -19,7 +19,7 @@ pub const MAX_ARGS_LEN: usize = 512;
 
 /// A single process-exec tracepoint event emitted from kernel-space.
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct ExecEvent {
     /// Monotonic kernel timestamp (nanoseconds).
     pub timestamp_ns: u64,

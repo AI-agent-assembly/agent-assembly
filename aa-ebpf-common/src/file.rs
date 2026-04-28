@@ -8,7 +8,7 @@ pub const MAX_PATH_LEN: usize = 256;
 
 /// File operation kind intercepted at the kernel level.
 #[repr(u8)]
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FileOp {
     /// `openat` — file open attempt.
     Open = 0,
@@ -20,7 +20,7 @@ pub enum FileOp {
 
 /// A single file I/O kprobe event emitted from kernel-space.
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct FileEvent {
     /// Monotonic kernel timestamp (nanoseconds).
     pub timestamp_ns: u64,

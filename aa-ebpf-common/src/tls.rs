@@ -16,7 +16,7 @@ pub const MAX_PAYLOAD_LEN: usize = 4096;
 /// the eBPF program (compiled for the bpf target) and the userspace consumer
 /// (compiled for the host target).
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct TlsCaptureEvent {
     /// Monotonic kernel timestamp (nanoseconds).
     pub timestamp_ns: u64,
