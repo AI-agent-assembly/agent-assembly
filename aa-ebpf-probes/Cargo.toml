@@ -5,12 +5,13 @@ edition = "2021"
 publish = false
 
 [dependencies]
+aa-ebpf-common = { path = "../aa-ebpf-common" }
 aya-ebpf = "0.1"
 aya-log-ebpf = "0.1"
 
 # BPF programs are no_std binaries; there is no std or test harness.
 [[bin]]
-name = "aa-hello"
+name = "aa-file-io"
 path = "src/main.rs"
 
 # Declare this crate as its own standalone workspace so Cargo does not
