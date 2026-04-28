@@ -5,26 +5,23 @@
 //! matching OpenSSL shared library loaded by the target process.
 
 #[cfg(target_os = "linux")]
-use aya::{
-    maps::Array,
-    programs::{uprobe::UProbeLinkIdId, UProbe},
-    Ebpf,
-};
+use aya::{maps::Array, programs::UProbe, Ebpf};
 
 use crate::error::EbpfError;
 
 /// Attaches and manages OpenSSL uprobe/uretprobe programs.
 ///
 /// Create via [`UprobeManager::attach`]. The probes stay active until the
-/// `UprobeManager` is dropped — dropping releases all [`UProbeLinkId`]s,
-/// which detaches the probes from the kernel.
+/// `UprobeManager` is dropped — dropping the stored link handles detaches
+/// all probes from the kernel.
 pub struct UprobeManager {
     /// Target PID to monitor. `None` means monitor all processes.
     target_pid: Option<i32>,
-    /// Live uprobe/uretprobe links.  Must be kept alive for probes to remain
-    /// attached; dropping them detaches the probes immediately.
+    /// Live uprobe/uretprobe link handles.  Stored as type-erased `Box<dyn
+    /// Any>` to avoid depending on aya's internal link-id type name, which
+    /// has changed across patch releases.  Dropping them detaches the probes.
     #[cfg(target_os = "linux")]
-    _links: Vec<UProbeLinkId>,
+    _links: Vec<Box<dyn std::any::Any>>,
 }
 
 impl UprobeManager {
@@ -57,7 +54,7 @@ impl UprobeManager {
         // 2. Find the OpenSSL shared library for the target process.
         let ssl_path = find_openssl_path(target_pid)?;
 
-        let mut links: Vec<UProbeLinkId> = Vec::with_capacity(3);
+        let mut links: Vec<Box<dyn std::any::Any>> = Vec::with_capacity(3);
 
         // 3. Attach ssl_write uprobe (captures outbound TLS plaintext).
         {
@@ -68,7 +65,7 @@ impl UprobeManager {
                 })?
                 .try_into()?;
             prog.load()?;
-            links.push(prog.attach(Some("SSL_write"), 0, &ssl_path, target_pid)?);
+            links.push(Box::new(prog.attach(Some("SSL_write"), 0, &ssl_path, target_pid)?));
         }
 
         // 4. Attach ssl_read_entry uprobe (saves SSL_read buf ptr for step 5).
@@ -80,7 +77,7 @@ impl UprobeManager {
                 })?
                 .try_into()?;
             prog.load()?;
-            links.push(prog.attach(Some("SSL_read"), 0, &ssl_path, target_pid)?);
+            links.push(Box::new(prog.attach(Some("SSL_read"), 0, &ssl_path, target_pid)?));
         }
 
         // 5. Attach ssl_read_exit uretprobe (captures inbound TLS plaintext).
@@ -92,7 +89,7 @@ impl UprobeManager {
                 })?
                 .try_into()?;
             prog.load()?;
-            links.push(prog.attach(Some("SSL_read"), 0, &ssl_path, target_pid)?);
+            links.push(Box::new(prog.attach(Some("SSL_read"), 0, &ssl_path, target_pid)?));
         }
 
         Ok(Self {
