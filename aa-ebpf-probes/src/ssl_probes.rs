@@ -25,6 +25,12 @@ use aya_ebpf::{
     programs::{ProbeContext, RetProbeContext},
 };
 
+/// Maximum number of ring-buffer chunks emitted per SSL call.
+///
+/// Each chunk carries up to [`MAX_PAYLOAD_LEN`] (4 096) bytes, so four chunks
+/// cover up to 16 KiB — enough for all common TLS record sizes.
+const MAX_CHUNKS: u32 = 4;
+
 // ---------------------------------------------------------------------------
 // BPF maps
 // ---------------------------------------------------------------------------
@@ -158,42 +164,66 @@ fn try_ssl_read_exit(ctx: RetProbeContext) -> Result<u32, i64> {
 // Shared helper — write one TlsCaptureEvent into the ring buffer.
 // ---------------------------------------------------------------------------
 
-/// Emit a TLS plaintext capture event into the shared ring buffer.
+/// Emit one or more TLS plaintext capture events into the shared ring buffer.
 ///
-/// Reserves ring-buffer memory (avoiding the 512-byte BPF stack limit),
-/// fills the [`TlsCaptureEvent`] fields in-place, reads up to
-/// [`MAX_PAYLOAD_LEN`] bytes from `buf_ptr`, and submits.
+/// Large payloads (> [`MAX_PAYLOAD_LEN`] = 4 096 bytes) are split across up
+/// to [`MAX_CHUNKS`] = 4 consecutive events.  Each event carries the same
+/// `data_len` (total plaintext length) and an incrementing `seq` counter so
+/// that userspace can reassemble the original buffer in order.
 ///
-/// Returns `Ok(0)` on success or if the userspace read fails (event discarded).
+/// Reserves ring-buffer memory for each chunk (avoiding the 512-byte BPF
+/// stack limit), fills the [`TlsCaptureEvent`] fields in-place, reads the
+/// slice of plaintext from userspace with `bpf_probe_read_user_buf`, and
+/// submits.  If a userspace read fails the chunk is discarded and the loop
+/// stops early.
+///
+/// Returns `Ok(0)` on success (including partial capture on read error).
 /// Returns `Err(-1)` only if the ring buffer is full.
 #[inline(always)]
 fn emit_tls_event(pid_tgid: u64, pid: u32, buf_ptr: u64, data_len: u32, direction: u8) -> Result<u32, i64> {
-    let capture_len = if data_len as usize > MAX_PAYLOAD_LEN {
-        MAX_PAYLOAD_LEN
-    } else {
-        data_len as usize
-    };
+    let ts = bpf_ktime_get_ns();
 
-    let mut entry = EVENTS.reserve::<TlsCaptureEvent>(0).ok_or(-1i64)?;
-    let event_ptr = entry.as_mut_ptr();
-
-    unsafe {
-        (*event_ptr).timestamp_ns = bpf_ktime_get_ns();
-        (*event_ptr).pid = pid;
-        (*event_ptr).tid = pid_tgid as u32;
-        (*event_ptr).data_len = data_len;
-        (*event_ptr).seq = 0;
-        (*event_ptr).direction = direction;
-        (*event_ptr)._pad = [0u8; 7];
-
-        let dest = &mut (&mut (*event_ptr).payload)[..capture_len];
-        if bpf_probe_read_user_buf(buf_ptr as *const u8, dest).is_err() {
-            entry.discard(0);
-            return Ok(0);
+    // Bounded loop — the BPF verifier can prove termination because
+    // MAX_CHUNKS is a compile-time constant and `seq` is incremented each
+    // iteration.  Linux 5.3+ supports bounded loops; we require 5.8+.
+    let mut seq: u32 = 0;
+    while seq < MAX_CHUNKS {
+        let offset = (seq as usize) * MAX_PAYLOAD_LEN;
+        if offset >= data_len as usize {
+            break;
         }
+
+        let remaining = data_len as usize - offset;
+        let chunk_len = if remaining > MAX_PAYLOAD_LEN {
+            MAX_PAYLOAD_LEN
+        } else {
+            remaining
+        };
+
+        let mut entry = EVENTS.reserve::<TlsCaptureEvent>(0).ok_or(-1i64)?;
+        let event_ptr = entry.as_mut_ptr();
+
+        unsafe {
+            (*event_ptr).timestamp_ns = ts;
+            (*event_ptr).pid = pid;
+            (*event_ptr).tid = pid_tgid as u32;
+            (*event_ptr).data_len = data_len;
+            (*event_ptr).seq = seq;
+            (*event_ptr).direction = direction;
+            (*event_ptr)._pad = [0u8; 7];
+
+            let src_ptr = (buf_ptr + offset as u64) as *const u8;
+            let dest = &mut (&mut (*event_ptr).payload)[..chunk_len];
+            if bpf_probe_read_user_buf(src_ptr, dest).is_err() {
+                entry.discard(0);
+                return Ok(0);
+            }
+        }
+
+        entry.submit(0);
+        seq += 1;
     }
 
-    entry.submit(0);
     Ok(0)
 }
 
