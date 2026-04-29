@@ -321,13 +321,11 @@ fn deny_result_to_response() {
 }
 
 #[test]
-fn requires_approval_result_to_response() {
-    let resp = result_to_response(
+#[should_panic(expected = "RequiresApproval must be handled before conversion")]
+fn requires_approval_result_to_response_panics() {
+    let _ = result_to_response(
         &PolicyResult::RequiresApproval { timeout_secs: 30 },
         50,
         "approval_cond",
     );
-    assert_eq!(resp.decision, Decision::Pending as i32);
-    assert!(!resp.approval_id.is_empty(), "approval_id should be a UUID");
-    assert_eq!(resp.decision_latency_us, 50);
 }

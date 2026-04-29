@@ -173,14 +173,12 @@ pub fn eval_result_to_response(eval: &EvaluationResult, latency_us: i64, policy_
             redact: None,
             decision_latency_us: latency_us,
         },
-        PolicyResult::RequiresApproval { .. } => CheckActionResponse {
-            decision: Decision::Pending as i32,
-            reason: "human approval required".into(),
-            policy_rule: policy_rule.to_string(),
-            approval_id: uuid::Uuid::new_v4().to_string(),
-            redact: None,
-            decision_latency_us: latency_us,
-        },
+        PolicyResult::RequiresApproval { .. } => {
+            panic!(
+                "RequiresApproval must be handled before conversion — \
+                 use approval_decision_to_response() after submitting to the ApprovalQueue"
+            );
+        }
     }
 }
 
