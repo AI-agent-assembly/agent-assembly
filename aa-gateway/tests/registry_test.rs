@@ -179,3 +179,44 @@ async fn deregister_cleans_up_control_sender() {
     };
     assert!(reg.send_command(&key(1), cmd).await.is_err());
 }
+
+// ── Concurrent registration ────────────────────────────────────────────────
+
+#[tokio::test]
+async fn concurrent_registration_of_100_agents() {
+    use std::sync::Arc;
+
+    let reg = Arc::new(AgentRegistry::new());
+    let mut handles = Vec::new();
+
+    for i in 0u8..100 {
+        let reg = Arc::clone(&reg);
+        handles.push(tokio::spawn(async move {
+            let mut k = [0u8; 16];
+            k[0] = i;
+            k[1] = (i as u16 >> 8) as u8;
+            // Use i as a unique discriminator across the full byte
+            let record = AgentRecord {
+                agent_id: k,
+                name: format!("agent-{i}"),
+                framework: "custom".into(),
+                version: "0.1.0".into(),
+                risk_tier: 0,
+                tool_names: vec![],
+                public_key: format!("pk_{i}"),
+                credential_token: format!("tok_{i}"),
+                metadata: BTreeMap::new(),
+                registered_at: Utc::now(),
+                last_heartbeat: Utc::now(),
+                status: AgentStatus::Active,
+            };
+            reg.register(record).unwrap();
+        }));
+    }
+
+    for h in handles {
+        h.await.unwrap();
+    }
+
+    assert_eq!(reg.list().len(), 100);
+}
