@@ -1169,8 +1169,7 @@ mod tests {
 
     #[test]
     fn record_spend_fires_alert_on_external_channel() {
-        let (alert_tx, mut alert_rx) =
-            tokio::sync::broadcast::channel::<crate::budget::BudgetAlert>(64);
+        let (alert_tx, mut alert_rx) = tokio::sync::broadcast::channel::<crate::budget::BudgetAlert>(64);
         let mut doc = empty_doc();
         doc.budget = Some(BudgetPolicy {
             daily_limit_usd: Some(10.0),

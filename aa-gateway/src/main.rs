@@ -40,8 +40,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create a budget alert broadcast channel shared between the PolicyEngine
     // (sender, via BudgetTracker) and the webhook delivery loop (receiver).
-    let (budget_alert_tx, budget_alert_rx) =
-        tokio::sync::broadcast::channel::<aa_gateway::budget::BudgetAlert>(64);
+    let (budget_alert_tx, budget_alert_rx) = tokio::sync::broadcast::channel::<aa_gateway::budget::BudgetAlert>(64);
 
     // Optionally spawn the webhook delivery loop (reads AA_WEBHOOK_URL).
     let _webhook_handle = aa_gateway::events::startup::maybe_spawn_webhook(&approval_queue, budget_alert_rx);

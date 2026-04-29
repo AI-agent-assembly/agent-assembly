@@ -159,10 +159,7 @@ impl BudgetTracker {
     pub fn check_monthly(&self, agent_id: &AgentId, limit: Decimal) -> bool {
         if let Some(mut entry) = self.per_agent.get_mut(agent_id) {
             entry.maybe_reset(today_in_tz(self.timezone));
-            entry
-                .monthly_spent_usd
-                .map(|m| m >= limit)
-                .unwrap_or(false)
+            entry.monthly_spent_usd.map(|m| m >= limit).unwrap_or(false)
         } else {
             false
         }
