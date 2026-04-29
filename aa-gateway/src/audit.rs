@@ -51,8 +51,7 @@ impl AuditWriter {
 
     /// Serialize one `AuditEntry` as a JSON line and append to the file.
     async fn append(&mut self, entry: &AuditEntry) -> io::Result<()> {
-        let json = serde_json::to_string(entry)
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+        let json = serde_json::to_string(entry).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
         self.file.write_all(json.as_bytes()).await?;
         self.file.write_all(b"\n").await?;
         self.file.flush().await?;
@@ -98,11 +97,10 @@ impl AuditWriter {
             if line.trim().is_empty() {
                 continue;
             }
-            let entry: AuditEntry =
-                serde_json::from_str(&line).map_err(|source| AuditError::Deserialize {
-                    line: entries_checked,
-                    source,
-                })?;
+            let entry: AuditEntry = serde_json::from_str(&line).map_err(|source| AuditError::Deserialize {
+                line: entries_checked,
+                source,
+            })?;
 
             // Check internal hash integrity.
             if !entry.verify_integrity() {
@@ -183,8 +181,5 @@ pub enum AuditError {
     #[error("I/O error: {0}")]
     Io(#[from] io::Error),
     #[error("JSON deserialization error at line {line}: {source}")]
-    Deserialize {
-        line: u64,
-        source: serde_json::Error,
-    },
+    Deserialize { line: u64, source: serde_json::Error },
 }

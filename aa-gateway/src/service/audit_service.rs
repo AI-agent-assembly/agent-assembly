@@ -11,9 +11,7 @@ use tonic::{Request, Response, Status};
 use aa_core::identity::{AgentId, SessionId};
 use aa_core::{AuditEntry, AuditEventType};
 use aa_proto::assembly::audit::v1::audit_service_server::AuditService;
-use aa_proto::assembly::audit::v1::{
-    AuditEvent, ReportEventsRequest, ReportEventsResponse, StreamEventsResponse,
-};
+use aa_proto::assembly::audit::v1::{AuditEvent, ReportEventsRequest, ReportEventsResponse, StreamEventsResponse};
 use aa_proto::assembly::common::v1::Decision;
 
 use crate::service::convert;

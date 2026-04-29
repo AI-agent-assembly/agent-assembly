@@ -25,12 +25,12 @@ pub struct PolicyServiceImpl {
 
 impl PolicyServiceImpl {
     /// Create a new service backed by the given policy engine and audit channel.
-    pub fn new(
-        engine: Arc<PolicyEngine>,
-        audit_tx: mpsc::Sender<AuditEntry>,
-        audit_drops: Arc<AtomicU64>,
-    ) -> Self {
-        Self { engine, audit_tx, audit_drops }
+    pub fn new(engine: Arc<PolicyEngine>, audit_tx: mpsc::Sender<AuditEntry>, audit_drops: Arc<AtomicU64>) -> Self {
+        Self {
+            engine,
+            audit_tx,
+            audit_drops,
+        }
     }
 
     /// Evaluate a single request against the engine, returning the gRPC response.

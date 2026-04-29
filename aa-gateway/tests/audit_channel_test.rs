@@ -23,11 +23,7 @@ tools:
     allow: true
 "#;
 
-async fn start_server_with_tiny_channel() -> (
-    SocketAddr,
-    Arc<AtomicU64>,
-    tokio::sync::mpsc::Receiver<AuditEntry>,
-) {
+async fn start_server_with_tiny_channel() -> (SocketAddr, Arc<AtomicU64>, tokio::sync::mpsc::Receiver<AuditEntry>) {
     let mut tmp = tempfile::NamedTempFile::new().unwrap();
     write!(tmp, "{}", POLICY_YAML).unwrap();
     tmp.flush().unwrap();
@@ -85,9 +81,7 @@ fn make_request() -> CheckActionRequest {
 #[tokio::test]
 async fn policy_evaluation_succeeds_when_audit_channel_full() {
     let (addr, audit_drops, _rx) = start_server_with_tiny_channel().await;
-    let mut client = PolicyServiceClient::connect(format!("http://{addr}"))
-        .await
-        .unwrap();
+    let mut client = PolicyServiceClient::connect(format!("http://{addr}")).await.unwrap();
 
     // Send multiple requests — the channel(1) will fill after the first.
     // Note: the _audit_rx receiver is never consumed, so all sends after

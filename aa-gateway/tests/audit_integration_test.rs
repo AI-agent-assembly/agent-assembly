@@ -10,13 +10,13 @@ use aa_core::{AuditEntry, AuditEventType};
 use aa_gateway::service::{AuditServiceImpl, PolicyServiceImpl};
 use aa_gateway::PolicyEngine;
 use aa_proto::assembly::audit::v1::audit_service_client::AuditServiceClient;
+use aa_proto::assembly::audit::v1::audit_service_server::AuditServiceServer;
 use aa_proto::assembly::audit::v1::{AuditEvent, ReportEventsRequest};
 use aa_proto::assembly::common::v1::{ActionType, AgentId as ProtoAgentId, Decision, Timestamp};
 use aa_proto::assembly::policy::v1::action_context::Action;
 use aa_proto::assembly::policy::v1::policy_service_client::PolicyServiceClient;
 use aa_proto::assembly::policy::v1::policy_service_server::PolicyServiceServer;
 use aa_proto::assembly::policy::v1::{ActionContext, CheckActionRequest, ToolCallContext};
-use aa_proto::assembly::audit::v1::audit_service_server::AuditServiceServer;
 use tokio::net::TcpListener;
 use tokio::sync::mpsc;
 use tonic::transport::Server;
@@ -32,11 +32,7 @@ tools:
 
 /// Start a server wired to an audit channel where the receiver is returned so
 /// the test can consume and inspect entries.
-async fn start_server_with_audit_rx() -> (
-    SocketAddr,
-    mpsc::Receiver<AuditEntry>,
-    Arc<AtomicU64>,
-) {
+async fn start_server_with_audit_rx() -> (SocketAddr, mpsc::Receiver<AuditEntry>, Arc<AtomicU64>) {
     let mut tmp = tempfile::NamedTempFile::new().unwrap();
     write!(tmp, "{}", POLICY_YAML).unwrap();
     tmp.flush().unwrap();
@@ -44,8 +40,7 @@ async fn start_server_with_audit_rx() -> (
     let engine = PolicyEngine::load_from_file(tmp.path()).unwrap();
     let (audit_tx, audit_rx) = mpsc::channel::<AuditEntry>(4096);
     let audit_drops = Arc::new(AtomicU64::new(0));
-    let policy_svc =
-        PolicyServiceImpl::new(Arc::new(engine), audit_tx.clone(), Arc::clone(&audit_drops));
+    let policy_svc = PolicyServiceImpl::new(Arc::new(engine), audit_tx.clone(), Arc::clone(&audit_drops));
     let audit_svc = AuditServiceImpl::new(audit_tx, Arc::clone(&audit_drops));
 
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -93,9 +88,7 @@ fn tool_call_request(tool_name: &str) -> CheckActionRequest {
 #[tokio::test]
 async fn check_action_allow_produces_audit_entry() {
     let (addr, mut audit_rx, _drops) = start_server_with_audit_rx().await;
-    let mut client = PolicyServiceClient::connect(format!("http://{addr}"))
-        .await
-        .unwrap();
+    let mut client = PolicyServiceClient::connect(format!("http://{addr}")).await.unwrap();
 
     let resp = client
         .check_action(tool_call_request("web_search"))
@@ -122,9 +115,7 @@ async fn check_action_allow_produces_audit_entry() {
 #[tokio::test]
 async fn check_action_deny_produces_policy_violation_event() {
     let (addr, mut audit_rx, _drops) = start_server_with_audit_rx().await;
-    let mut client = PolicyServiceClient::connect(format!("http://{addr}"))
-        .await
-        .unwrap();
+    let mut client = PolicyServiceClient::connect(format!("http://{addr}")).await.unwrap();
 
     let resp = client
         .check_action(tool_call_request("dangerous"))
@@ -146,9 +137,7 @@ async fn check_action_deny_produces_policy_violation_event() {
 #[tokio::test]
 async fn report_events_ingests_batch() {
     let (addr, mut audit_rx, _drops) = start_server_with_audit_rx().await;
-    let mut client = AuditServiceClient::connect(format!("http://{addr}"))
-        .await
-        .unwrap();
+    let mut client = AuditServiceClient::connect(format!("http://{addr}")).await.unwrap();
 
     let events = vec![
         AuditEvent {
@@ -160,7 +149,9 @@ async fn report_events_ingests_batch() {
             }),
             action_type: ActionType::ToolCall as i32,
             decision: Decision::Allow as i32,
-            occurred_at: Some(Timestamp { unix_ms: 1_700_000_000_000 }),
+            occurred_at: Some(Timestamp {
+                unix_ms: 1_700_000_000_000,
+            }),
             trace_id: "trace-r1".into(),
             span_id: "span-r1".into(),
             parent_span_id: String::new(),
@@ -176,7 +167,9 @@ async fn report_events_ingests_batch() {
             }),
             action_type: ActionType::ToolCall as i32,
             decision: Decision::Deny as i32,
-            occurred_at: Some(Timestamp { unix_ms: 1_700_000_001_000 }),
+            occurred_at: Some(Timestamp {
+                unix_ms: 1_700_000_001_000,
+            }),
             trace_id: "trace-r2".into(),
             span_id: "span-r2".into(),
             parent_span_id: String::new(),
@@ -214,9 +207,7 @@ async fn report_events_ingests_batch() {
 #[tokio::test]
 async fn stream_events_ingests_client_stream() {
     let (addr, mut audit_rx, _drops) = start_server_with_audit_rx().await;
-    let mut client = AuditServiceClient::connect(format!("http://{addr}"))
-        .await
-        .unwrap();
+    let mut client = AuditServiceClient::connect(format!("http://{addr}")).await.unwrap();
 
     let events = vec![
         AuditEvent {
@@ -228,7 +219,9 @@ async fn stream_events_ingests_client_stream() {
             }),
             action_type: ActionType::ToolCall as i32,
             decision: Decision::Allow as i32,
-            occurred_at: Some(Timestamp { unix_ms: 1_700_000_000_000 }),
+            occurred_at: Some(Timestamp {
+                unix_ms: 1_700_000_000_000,
+            }),
             trace_id: "trace-s1".into(),
             span_id: "span-s1".into(),
             parent_span_id: String::new(),
@@ -244,7 +237,9 @@ async fn stream_events_ingests_client_stream() {
             }),
             action_type: ActionType::FileOperation as i32,
             decision: Decision::Deny as i32,
-            occurred_at: Some(Timestamp { unix_ms: 1_700_000_002_000 }),
+            occurred_at: Some(Timestamp {
+                unix_ms: 1_700_000_002_000,
+            }),
             trace_id: "trace-s2".into(),
             span_id: "span-s2".into(),
             parent_span_id: String::new(),
@@ -260,7 +255,9 @@ async fn stream_events_ingests_client_stream() {
             }),
             action_type: ActionType::ToolCall as i32,
             decision: Decision::Pending as i32,
-            occurred_at: Some(Timestamp { unix_ms: 1_700_000_003_000 }),
+            occurred_at: Some(Timestamp {
+                unix_ms: 1_700_000_003_000,
+            }),
             trace_id: "trace-s3".into(),
             span_id: "span-s3".into(),
             parent_span_id: String::new(),
@@ -270,11 +267,7 @@ async fn stream_events_ingests_client_stream() {
     ];
 
     let stream = tokio_stream::iter(events);
-    let resp = client
-        .stream_events(stream)
-        .await
-        .unwrap()
-        .into_inner();
+    let resp = client.stream_events(stream).await.unwrap().into_inner();
 
     assert_eq!(resp.events_received, 3);
 

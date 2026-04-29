@@ -60,8 +60,7 @@ async fn append_writes_valid_jsonl() {
 
     // Each line should deserialize to an AuditEntry.
     for (i, line) in lines.iter().enumerate() {
-        let entry: AuditEntry = serde_json::from_str(line)
-            .unwrap_or_else(|e| panic!("line {i} failed to parse: {e}"));
+        let entry: AuditEntry = serde_json::from_str(line).unwrap_or_else(|e| panic!("line {i} failed to parse: {e}"));
         assert_eq!(entry.seq(), i as u64);
     }
 }
@@ -102,10 +101,7 @@ async fn verify_chain_detects_tampering() {
 
     // Write a valid chain, then tamper with the second entry.
     let entries = make_chain(3);
-    let mut lines: Vec<String> = entries
-        .iter()
-        .map(|e| serde_json::to_string(e).unwrap())
-        .collect();
+    let mut lines: Vec<String> = entries.iter().map(|e| serde_json::to_string(e).unwrap()).collect();
 
     // Tamper: replace the payload in line 1 (breaks its hash).
     let _original: AuditEntry = serde_json::from_str(&lines[1]).unwrap();
