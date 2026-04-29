@@ -256,3 +256,44 @@ async fn watch_approvals_streams_new_request() {
     assert_eq!(event.agent_id, "agent-test");
     assert_eq!(event.action, "deploy to production");
 }
+
+#[tokio::test]
+async fn watch_approvals_streams_multiple_requests() {
+    let (addr, queue) = start_server().await;
+    let mut client = ApprovalServiceClient::connect(format!("http://{addr}"))
+        .await
+        .unwrap();
+
+    let mut stream = client
+        .watch_approvals(WatchApprovalsRequest {})
+        .await
+        .unwrap()
+        .into_inner();
+
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+    let mut expected_ids = Vec::new();
+    for _ in 0..3 {
+        let req = make_test_request();
+        expected_ids.push(req.request_id.to_string());
+        let (_rid, _fut) = queue.submit(req);
+    }
+
+    let mut received_ids = Vec::new();
+    for _ in 0..3 {
+        let event = tokio::time::timeout(
+            std::time::Duration::from_secs(3),
+            stream.message(),
+        )
+        .await
+        .expect("should receive event within 3 seconds")
+        .expect("stream should not error")
+        .expect("stream should not end");
+
+        received_ids.push(event.request_id);
+    }
+
+    expected_ids.sort();
+    received_ids.sort();
+    assert_eq!(received_ids, expected_ids);
+}
