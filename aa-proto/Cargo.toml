@@ -7,7 +7,7 @@ repository.workspace = true
 description = "Generated protobuf/gRPC types for Agent Assembly (prost + tonic)"
 
 [dependencies]
-prost       = "0.13"
+prost       = "0.14"
 tonic       = { version = "0.13", features = ["transport"] }
 
 [build-dependencies]
