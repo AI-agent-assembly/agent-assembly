@@ -473,12 +473,27 @@ mod tests {
                     .collect()
             })
             .unwrap_or_default();
+        let daily_limit = doc
+            .budget
+            .as_ref()
+            .and_then(|bp| bp.daily_limit_usd)
+            .and_then(|v| rust_decimal::Decimal::try_from(v).ok());
+        let monthly_limit = doc
+            .budget
+            .as_ref()
+            .and_then(|bp| bp.monthly_limit_usd)
+            .and_then(|v| rust_decimal::Decimal::try_from(v).ok());
         PolicyEngine {
             policy: Arc::new(ArcSwap::new(Arc::new(doc))),
             scanner: aa_core::CredentialScanner::new(),
             compiled_patterns,
             rate_state: DashMap::new(),
-            budget: budget::BudgetTracker::new(chrono_tz::UTC),
+            budget: crate::budget::BudgetTracker::new(
+                crate::budget::PricingTable::default_table(),
+                daily_limit,
+                monthly_limit,
+                chrono_tz::UTC,
+            ),
             _watcher: None,
         }
     }
@@ -914,7 +929,8 @@ mod tests {
         let mut tmp = tempfile::NamedTempFile::new().unwrap();
         write!(tmp, "version: \"1\"\ntools:\n  search:\n    allow: true\n").unwrap();
         tmp.flush().unwrap();
-        let result = PolicyEngine::load_from_file(tmp.path());
+        let (alert_tx, _) = tokio::sync::broadcast::channel::<crate::budget::BudgetAlert>(64);
+        let result = PolicyEngine::load_from_file(tmp.path(), alert_tx);
         assert!(result.is_ok(), "expected Ok, got: {:?}", result.err());
     }
 
