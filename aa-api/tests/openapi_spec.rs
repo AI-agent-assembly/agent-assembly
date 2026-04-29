@@ -25,19 +25,9 @@ fn health_path_exists() {
 #[test]
 fn health_response_schema_exists() {
     let spec = aa_api::ApiDoc::openapi();
-    let schemas = &spec
-        .components
-        .as_ref()
-        .expect("components should exist")
-        .schemas;
-    assert!(
-        schemas.contains_key("HealthResponse"),
-        "HealthResponse schema missing"
-    );
-    assert!(
-        schemas.contains_key("ProblemDetail"),
-        "ProblemDetail schema missing"
-    );
+    let schemas = &spec.components.as_ref().expect("components should exist").schemas;
+    assert!(schemas.contains_key("HealthResponse"), "HealthResponse schema missing");
+    assert!(schemas.contains_key("ProblemDetail"), "ProblemDetail schema missing");
 }
 
 #[test]
