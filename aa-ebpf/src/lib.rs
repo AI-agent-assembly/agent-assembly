@@ -34,10 +34,12 @@
 //!
 //! ## Platform support
 //!
-//! eBPF is Linux-only. On macOS, this crate compiles but all aya-dependent
-//! modules (`uprobe`, `kprobe`, `tracepoint`, `ringbuf`) are gated with
-//! `#[cfg(target_os = "linux")]`.  Cross-platform modules (`events`, `lineage`,
-//! `alert`, `error`, `loader`, `maps`, `syscall`) are available on all platforms.
+//! eBPF is Linux-only. On macOS, this crate compiles but most aya-dependent
+//! modules (`uprobe`, `kprobe`, `ringbuf`) are gated with
+//! `#[cfg(target_os = "linux")]`.  The `tracepoint` module is cross-platform
+//! (aya-dependent code is gated internally; non-Linux stubs are provided).
+//! Cross-platform modules (`events`, `lineage`, `alert`, `error`, `loader`,
+//! `maps`, `syscall`) are available on all platforms.
 
 // Cross-platform modules (no aya dependency).
 pub mod alert;
@@ -55,7 +57,8 @@ pub mod syscall;
 pub mod kprobe;
 #[cfg(target_os = "linux")]
 pub mod ringbuf;
-#[cfg(target_os = "linux")]
+// tracepoint is cross-platform: aya-dependent code is gated internally,
+// and non-Linux stubs provide a consistent API surface.
 pub mod tracepoint;
 #[cfg(target_os = "linux")]
 pub mod uprobe;
