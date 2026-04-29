@@ -143,6 +143,21 @@ impl AnomalyDetector {
         }
     }
 
+    /// Detect child process execution: any `ProcessExec` action is flagged.
+    ///
+    /// Returns `Some(AnomalyEvent)` with [`AnomalyResponse::Block`]. Child
+    /// process execution is default-deny — agents should not spawn subprocesses
+    /// unless explicitly allowed by policy.
+    pub fn check_child_process(&self, agent_id: AgentId, command: &str) -> Option<AnomalyEvent> {
+        Some(AnomalyEvent {
+            anomaly_type: AnomalyType::ChildProcessExecution,
+            response: AnomalyResponse::default_for(AnomalyType::ChildProcessExecution),
+            agent_id,
+            description: format!("Unauthorized child process execution: {command}"),
+            detected_at: chrono::Utc::now(),
+        })
+    }
+
     /// Compute a stable hash for a (tool_name, args) pair.
     fn hash_tool_call(tool_name: &str, args: &str) -> u64 {
         let mut hasher = Sha256::new();
