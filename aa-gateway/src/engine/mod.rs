@@ -273,8 +273,19 @@ impl PolicyEngine {
             (Some(redacted), all_findings)
         };
 
-        // Stage 7 — Budget check.
+        // Stage 7 — Budget check (monthly first, then daily).
         if let Some(bp) = &policy.budget {
+            if let Some(limit) = bp.monthly_limit_usd {
+                if self.budget.is_monthly_exceeded(ctx.agent_id.as_bytes(), limit) {
+                    return EvaluationResult {
+                        decision: aa_core::PolicyResult::Deny {
+                            reason: "monthly budget exceeded".into(),
+                        },
+                        redacted_payload,
+                        credential_findings,
+                    };
+                }
+            }
             if let Some(limit) = bp.daily_limit_usd {
                 if self.budget.is_exceeded(ctx.agent_id.as_bytes(), limit) {
                     return EvaluationResult {
@@ -298,6 +309,7 @@ impl PolicyEngine {
     /// Record a spend amount for an agent after an action completes.
     pub fn record_spend(&self, ctx: &aa_core::AgentContext, amount_usd: f64) {
         self.budget.record(ctx.agent_id.as_bytes(), amount_usd);
+        self.budget.record_monthly(ctx.agent_id.as_bytes(), amount_usd);
     }
 }
 
