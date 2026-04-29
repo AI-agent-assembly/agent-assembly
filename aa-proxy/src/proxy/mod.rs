@@ -5,8 +5,11 @@
 
 use std::sync::Arc;
 
+use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer, ServerName};
+use rustls::ServerConfig;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
+use tokio_rustls::{TlsAcceptor, TlsConnector};
 
 use crate::config::ProxyConfig;
 use crate::error::ProxyError;
@@ -98,7 +101,47 @@ impl ProxyServer {
                 .await?;
 
             tracing::debug!(host = target, "CONNECT tunnel established");
-            // TLS MitM and forwarding added in subsequent commits.
+
+            // Extract hostname (strip port) for certificate generation.
+            let host = target.split(':').next().unwrap_or(target);
+
+            // --- TLS MitM: act as TLS server to the client ---
+            let ck = self.certs.get_or_insert(host, &self.ca)?;
+            let cert = CertificateDer::from(ck.cert_der.clone());
+            let key = PrivateKeyDer::from(PrivatePkcs8KeyDer::from(ck.key_der.clone()));
+            let server_config = ServerConfig::builder()
+                .with_no_client_auth()
+                .with_single_cert(vec![cert], key)
+                .map_err(|e| ProxyError::Tls(e.to_string()))?;
+            let acceptor = TlsAcceptor::from(Arc::new(server_config));
+            let client_tls = acceptor
+                .accept(stream)
+                .await
+                .map_err(|e| ProxyError::Tls(e.to_string()))?;
+
+            // --- TLS client: connect to the real upstream ---
+            let upstream_tcp = TcpStream::connect(target).await?;
+            let mut root_store = rustls::RootCertStore::empty();
+            let native = rustls_native_certs::load_native_certs();
+            for cert in native.certs {
+                let _ = root_store.add(cert);
+            }
+            let client_config = rustls::ClientConfig::builder()
+                .with_root_certificates(root_store)
+                .with_no_client_auth();
+            let connector = TlsConnector::from(Arc::new(client_config));
+            let server_name = ServerName::try_from(host.to_string())
+                .map_err(|e| ProxyError::Tls(e.to_string()))?;
+            let upstream_tls = connector
+                .connect(server_name, upstream_tcp)
+                .await
+                .map_err(|e| ProxyError::Tls(e.to_string()))?;
+
+            tracing::debug!(%host, "TLS MitM handshake complete");
+
+            // Bidirectional forwarding and interception added in next commit.
+            drop(client_tls);
+            drop(upstream_tls);
             Ok(())
         } else {
             // Plain HTTP — forwarding added in a subsequent commit.
