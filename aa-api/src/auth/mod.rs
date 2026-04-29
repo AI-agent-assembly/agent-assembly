@@ -10,10 +10,19 @@ pub mod jwt;
 pub mod rate_limit;
 pub mod scope;
 
+use std::sync::Arc;
+
+use axum::async_trait;
+use axum::extract::FromRequestParts;
+use axum::http::request::Parts;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 
 use crate::error::ProblemDetail;
+use self::api_key::ApiKeyStore;
+use self::config::{AuthConfig, AuthMode};
+use self::jwt::JwtVerifier;
+use self::rate_limit::RateLimiter;
 use self::scope::Scope;
 
 /// Authentication / authorization errors returned by extractors.
@@ -89,4 +98,92 @@ pub struct AuthenticatedCaller {
     pub key_id: String,
     /// Scopes granted to this caller.
     pub scopes: Vec<Scope>,
+}
+
+/// Prefix used by API keys (`aa_`).
+const API_KEY_PREFIX: &str = "aa_";
+
+#[async_trait]
+impl<S> FromRequestParts<S> for AuthenticatedCaller
+where
+    S: Send + Sync,
+{
+    type Rejection = AuthError;
+
+    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+        // 1. Read auth config from extensions.
+        let auth_config = parts
+            .extensions
+            .get::<Arc<AuthConfig>>()
+            .expect("AuthConfig extension missing — did you forget to add it in build_app?");
+
+        // Bypass mode: return synthetic admin caller.
+        if auth_config.mode == AuthMode::Off {
+            return Ok(AuthenticatedCaller {
+                key_id: "__bypass__".to_string(),
+                scopes: vec![Scope::Read, Scope::Write, Scope::Admin],
+            });
+        }
+
+        // 2. Parse `Authorization: Bearer <token>` header.
+        let header_value = parts
+            .headers
+            .get(axum::http::header::AUTHORIZATION)
+            .and_then(|v| v.to_str().ok())
+            .ok_or(AuthError::MissingHeader)?;
+
+        let token = header_value
+            .strip_prefix("Bearer ")
+            .ok_or_else(|| AuthError::InvalidToken("expected 'Bearer <token>' format".into()))?;
+
+        // 3. Determine credential type and validate.
+        let caller = if token.starts_with(API_KEY_PREFIX) {
+            // API key path.
+            let key_store = parts
+                .extensions
+                .get::<Arc<ApiKeyStore>>()
+                .expect("ApiKeyStore extension missing");
+
+            let entry = key_store
+                .validate(token)
+                .ok_or_else(|| AuthError::InvalidToken("invalid API key".into()))?;
+
+            AuthenticatedCaller {
+                key_id: entry.id.clone(),
+                scopes: entry.scopes.clone(),
+            }
+        } else {
+            // JWT path.
+            let jwt_verifier = parts
+                .extensions
+                .get::<Arc<JwtVerifier>>()
+                .expect("JwtVerifier extension missing");
+
+            let claims = jwt_verifier.verify(token).map_err(|e| {
+                let msg = e.to_string();
+                if msg.contains("ExpiredSignature") {
+                    AuthError::ExpiredToken
+                } else {
+                    AuthError::InvalidToken(msg)
+                }
+            })?;
+
+            AuthenticatedCaller {
+                key_id: claims.sub,
+                scopes: claims.scope,
+            }
+        };
+
+        // 4. Check rate limit.
+        let rate_limiter = parts
+            .extensions
+            .get::<Arc<RateLimiter>>()
+            .expect("RateLimiter extension missing");
+
+        rate_limiter
+            .check(&caller.key_id)
+            .map_err(|retry_after_secs| AuthError::RateLimited { retry_after_secs })?;
+
+        Ok(caller)
+    }
 }
