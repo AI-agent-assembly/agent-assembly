@@ -655,6 +655,7 @@ mod tests {
             pipeline_router,
             crate::approval::ApprovalQueue::new(),
             None,
+            Arc::new(std::sync::atomic::AtomicU64::new(0)),
         ));
 
         // Connect a client.
@@ -745,6 +746,7 @@ mod tests {
             pipeline_router,
             crate::approval::ApprovalQueue::new(),
             None,
+            Arc::new(std::sync::atomic::AtomicU64::new(0)),
         ));
 
         // Connect a client.

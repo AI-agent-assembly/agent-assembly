@@ -84,6 +84,237 @@ fn spawn_proxy(
     tracing::info!(binary = %proxy_bin_display, "proxy subsystem task spawned");
 }
 
+/// Emit a [`PipelineEvent::LayerDegradation`] for an eBPF sub-layer.
+///
+/// `sub_layer` is the specific sub-layer that degraded (e.g. `"ebpf/tls"`,
+/// `"ebpf/file_io"`, `"ebpf/exec"`). The remaining-layers list is derived
+/// from `active_layers` minus the full EBPF flag — the caller decides whether
+/// the top-level EBPF layer should be removed based on how many sub-layers
+/// have degraded.
+fn emit_ebpf_degradation(
+    broadcast_tx: &tokio::sync::broadcast::Sender<crate::pipeline::PipelineEvent>,
+    sub_layer: &str,
+    reason: String,
+) {
+    let info = crate::pipeline::LayerDegradationInfo {
+        layer: sub_layer.to_string(),
+        reason,
+        remaining_layers: Vec::new(),
+    };
+    let _ = broadcast_tx.send(crate::pipeline::PipelineEvent::LayerDegradation(info));
+}
+
+/// Spawn the eBPF TLS uprobe sub-layer.
+///
+/// Loads the TLS BPF program, attaches uprobes to OpenSSL, and starts the
+/// ring-buffer reader loop. TLS capture events are logged at debug level
+/// (mapping to `AuditEvent` is a future task). On failure the `"ebpf/tls"`
+/// sub-layer degrades independently.
+#[cfg(target_os = "linux")]
+fn spawn_ebpf_tls(
+    tracker: &tokio_util::task::TaskTracker,
+    broadcast_tx: &tokio::sync::broadcast::Sender<crate::pipeline::PipelineEvent>,
+    degraded_layers: &mut Vec<String>,
+) {
+    let mut bpf = match aa_ebpf::EbpfLoader::load() {
+        Ok(b) => b,
+        Err(e) => {
+            let reason = format!("TLS BPF load failed: {e}");
+            tracing::warn!(%reason, "degrading ebpf/tls sub-layer");
+            emit_ebpf_degradation(broadcast_tx, "ebpf/tls", reason);
+            degraded_layers.push("ebpf/tls".to_string());
+            return;
+        }
+    };
+
+    let pid = std::process::id() as i32;
+    if let Err(e) = aa_ebpf::uprobe::UprobeManager::attach(&mut bpf, Some(pid)) {
+        let reason = format!("TLS uprobe attach failed: {e}");
+        tracing::warn!(%reason, "degrading ebpf/tls sub-layer");
+        emit_ebpf_degradation(broadcast_tx, "ebpf/tls", reason);
+        degraded_layers.push("ebpf/tls".to_string());
+        return;
+    }
+
+    let mut reader = match aa_ebpf::ringbuf::RingBufReader::new(bpf) {
+        Ok(r) => r,
+        Err(e) => {
+            let reason = format!("ring buffer init failed: {e}");
+            tracing::warn!(%reason, "degrading ebpf/tls sub-layer");
+            emit_ebpf_degradation(broadcast_tx, "ebpf/tls", reason);
+            degraded_layers.push("ebpf/tls".to_string());
+            return;
+        }
+    };
+
+    let tls_broadcast_tx = broadcast_tx.clone();
+    tracker.spawn(async move {
+        loop {
+            match reader.next().await {
+                Ok(Some(event)) => {
+                    tracing::debug!(?event, "TLS ring buffer event");
+                    let _ = &tls_broadcast_tx; // keep broadcast_tx alive for future forwarding
+                }
+                Ok(None) => {
+                    tracing::info!("TLS ring buffer closed");
+                    break;
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "TLS ring buffer read error");
+                    emit_ebpf_degradation(&tls_broadcast_tx, "ebpf/tls", format!("ring buffer error: {e}"));
+                    break;
+                }
+            }
+        }
+    });
+    tracing::info!("ebpf/tls sub-layer task spawned");
+}
+
+#[cfg(not(target_os = "linux"))]
+fn spawn_ebpf_tls(
+    _tracker: &tokio_util::task::TaskTracker,
+    broadcast_tx: &tokio::sync::broadcast::Sender<crate::pipeline::PipelineEvent>,
+    degraded_layers: &mut Vec<String>,
+) {
+    emit_ebpf_degradation(
+        broadcast_tx,
+        "ebpf/tls",
+        "eBPF not supported on this platform".to_string(),
+    );
+    degraded_layers.push("ebpf/tls".to_string());
+}
+
+/// Spawn the eBPF file I/O kprobe sub-layer.
+///
+/// Loads the file I/O BPF program, attaches kprobes, and starts the perf
+/// event reader. Each `FileIoEvent` is mapped to an `AuditEvent` via
+/// [`crate::ebpf_bridge::file_io_to_audit`] and enriched before being
+/// broadcast on the pipeline channel.
+#[cfg(target_os = "linux")]
+fn spawn_ebpf_file_io(
+    tracker: &tokio_util::task::TaskTracker,
+    broadcast_tx: &tokio::sync::broadcast::Sender<crate::pipeline::PipelineEvent>,
+    seq: &std::sync::Arc<std::sync::atomic::AtomicU64>,
+    agent_id: &str,
+    degraded_layers: &mut Vec<String>,
+) {
+    let pid = std::process::id();
+    let mut loader = aa_ebpf::FileIoLoader::new(pid);
+
+    if let Err(e) = loader.load() {
+        let reason = format!("file I/O BPF load failed: {e}");
+        tracing::warn!(%reason, "degrading ebpf/file_io sub-layer");
+        emit_ebpf_degradation(broadcast_tx, "ebpf/file_io", reason);
+        degraded_layers.push("ebpf/file_io".to_string());
+        return;
+    }
+
+    if let Err(e) = loader.attach_kprobes() {
+        let reason = format!("file I/O kprobe attach failed: {e}");
+        tracing::warn!(%reason, "degrading ebpf/file_io sub-layer");
+        emit_ebpf_degradation(broadcast_tx, "ebpf/file_io", reason);
+        degraded_layers.push("ebpf/file_io".to_string());
+        return;
+    }
+
+    let mut rx = match loader.start_event_reader() {
+        Ok(r) => r,
+        Err(e) => {
+            let reason = format!("file I/O event reader failed: {e}");
+            tracing::warn!(%reason, "degrading ebpf/file_io sub-layer");
+            emit_ebpf_degradation(broadcast_tx, "ebpf/file_io", reason);
+            degraded_layers.push("ebpf/file_io".to_string());
+            return;
+        }
+    };
+
+    let fio_broadcast_tx = broadcast_tx.clone();
+    let fio_seq = std::sync::Arc::clone(seq);
+    let fio_agent_id = agent_id.to_string();
+    tracker.spawn(async move {
+        while let Some(event) = rx.recv().await {
+            let audit = crate::ebpf_bridge::file_io_to_audit(&event);
+            let enriched = crate::ebpf_bridge::enrich_ebpf(audit, &fio_agent_id, &fio_seq);
+            let _ = fio_broadcast_tx.send(crate::pipeline::PipelineEvent::Audit(Box::new(enriched)));
+        }
+        tracing::info!("ebpf/file_io event reader closed");
+    });
+    tracing::info!("ebpf/file_io sub-layer task spawned");
+}
+
+#[cfg(not(target_os = "linux"))]
+fn spawn_ebpf_file_io(
+    _tracker: &tokio_util::task::TaskTracker,
+    broadcast_tx: &tokio::sync::broadcast::Sender<crate::pipeline::PipelineEvent>,
+    _seq: &std::sync::Arc<std::sync::atomic::AtomicU64>,
+    _agent_id: &str,
+    degraded_layers: &mut Vec<String>,
+) {
+    emit_ebpf_degradation(
+        broadcast_tx,
+        "ebpf/file_io",
+        "eBPF not supported on this platform".to_string(),
+    );
+    degraded_layers.push("ebpf/file_io".to_string());
+}
+
+/// Spawn the eBPF process-exec tracepoint sub-layer.
+///
+/// Loads the BPF program and attaches tracepoints. The loader holds the BPF
+/// handle alive and internally maintains a `ProcessLineageTracker` and
+/// `ShellDetector`. A ring-buffer event reader will be wired in a future ticket.
+#[cfg(target_os = "linux")]
+fn spawn_ebpf_exec_tracepoints(
+    tracker: &tokio_util::task::TaskTracker,
+    broadcast_tx: &tokio::sync::broadcast::Sender<crate::pipeline::PipelineEvent>,
+    token: &tokio_util::sync::CancellationToken,
+    degraded_layers: &mut Vec<String>,
+) {
+    let pid = std::process::id();
+    let mut loader = aa_ebpf::ExecLoader::new(pid);
+
+    if let Err(e) = loader.load() {
+        let reason = format!("exec BPF load failed: {e}");
+        tracing::warn!(%reason, "degrading ebpf/exec sub-layer");
+        emit_ebpf_degradation(broadcast_tx, "ebpf/exec", reason);
+        degraded_layers.push("ebpf/exec".to_string());
+        return;
+    }
+
+    if let Err(e) = loader.attach_tracepoints() {
+        let reason = format!("exec tracepoint attach failed: {e}");
+        tracing::warn!(%reason, "degrading ebpf/exec sub-layer");
+        emit_ebpf_degradation(broadcast_tx, "ebpf/exec", reason);
+        degraded_layers.push("ebpf/exec".to_string());
+        return;
+    }
+
+    let exec_token = token.clone();
+    tracker.spawn(async move {
+        // Keep the loader alive so the BPF handle and tracepoints remain
+        // attached until the runtime shuts down.
+        let _loader = loader;
+        exec_token.cancelled().await;
+        tracing::info!("ebpf/exec sub-layer shutting down");
+    });
+    tracing::info!("ebpf/exec sub-layer task spawned");
+}
+
+#[cfg(not(target_os = "linux"))]
+fn spawn_ebpf_exec_tracepoints(
+    _tracker: &tokio_util::task::TaskTracker,
+    broadcast_tx: &tokio::sync::broadcast::Sender<crate::pipeline::PipelineEvent>,
+    _token: &tokio_util::sync::CancellationToken,
+    degraded_layers: &mut Vec<String>,
+) {
+    emit_ebpf_degradation(
+        broadcast_tx,
+        "ebpf/exec",
+        "eBPF not supported on this platform".to_string(),
+    );
+    degraded_layers.push("ebpf/exec".to_string());
+}
+
 /// Emit a [`PipelineEvent::LayerDegradation`] for the proxy layer.
 fn emit_proxy_degradation(
     broadcast_tx: &tokio::sync::broadcast::Sender<crate::pipeline::PipelineEvent>,
@@ -208,6 +439,17 @@ pub async fn run(config: RuntimeConfig) {
         }
     }
 
+    // Shared monotonic sequence counter — used by the pipeline and the
+    // eBPF bridge so all events share a single ordering.
+    let seq = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+
+    // Spawn eBPF sub-layer tasks if the EBPF layer is active.
+    if active_layers.contains(crate::layer::LayerSet::EBPF) {
+        spawn_ebpf_tls(&tracker, &broadcast_tx, &mut degraded_layers);
+        spawn_ebpf_file_io(&tracker, &broadcast_tx, &seq, &config.agent_id, &mut degraded_layers);
+        spawn_ebpf_exec_tracepoints(&tracker, &broadcast_tx, &token, &mut degraded_layers);
+    }
+
     // Spawn the event aggregation pipeline task.
     {
         let pipeline_token = token.clone();
@@ -215,6 +457,7 @@ pub async fn run(config: RuntimeConfig) {
         let pipeline_policy = std::sync::Arc::clone(&policy);
         let pipeline_router = std::sync::Arc::clone(&response_router);
         let pipeline_approval_queue = std::sync::Arc::clone(&approval_queue);
+        let pipeline_seq = std::sync::Arc::clone(&seq);
         tracker.spawn(async move {
             crate::pipeline::run(
                 inbound_rx,
@@ -226,6 +469,7 @@ pub async fn run(config: RuntimeConfig) {
                 pipeline_router,
                 pipeline_approval_queue,
                 None,
+                pipeline_seq,
             )
             .await;
         });
@@ -640,6 +884,116 @@ mod tests {
                 assert!(corr.is_some());
             }
             _ => panic!("expected Audit event"),
+        }
+    }
+
+    // ── spawn_ebpf_tls tests ────────────────────────────────────────────
+
+    #[test]
+    fn spawn_ebpf_tls_degrades_on_non_linux() {
+        let tracker = tokio_util::task::TaskTracker::new();
+        let (tx, mut rx) = tokio::sync::broadcast::channel::<crate::pipeline::PipelineEvent>(16);
+        let mut degraded = Vec::new();
+
+        super::spawn_ebpf_tls(&tracker, &tx, &mut degraded);
+
+        // On macOS the non-Linux cfg path fires immediately.
+        #[cfg(not(target_os = "linux"))]
+        {
+            assert!(degraded.contains(&"ebpf/tls".to_string()));
+            let event = rx.try_recv().unwrap();
+            match event {
+                crate::pipeline::PipelineEvent::LayerDegradation(info) => {
+                    assert_eq!(info.layer, "ebpf/tls");
+                }
+                _ => panic!("expected LayerDegradation event"),
+            }
+        }
+
+        // On Linux the BPF load will fail without root/capabilities,
+        // so it also degrades.
+        #[cfg(target_os = "linux")]
+        {
+            assert!(degraded.contains(&"ebpf/tls".to_string()));
+            let event = rx.try_recv().unwrap();
+            match event {
+                crate::pipeline::PipelineEvent::LayerDegradation(info) => {
+                    assert_eq!(info.layer, "ebpf/tls");
+                }
+                _ => panic!("expected LayerDegradation event"),
+            }
+        }
+    }
+
+    // ── spawn_ebpf_file_io tests ────────────────────────────────────────
+
+    #[test]
+    fn spawn_ebpf_file_io_degrades_on_non_linux() {
+        let tracker = tokio_util::task::TaskTracker::new();
+        let (tx, mut rx) = tokio::sync::broadcast::channel::<crate::pipeline::PipelineEvent>(16);
+        let seq = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+        let mut degraded = Vec::new();
+
+        super::spawn_ebpf_file_io(&tracker, &tx, &seq, "test-agent", &mut degraded);
+
+        #[cfg(not(target_os = "linux"))]
+        {
+            assert!(degraded.contains(&"ebpf/file_io".to_string()));
+            let event = rx.try_recv().unwrap();
+            match event {
+                crate::pipeline::PipelineEvent::LayerDegradation(info) => {
+                    assert_eq!(info.layer, "ebpf/file_io");
+                }
+                _ => panic!("expected LayerDegradation event"),
+            }
+        }
+
+        #[cfg(target_os = "linux")]
+        {
+            assert!(degraded.contains(&"ebpf/file_io".to_string()));
+            let event = rx.try_recv().unwrap();
+            match event {
+                crate::pipeline::PipelineEvent::LayerDegradation(info) => {
+                    assert_eq!(info.layer, "ebpf/file_io");
+                }
+                _ => panic!("expected LayerDegradation event"),
+            }
+        }
+    }
+
+    // ── spawn_ebpf_exec_tracepoints tests ───────────────────────────────
+
+    #[test]
+    fn spawn_ebpf_exec_tracepoints_degrades_on_non_linux() {
+        let tracker = tokio_util::task::TaskTracker::new();
+        let (tx, mut rx) = tokio::sync::broadcast::channel::<crate::pipeline::PipelineEvent>(16);
+        let token = tokio_util::sync::CancellationToken::new();
+        let mut degraded = Vec::new();
+
+        super::spawn_ebpf_exec_tracepoints(&tracker, &tx, &token, &mut degraded);
+
+        #[cfg(not(target_os = "linux"))]
+        {
+            assert!(degraded.contains(&"ebpf/exec".to_string()));
+            let event = rx.try_recv().unwrap();
+            match event {
+                crate::pipeline::PipelineEvent::LayerDegradation(info) => {
+                    assert_eq!(info.layer, "ebpf/exec");
+                }
+                _ => panic!("expected LayerDegradation event"),
+            }
+        }
+
+        #[cfg(target_os = "linux")]
+        {
+            assert!(degraded.contains(&"ebpf/exec".to_string()));
+            let event = rx.try_recv().unwrap();
+            match event {
+                crate::pipeline::PipelineEvent::LayerDegradation(info) => {
+                    assert_eq!(info.layer, "ebpf/exec");
+                }
+                _ => panic!("expected LayerDegradation event"),
+            }
         }
     }
 }

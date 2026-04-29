@@ -157,6 +157,7 @@ name = "aa-runtime"
 version = "0.0.1"
 dependencies = [
  "aa-core",
+ "aa-ebpf",
  "aa-proto",
  "axum 0.7.9",
  "bitflags 2.11.1",
