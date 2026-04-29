@@ -76,6 +76,30 @@ impl PolicyServiceImpl {
         }
     }
 
+    /// Create a new service with both an agent registry and approval queue.
+    ///
+    /// When an approval queue is provided, actions that require human approval
+    /// are submitted to the queue and the gRPC call blocks until the operator
+    /// decides (or the timeout elapses).
+    pub fn with_registry_and_approval(
+        engine: Arc<PolicyEngine>,
+        registry: Arc<AgentRegistry>,
+        approval_queue: Arc<ApprovalQueue>,
+        audit_tx: mpsc::Sender<AuditEntry>,
+        audit_drops: Arc<AtomicU64>,
+        initial_hash: [u8; 32],
+    ) -> Self {
+        Self {
+            engine,
+            registry: Some(registry),
+            approval_queue: Some(approval_queue),
+            audit_tx,
+            audit_drops,
+            seq: AtomicU64::new(0),
+            last_hash: Mutex::new(initial_hash),
+        }
+    }
+
     /// Evaluate a single request against the engine, returning the gRPC response
     /// and the optional deny-action side-effect.
     #[allow(clippy::result_large_err)] // tonic::Status is the standard gRPC error type
