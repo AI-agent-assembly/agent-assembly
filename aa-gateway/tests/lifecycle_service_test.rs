@@ -55,6 +55,38 @@ async fn start_server() -> (SocketAddr, Arc<AgentRegistry>) {
     (addr, registry)
 }
 
+/// Start a server with a policy engine attached (for auto-resume tests).
+async fn start_server_with_engine(
+    policy_yaml: &str,
+) -> (SocketAddr, Arc<AgentRegistry>, Arc<aa_gateway::PolicyEngine>) {
+    use aa_gateway::PolicyEngine;
+
+    let registry = Arc::new(AgentRegistry::new());
+
+    // Write the policy YAML to a temp file and load it.
+    let mut tmp = tempfile::NamedTempFile::new().unwrap();
+    std::io::Write::write_all(&mut tmp, policy_yaml.as_bytes()).unwrap();
+    let engine = Arc::new(PolicyEngine::load_from_file(tmp.path()).unwrap());
+
+    let service =
+        AgentLifecycleServiceImpl::with_policy_engine(Arc::clone(&registry), Arc::clone(&engine));
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+
+    tokio::spawn(async move {
+        let incoming = tokio_stream::wrappers::TcpListenerStream::new(listener);
+        Server::builder()
+            .add_service(AgentLifecycleServiceServer::new(service))
+            .serve_with_incoming(incoming)
+            .await
+            .unwrap();
+    });
+
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    (addr, registry, engine)
+}
+
 // ── Full lifecycle test ────────────────────────────────────────────────────
 
 #[tokio::test]
@@ -323,4 +355,113 @@ async fn heartbeat_returns_should_suspend_false_for_active_agent() {
         .into_inner();
 
     assert!(!hb_resp.should_suspend);
+}
+
+// ── Heartbeat auto-resume ────────────────────────────────────────────────
+
+#[tokio::test]
+async fn heartbeat_auto_resumes_budget_suspended_agent_when_budget_reset() {
+    use aa_gateway::registry::convert::proto_agent_id_to_key;
+    use aa_gateway::registry::{AgentStatus, SuspendReason};
+
+    let yaml = "budget:\n  daily_limit_usd: 10.0\n  action_on_exceed: suspend\n";
+    let (addr, registry, _engine) = start_server_with_engine(yaml).await;
+
+    let mut client = AgentLifecycleServiceClient::connect(format!("http://{addr}"))
+        .await
+        .unwrap();
+
+    let agent_id = test_agent_id();
+    let reg_resp = client
+        .register(RegisterRequest {
+            agent_id: Some(agent_id.clone()),
+            name: "auto-resume-agent".into(),
+            framework: "custom".into(),
+            version: "1.0.0".into(),
+            risk_tier: 0,
+            tool_names: vec![],
+            public_key: test_ed25519_public_key_hex(),
+            metadata: Default::default(),
+        })
+        .await
+        .unwrap()
+        .into_inner();
+    let token = reg_resp.credential_token;
+
+    // Suspend the agent as if budget was exceeded
+    let agent_key = proto_agent_id_to_key(&agent_id);
+    registry
+        .suspend_agent(&agent_key, SuspendReason::BudgetExceeded)
+        .unwrap();
+
+    // Heartbeat: engine has no spend recorded → is_within_budget() = true → auto-resume
+    let hb_resp = client
+        .heartbeat(HeartbeatRequest {
+            agent_id: Some(agent_id.clone()),
+            credential_token: token.clone(),
+            active_runs: 0,
+            actions_count: 0,
+        })
+        .await
+        .unwrap()
+        .into_inner();
+
+    assert!(!hb_resp.should_suspend, "agent should have been auto-resumed");
+
+    // Verify the registry status was updated to Active
+    let status = registry.agent_status(&agent_key).unwrap();
+    assert_eq!(status, AgentStatus::Active);
+}
+
+#[tokio::test]
+async fn heartbeat_does_not_resume_manually_suspended_agent() {
+    use aa_gateway::registry::convert::proto_agent_id_to_key;
+    use aa_gateway::registry::{AgentStatus, SuspendReason};
+
+    let yaml = "budget:\n  daily_limit_usd: 10.0\n  action_on_exceed: suspend\n";
+    let (addr, registry, _engine) = start_server_with_engine(yaml).await;
+
+    let mut client = AgentLifecycleServiceClient::connect(format!("http://{addr}"))
+        .await
+        .unwrap();
+
+    let agent_id = test_agent_id();
+    let reg_resp = client
+        .register(RegisterRequest {
+            agent_id: Some(agent_id.clone()),
+            name: "manual-suspend-agent".into(),
+            framework: "custom".into(),
+            version: "1.0.0".into(),
+            risk_tier: 0,
+            tool_names: vec![],
+            public_key: test_ed25519_public_key_hex(),
+            metadata: Default::default(),
+        })
+        .await
+        .unwrap()
+        .into_inner();
+    let token = reg_resp.credential_token;
+
+    // Manually suspend the agent
+    let agent_key = proto_agent_id_to_key(&agent_id);
+    registry
+        .suspend_agent(&agent_key, SuspendReason::Manual)
+        .unwrap();
+
+    // Heartbeat: manual suspension is not auto-resumable
+    let hb_resp = client
+        .heartbeat(HeartbeatRequest {
+            agent_id: Some(agent_id),
+            credential_token: token,
+            active_runs: 0,
+            actions_count: 0,
+        })
+        .await
+        .unwrap()
+        .into_inner();
+
+    assert!(hb_resp.should_suspend, "manually suspended agent must not auto-resume");
+
+    let status = registry.agent_status(&agent_key).unwrap();
+    assert_eq!(status, AgentStatus::Suspended(SuspendReason::Manual));
 }
