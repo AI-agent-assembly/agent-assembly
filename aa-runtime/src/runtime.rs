@@ -84,6 +84,26 @@ fn spawn_proxy(
     tracing::info!(binary = %proxy_bin_display, "proxy subsystem task spawned");
 }
 
+/// Emit a [`PipelineEvent::LayerDegradation`] for an eBPF sub-layer.
+///
+/// `sub_layer` is the specific sub-layer that degraded (e.g. `"ebpf/tls"`,
+/// `"ebpf/file_io"`, `"ebpf/exec"`). The remaining-layers list is derived
+/// from `active_layers` minus the full EBPF flag — the caller decides whether
+/// the top-level EBPF layer should be removed based on how many sub-layers
+/// have degraded.
+fn emit_ebpf_degradation(
+    broadcast_tx: &tokio::sync::broadcast::Sender<crate::pipeline::PipelineEvent>,
+    sub_layer: &str,
+    reason: String,
+) {
+    let info = crate::pipeline::LayerDegradationInfo {
+        layer: sub_layer.to_string(),
+        reason,
+        remaining_layers: Vec::new(),
+    };
+    let _ = broadcast_tx.send(crate::pipeline::PipelineEvent::LayerDegradation(info));
+}
+
 /// Emit a [`PipelineEvent::LayerDegradation`] for the proxy layer.
 fn emit_proxy_degradation(
     broadcast_tx: &tokio::sync::broadcast::Sender<crate::pipeline::PipelineEvent>,
