@@ -3,7 +3,7 @@
 pub mod event;
 pub mod metrics;
 
-pub use event::{EnrichedEvent, EventSource, LayerDegradationInfo};
+pub use event::{EnrichedEvent, EventSource, LayerDegradationInfo, PipelineEvent};
 pub use metrics::PipelineMetrics;
 
 use crate::approval::{ApprovalDecision as RuntimeApprovalDecision, ApprovalQueue, ApprovalRequest};
@@ -61,7 +61,7 @@ impl PipelineConfig {
 #[allow(clippy::too_many_arguments)]
 pub async fn run(
     mut rx: mpsc::Receiver<(u64, IpcFrame)>,
-    broadcast_tx: broadcast::Sender<EnrichedEvent>,
+    broadcast_tx: broadcast::Sender<PipelineEvent>,
     config: PipelineConfig,
     metrics: Arc<PipelineMetrics>,
     token: CancellationToken,
@@ -99,7 +99,7 @@ pub async fn run(
                             ::metrics::counter!("aa_policy_violations_total").increment(1);
                             // Push a ViolationAlert back to the originating SDK connection.
                             push_violation_alert(&enriched, &response_router).await;
-                            let _ = broadcast_tx.send(enriched);
+                            let _ = broadcast_tx.send(PipelineEvent::Audit(Box::new(enriched)));
                         } else {
                             batch.push(enriched);
                             if batch.len() >= config.batch_size {
@@ -375,10 +375,10 @@ async fn handle_policy_query(
 /// Clears `batch` after broadcasting. Errors from `broadcast_tx.send`
 /// (all receivers dropped) are silently ignored — the pipeline does not
 /// require any active subscribers to operate.
-fn flush(batch: &mut Vec<EnrichedEvent>, broadcast_tx: &broadcast::Sender<EnrichedEvent>, metrics: &PipelineMetrics) {
+fn flush(batch: &mut Vec<EnrichedEvent>, broadcast_tx: &broadcast::Sender<PipelineEvent>, metrics: &PipelineMetrics) {
     let n = batch.len() as u64;
     for event in batch.drain(..) {
-        let _ = broadcast_tx.send(event);
+        let _ = broadcast_tx.send(PipelineEvent::Audit(Box::new(event)));
     }
     ::metrics::counter!("aa_events_emitted_total").increment(n);
     metrics.record_batch_size(n);
@@ -389,6 +389,14 @@ mod tests {
     use super::*;
     use crate::policy::PolicyRules;
     use aa_proto::assembly::audit::v1::{audit_event::Detail, AuditEvent, PolicyViolation};
+
+    /// Unwrap a `PipelineEvent::Audit` variant, panicking if it is a different variant.
+    fn unwrap_audit(event: PipelineEvent) -> EnrichedEvent {
+        match event {
+            PipelineEvent::Audit(e) => *e,
+            other => panic!("expected PipelineEvent::Audit, got {other:?}"),
+        }
+    }
 
     fn make_audit_event() -> AuditEvent {
         AuditEvent::default()
@@ -447,7 +455,7 @@ mod tests {
 
     #[test]
     fn flush_empty_batch_does_nothing() {
-        let (tx, _rx) = broadcast::channel::<EnrichedEvent>(16);
+        let (tx, _rx) = broadcast::channel::<PipelineEvent>(16);
         let metrics = PipelineMetrics::default();
         let mut batch: Vec<EnrichedEvent> = vec![];
         flush(&mut batch, &tx, &metrics);
@@ -457,7 +465,7 @@ mod tests {
 
     #[test]
     fn flush_broadcasts_all_events_and_records_batch_size() {
-        let (tx, mut rx) = broadcast::channel::<EnrichedEvent>(16);
+        let (tx, mut rx) = broadcast::channel::<PipelineEvent>(16);
         let metrics = PipelineMetrics::default();
         let seq = AtomicU64::new(0);
         let mut batch = vec![
@@ -555,7 +563,7 @@ mod tests {
     async fn batch_flushes_on_size_threshold() {
         let config = test_config(3, 10_000); // batch_size=3, very long interval (won't fire)
         let (tx, rx) = mpsc::channel::<(u64, IpcFrame)>(64);
-        let (broadcast_tx, mut broadcast_rx) = broadcast::channel::<EnrichedEvent>(64);
+        let (broadcast_tx, mut broadcast_rx) = broadcast::channel::<PipelineEvent>(64);
         let metrics = Arc::new(PipelineMetrics::default());
         let token = CancellationToken::new();
 
@@ -591,7 +599,7 @@ mod tests {
     async fn batch_flushes_on_interval() {
         let config = test_config(100, 50); // batch_size=100 (won't reach), interval=50ms
         let (tx, rx) = mpsc::channel::<(u64, IpcFrame)>(64);
-        let (broadcast_tx, mut broadcast_rx) = broadcast::channel::<EnrichedEvent>(64);
+        let (broadcast_tx, mut broadcast_rx) = broadcast::channel::<PipelineEvent>(64);
         let metrics = Arc::new(PipelineMetrics::default());
         let token = CancellationToken::new();
 
@@ -627,7 +635,7 @@ mod tests {
         // batch_size=100, very long interval — only a violation should arrive
         let config = test_config(100, 10_000);
         let (tx, rx) = mpsc::channel::<(u64, IpcFrame)>(64);
-        let (broadcast_tx, mut broadcast_rx) = broadcast::channel::<EnrichedEvent>(64);
+        let (broadcast_tx, mut broadcast_rx) = broadcast::channel::<PipelineEvent>(64);
         let metrics = Arc::new(PipelineMetrics::default());
         let token = CancellationToken::new();
 
@@ -646,10 +654,12 @@ mod tests {
         // Send a violation — should arrive immediately, bypassing batch
         tx.send((0, IpcFrame::EventReport(violation_event()))).await.unwrap();
 
-        let event = tokio::time::timeout(Duration::from_millis(200), broadcast_rx.recv())
-            .await
-            .expect("violation event should arrive immediately, before any flush interval")
-            .expect("broadcast error");
+        let event = unwrap_audit(
+            tokio::time::timeout(Duration::from_millis(200), broadcast_rx.recv())
+                .await
+                .expect("violation event should arrive immediately, before any flush interval")
+                .expect("broadcast error"),
+        );
 
         assert!(matches!(event.inner.detail, Some(Detail::Violation(_))));
         assert_eq!(metrics.processed(), 1);
@@ -660,7 +670,7 @@ mod tests {
     async fn cancellation_flushes_pending_batch() {
         let config = test_config(100, 10_000); // large batch, long interval
         let (tx, rx) = mpsc::channel::<(u64, IpcFrame)>(64);
-        let (broadcast_tx, mut broadcast_rx) = broadcast::channel::<EnrichedEvent>(64);
+        let (broadcast_tx, mut broadcast_rx) = broadcast::channel::<PipelineEvent>(64);
         let metrics = Arc::new(PipelineMetrics::default());
         let token = CancellationToken::new();
 
@@ -714,7 +724,7 @@ mod tests {
     async fn non_event_frames_ignored() {
         let config = test_config(100, 50);
         let (tx, rx) = mpsc::channel::<(u64, IpcFrame)>(64);
-        let (broadcast_tx, _broadcast_rx) = broadcast::channel::<EnrichedEvent>(64);
+        let (broadcast_tx, _broadcast_rx) = broadcast::channel::<PipelineEvent>(64);
         let metrics = Arc::new(PipelineMetrics::default());
         let token = CancellationToken::new();
 
@@ -758,7 +768,7 @@ mod tests {
         // batch_size=100, very long interval — only a rule-matched event should arrive immediately
         let config = test_config(100, 10_000);
         let (tx, rx) = mpsc::channel::<(u64, IpcFrame)>(64);
-        let (broadcast_tx, mut broadcast_rx) = broadcast::channel::<EnrichedEvent>(64);
+        let (broadcast_tx, mut broadcast_rx) = broadcast::channel::<PipelineEvent>(64);
         let metrics = Arc::new(PipelineMetrics::default());
         let token = CancellationToken::new();
 
@@ -782,10 +792,12 @@ mod tests {
         tx.send((0, IpcFrame::EventReport(event))).await.unwrap();
 
         // Should arrive immediately (before flush interval)
-        let received = tokio::time::timeout(Duration::from_millis(200), broadcast_rx.recv())
-            .await
-            .expect("rule-matched event should bypass batch and arrive immediately")
-            .expect("broadcast error");
+        let received = unwrap_audit(
+            tokio::time::timeout(Duration::from_millis(200), broadcast_rx.recv())
+                .await
+                .expect("rule-matched event should bypass batch and arrive immediately")
+                .expect("broadcast error"),
+        );
 
         assert_eq!(received.source, EventSource::Sdk);
         assert_eq!(metrics.processed(), 1);
@@ -809,7 +821,7 @@ mod tests {
         // batch_size=100, very long interval — event should NOT arrive before timeout
         let config = test_config(100, 10_000);
         let (tx, rx) = mpsc::channel::<(u64, IpcFrame)>(64);
-        let (broadcast_tx, mut broadcast_rx) = broadcast::channel::<EnrichedEvent>(64);
+        let (broadcast_tx, mut broadcast_rx) = broadcast::channel::<PipelineEvent>(64);
         let metrics = Arc::new(PipelineMetrics::default());
         let token = CancellationToken::new();
 
@@ -851,7 +863,7 @@ mod tests {
         // batch_size=3 so we get a single flush of 3 events and can check ordering.
         let config = test_config(3, 10_000);
         let (tx, rx) = mpsc::channel::<(u64, IpcFrame)>(64);
-        let (broadcast_tx, mut broadcast_rx) = broadcast::channel::<EnrichedEvent>(64);
+        let (broadcast_tx, mut broadcast_rx) = broadcast::channel::<PipelineEvent>(64);
         let metrics = Arc::new(PipelineMetrics::default());
         let token = CancellationToken::new();
 
@@ -873,10 +885,12 @@ mod tests {
 
         let mut seq_numbers = Vec::new();
         for _ in 0..3 {
-            let event = tokio::time::timeout(Duration::from_millis(500), broadcast_rx.recv())
-                .await
-                .expect("timed out waiting for event")
-                .expect("broadcast error");
+            let event = unwrap_audit(
+                tokio::time::timeout(Duration::from_millis(500), broadcast_rx.recv())
+                    .await
+                    .expect("timed out waiting for event")
+                    .expect("broadcast error"),
+            );
             seq_numbers.push(event.sequence_number);
         }
 
@@ -894,7 +908,7 @@ mod tests {
         // Two separate batch flushes — sequence counter must not reset between them.
         let config = test_config(2, 10_000); // batch_size=2
         let (tx, rx) = mpsc::channel::<(u64, IpcFrame)>(64);
-        let (broadcast_tx, mut broadcast_rx) = broadcast::channel::<EnrichedEvent>(64);
+        let (broadcast_tx, mut broadcast_rx) = broadcast::channel::<PipelineEvent>(64);
         let metrics = Arc::new(PipelineMetrics::default());
         let token = CancellationToken::new();
 
@@ -917,10 +931,12 @@ mod tests {
         let first_batch: Vec<u64> = {
             let mut v = Vec::new();
             for _ in 0..2 {
-                let e = tokio::time::timeout(Duration::from_millis(500), broadcast_rx.recv())
-                    .await
-                    .expect("timed out waiting for first batch")
-                    .expect("broadcast error");
+                let e = unwrap_audit(
+                    tokio::time::timeout(Duration::from_millis(500), broadcast_rx.recv())
+                        .await
+                        .expect("timed out waiting for first batch")
+                        .expect("broadcast error"),
+                );
                 v.push(e.sequence_number);
             }
             v
@@ -933,10 +949,12 @@ mod tests {
         let second_batch: Vec<u64> = {
             let mut v = Vec::new();
             for _ in 0..2 {
-                let e = tokio::time::timeout(Duration::from_millis(500), broadcast_rx.recv())
-                    .await
-                    .expect("timed out waiting for second batch")
-                    .expect("broadcast error");
+                let e = unwrap_audit(
+                    tokio::time::timeout(Duration::from_millis(500), broadcast_rx.recv())
+                        .await
+                        .expect("timed out waiting for second batch")
+                        .expect("broadcast error"),
+                );
                 v.push(e.sequence_number);
             }
             v
@@ -959,7 +977,7 @@ mod tests {
 
         let config = test_config(100, 10);
         let (tx, rx) = mpsc::channel::<(u64, IpcFrame)>(10_000);
-        let (broadcast_tx, mut broadcast_rx) = broadcast::channel::<EnrichedEvent>(10_000);
+        let (broadcast_tx, mut broadcast_rx) = broadcast::channel::<PipelineEvent>(10_000);
         let metrics = Arc::new(PipelineMetrics::default());
         let token = CancellationToken::new();
 
@@ -1037,7 +1055,7 @@ mod tests {
 
         let config = test_config(100, 10_000);
         let (tx, rx) = mpsc::channel::<(u64, IpcFrame)>(64);
-        let (broadcast_tx, _rx) = broadcast::channel::<EnrichedEvent>(64);
+        let (broadcast_tx, _rx) = broadcast::channel::<PipelineEvent>(64);
         let metrics = Arc::new(PipelineMetrics::default());
         let token = CancellationToken::new();
         let (router, mut resp_rx) = make_router_with_receiver();
@@ -1085,7 +1103,7 @@ mod tests {
 
         let config = test_config(100, 10_000);
         let (tx, rx) = mpsc::channel::<(u64, IpcFrame)>(64);
-        let (broadcast_tx, _rx) = broadcast::channel::<EnrichedEvent>(64);
+        let (broadcast_tx, _rx) = broadcast::channel::<PipelineEvent>(64);
         let metrics = Arc::new(PipelineMetrics::default());
         let token = CancellationToken::new();
         let (router, mut resp_rx) = make_router_with_receiver();
@@ -1134,7 +1152,7 @@ mod tests {
 
         let config = test_config(100, 10_000);
         let (tx, rx) = mpsc::channel::<(u64, IpcFrame)>(64);
-        let (broadcast_tx, _rx) = broadcast::channel::<EnrichedEvent>(64);
+        let (broadcast_tx, _rx) = broadcast::channel::<PipelineEvent>(64);
         let metrics = Arc::new(PipelineMetrics::default());
         let token = CancellationToken::new();
         let (router, mut resp_rx) = make_router_with_receiver();
@@ -1191,7 +1209,7 @@ mod tests {
 
         let config = test_config(100, 10_000);
         let (tx, rx) = mpsc::channel::<(u64, IpcFrame)>(64);
-        let (broadcast_tx, _rx) = broadcast::channel::<EnrichedEvent>(64);
+        let (broadcast_tx, _rx) = broadcast::channel::<PipelineEvent>(64);
         let metrics = Arc::new(PipelineMetrics::default());
         let token = CancellationToken::new();
         let (router, mut resp_rx) = make_router_with_receiver();

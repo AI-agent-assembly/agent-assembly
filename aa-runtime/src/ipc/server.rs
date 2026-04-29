@@ -642,7 +642,7 @@ mod tests {
             agent_id: "test-agent".to_string(),
         };
         let pipeline_metrics = Arc::new(PipelineMetrics::default());
-        let (broadcast_tx, _broadcast_rx) = tokio::sync::broadcast::channel::<crate::pipeline::EnrichedEvent>(64);
+        let (broadcast_tx, _broadcast_rx) = tokio::sync::broadcast::channel::<crate::pipeline::PipelineEvent>(64);
         let pipeline_router = Arc::clone(&router);
         let pipeline_token = token.clone();
         tokio::spawn(crate::pipeline::run(
@@ -732,7 +732,7 @@ mod tests {
             agent_id: "test-agent".to_string(),
         };
         let pipeline_metrics = Arc::new(PipelineMetrics::default());
-        let (broadcast_tx, _broadcast_rx) = tokio::sync::broadcast::channel::<crate::pipeline::EnrichedEvent>(64);
+        let (broadcast_tx, _broadcast_rx) = tokio::sync::broadcast::channel::<crate::pipeline::PipelineEvent>(64);
         let pipeline_router = Arc::clone(&router);
         let pipeline_token = token.clone();
         tokio::spawn(crate::pipeline::run(

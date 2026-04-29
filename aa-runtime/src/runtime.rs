@@ -97,7 +97,7 @@ pub async fn run(config: RuntimeConfig) {
     // The leading `_broadcast_rx` keeps the channel alive until real subscribers
     // are wired in AAASM-32+.
     let (broadcast_tx, _broadcast_rx) =
-        tokio::sync::broadcast::channel::<crate::pipeline::EnrichedEvent>(pipeline_config.broadcast_capacity);
+        tokio::sync::broadcast::channel::<crate::pipeline::PipelineEvent>(pipeline_config.broadcast_capacity);
 
     // Shared metrics — future health/metrics endpoints will receive an Arc clone.
     let pipeline_metrics = std::sync::Arc::new(crate::pipeline::PipelineMetrics::default());

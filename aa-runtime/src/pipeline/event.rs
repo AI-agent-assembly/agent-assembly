@@ -40,6 +40,19 @@ pub struct EnrichedEvent {
     pub sequence_number: u64,
 }
 
+/// Top-level event type carried by the pipeline broadcast channel.
+///
+/// Wraps both audit events (the primary flow) and operational events such as
+/// layer degradation notifications. Downstream subscribers pattern-match on
+/// the variant to decide which events they care about.
+#[derive(Debug, Clone)]
+pub enum PipelineEvent {
+    /// A governance audit event enriched with runtime metadata.
+    Audit(Box<EnrichedEvent>),
+    /// An interception layer became unavailable.
+    LayerDegradation(LayerDegradationInfo),
+}
+
 /// Runtime-side representation of a layer degradation event.
 ///
 /// Created when an interception layer is unavailable at startup or degrades
@@ -119,6 +132,43 @@ mod tests {
         assert_eq!(info.layer, "ebpf");
         assert_eq!(info.reason, "kernel version 4.18 < 5.8");
         assert_eq!(info.remaining_layers, vec!["proxy", "sdk"]);
+    }
+
+    #[test]
+    fn pipeline_event_audit_variant() {
+        let event = PipelineEvent::Audit(Box::new(EnrichedEvent {
+            inner: AuditEvent::default(),
+            received_at_ms: 0,
+            source: EventSource::Sdk,
+            agent_id: "a".to_string(),
+            connection_id: 0,
+            sequence_number: 0,
+        }));
+        assert!(matches!(event, PipelineEvent::Audit(_)));
+    }
+
+    #[test]
+    fn pipeline_event_layer_degradation_variant() {
+        let event = PipelineEvent::LayerDegradation(LayerDegradationInfo {
+            layer: "ebpf".to_string(),
+            reason: "missing".to_string(),
+            remaining_layers: vec!["sdk".to_string()],
+        });
+        assert!(matches!(event, PipelineEvent::LayerDegradation(_)));
+    }
+
+    #[test]
+    fn pipeline_event_is_clone() {
+        let event = PipelineEvent::Audit(Box::new(EnrichedEvent {
+            inner: AuditEvent::default(),
+            received_at_ms: 0,
+            source: EventSource::Sdk,
+            agent_id: "a".to_string(),
+            connection_id: 0,
+            sequence_number: 0,
+        }));
+        let cloned = event.clone();
+        assert!(matches!(cloned, PipelineEvent::Audit(_)));
     }
 
     #[test]
