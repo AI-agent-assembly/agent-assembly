@@ -10,6 +10,7 @@ pub mod correlation;
 pub mod gateway_client;
 pub mod health;
 pub mod ipc;
+pub mod layer;
 pub mod lifecycle;
 pub mod pipeline;
 pub mod policy;

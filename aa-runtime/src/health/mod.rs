@@ -20,6 +20,8 @@ pub struct HealthState {
     pub prometheus_handle: PrometheusHandle,
     pub active_connections: Arc<AtomicI64>,
     pub inbound_tx: mpsc::Sender<(u64, IpcFrame)>,
+    pub active_layers: crate::layer::LayerSet,
+    pub degraded_layers: Vec<String>,
 }
 
 /// Response body for GET /health.
@@ -28,6 +30,8 @@ pub struct HealthResponse {
     pub status: &'static str,
     pub uptime_secs: u64,
     pub events_processed: u64,
+    pub active_layers: Vec<&'static str>,
+    pub degraded_layers: Vec<String>,
 }
 
 /// Build the axum router with all three routes.
@@ -46,6 +50,8 @@ async fn health_handler(axum::extract::State(state): axum::extract::State<Health
         status: "healthy",
         uptime_secs: state.start_time.elapsed().as_secs(),
         events_processed: state.pipeline_metrics.processed(),
+        active_layers: state.active_layers.names(),
+        degraded_layers: state.degraded_layers.clone(),
     })
 }
 
@@ -96,11 +102,15 @@ mod tests {
             status: "healthy",
             uptime_secs: 42,
             events_processed: 100,
+            active_layers: vec!["sdk"],
+            degraded_layers: vec![],
         };
         let json = serde_json::to_string(&resp).expect("serialization failed");
         assert!(json.contains("\"status\":\"healthy\""));
         assert!(json.contains("\"uptime_secs\":42"));
         assert!(json.contains("\"events_processed\":100"));
+        assert!(json.contains("\"active_layers\":[\"sdk\"]"));
+        assert!(json.contains("\"degraded_layers\":[]"));
     }
 
     #[tokio::test]
@@ -116,6 +126,8 @@ mod tests {
             prometheus_handle: make_prometheus_handle(),
             active_connections: Arc::new(AtomicI64::new(0)),
             inbound_tx,
+            active_layers: crate::layer::LayerSet::SDK,
+            degraded_layers: vec![],
         };
 
         let app = router(state);
@@ -144,6 +156,8 @@ mod tests {
             prometheus_handle: make_prometheus_handle(),
             active_connections: Arc::new(AtomicI64::new(0)),
             inbound_tx,
+            active_layers: crate::layer::LayerSet::SDK,
+            degraded_layers: vec![],
         };
 
         let app = router(state);
@@ -166,6 +180,8 @@ mod tests {
             prometheus_handle: make_prometheus_handle(),
             active_connections: Arc::new(AtomicI64::new(0)),
             inbound_tx,
+            active_layers: crate::layer::LayerSet::SDK,
+            degraded_layers: vec![],
         };
 
         let app = router(state);
@@ -192,6 +208,8 @@ mod tests {
             prometheus_handle: handle,
             active_connections: Arc::new(AtomicI64::new(0)),
             inbound_tx,
+            active_layers: crate::layer::LayerSet::SDK,
+            degraded_layers: vec![],
         };
 
         let app = router(state);
@@ -229,6 +247,8 @@ mod tests {
             prometheus_handle: handle.clone(),
             active_connections: Arc::clone(&active_connections),
             inbound_tx,
+            active_layers: crate::layer::LayerSet::SDK,
+            degraded_layers: vec![],
         };
 
         // We call the handler manually using the recorder.
@@ -264,6 +284,8 @@ mod tests {
             prometheus_handle: make_prometheus_handle(),
             active_connections: Arc::new(AtomicI64::new(0)),
             inbound_tx,
+            active_layers: crate::layer::LayerSet::SDK,
+            degraded_layers: vec![],
         };
 
         // First request: not ready (503)
@@ -280,5 +302,71 @@ mod tests {
         let req2 = Request::builder().uri("/ready").body(Body::empty()).unwrap();
         let response2 = app2.oneshot(req2).await.unwrap();
         assert_eq!(response2.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn health_response_includes_active_layers() {
+        let (_, ready_rx) = tokio::sync::watch::channel(false);
+        let (inbound_tx, _) = tokio::sync::mpsc::channel(1);
+        let pipeline_metrics = Arc::new(crate::pipeline::PipelineMetrics::default());
+
+        let state = HealthState {
+            start_time: std::time::Instant::now(),
+            pipeline_metrics,
+            ready_rx,
+            prometheus_handle: make_prometheus_handle(),
+            active_connections: Arc::new(AtomicI64::new(0)),
+            inbound_tx,
+            active_layers: crate::layer::LayerSet::SDK,
+            degraded_layers: vec![],
+        };
+
+        let app = router(state);
+        let req = Request::builder().uri("/health").body(Body::empty()).unwrap();
+
+        let response = app.oneshot(req).await.unwrap();
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+        let layers = json["active_layers"]
+            .as_array()
+            .expect("active_layers should be an array");
+        assert_eq!(layers.len(), 1);
+        assert_eq!(layers[0], "sdk");
+    }
+
+    #[tokio::test]
+    async fn health_active_layers_matches_all_layers() {
+        let (_, ready_rx) = tokio::sync::watch::channel(false);
+        let (inbound_tx, _) = tokio::sync::mpsc::channel(1);
+        let pipeline_metrics = Arc::new(crate::pipeline::PipelineMetrics::default());
+
+        let all_layers = crate::layer::LayerSet::EBPF | crate::layer::LayerSet::PROXY | crate::layer::LayerSet::SDK;
+
+        let state = HealthState {
+            start_time: std::time::Instant::now(),
+            pipeline_metrics,
+            ready_rx,
+            prometheus_handle: make_prometheus_handle(),
+            active_connections: Arc::new(AtomicI64::new(0)),
+            inbound_tx,
+            active_layers: all_layers,
+            degraded_layers: vec![],
+        };
+
+        let app = router(state);
+        let req = Request::builder().uri("/health").body(Body::empty()).unwrap();
+
+        let response = app.oneshot(req).await.unwrap();
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+        let layers = json["active_layers"]
+            .as_array()
+            .expect("active_layers should be an array");
+        assert_eq!(layers.len(), 3);
+        assert_eq!(layers[0], "ebpf");
+        assert_eq!(layers[1], "proxy");
+        assert_eq!(layers[2], "sdk");
     }
 }

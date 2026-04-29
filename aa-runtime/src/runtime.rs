@@ -68,6 +68,26 @@ pub async fn run(config: RuntimeConfig) {
     // Load policy rules from the mounted volume (or use empty rules if disabled/absent).
     let policy = load_policy(&config.policy_path);
 
+    // Detect available interception layers (eBPF, proxy, SDK).
+    let active_layers = crate::layer::LayerDetector::detect();
+    tracing::info!(layers = %active_layers, "active interception layers");
+
+    let mut degraded_layers: Vec<String> = Vec::new();
+    if !active_layers.contains(crate::layer::LayerSet::EBPF) {
+        tracing::warn!(
+            remaining = %active_layers,
+            "eBPF layer unavailable — requires Linux >= 5.8, BTF, and CAP_BPF"
+        );
+        degraded_layers.push("ebpf".to_string());
+    }
+    if !active_layers.contains(crate::layer::LayerSet::PROXY) {
+        tracing::warn!(
+            remaining = %active_layers,
+            "proxy layer unavailable — aa-proxy binary not found in PATH"
+        );
+        degraded_layers.push("proxy".to_string());
+    }
+
     // Build pipeline config and create the inbound channel at the configured depth.
     let pipeline_config = crate::pipeline::PipelineConfig::from_runtime_config(&config);
     let (inbound_tx, inbound_rx) =
@@ -77,7 +97,7 @@ pub async fn run(config: RuntimeConfig) {
     // The leading `_broadcast_rx` keeps the channel alive until real subscribers
     // are wired in AAASM-32+.
     let (broadcast_tx, _broadcast_rx) =
-        tokio::sync::broadcast::channel::<crate::pipeline::EnrichedEvent>(pipeline_config.broadcast_capacity);
+        tokio::sync::broadcast::channel::<crate::pipeline::PipelineEvent>(pipeline_config.broadcast_capacity);
 
     // Shared metrics — future health/metrics endpoints will receive an Arc clone.
     let pipeline_metrics = std::sync::Arc::new(crate::pipeline::PipelineMetrics::default());
@@ -150,6 +170,8 @@ pub async fn run(config: RuntimeConfig) {
             prometheus_handle,
             active_connections: std::sync::Arc::clone(&active_connections),
             inbound_tx: inbound_tx_health,
+            active_layers,
+            degraded_layers,
         };
         let addr: std::net::SocketAddr = config
             .metrics_addr
