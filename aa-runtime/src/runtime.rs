@@ -852,4 +852,40 @@ mod tests {
             }
         }
     }
+
+    // ── spawn_ebpf_file_io tests ────────────────────────────────────────
+
+    #[test]
+    fn spawn_ebpf_file_io_degrades_on_non_linux() {
+        let tracker = tokio_util::task::TaskTracker::new();
+        let (tx, mut rx) = tokio::sync::broadcast::channel::<crate::pipeline::PipelineEvent>(16);
+        let seq = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+        let mut degraded = Vec::new();
+
+        super::spawn_ebpf_file_io(&tracker, &tx, &seq, "test-agent", &mut degraded);
+
+        #[cfg(not(target_os = "linux"))]
+        {
+            assert!(degraded.contains(&"ebpf/file_io".to_string()));
+            let event = rx.try_recv().unwrap();
+            match event {
+                crate::pipeline::PipelineEvent::LayerDegradation(info) => {
+                    assert_eq!(info.layer, "ebpf/file_io");
+                }
+                _ => panic!("expected LayerDegradation event"),
+            }
+        }
+
+        #[cfg(target_os = "linux")]
+        {
+            assert!(degraded.contains(&"ebpf/file_io".to_string()));
+            let event = rx.try_recv().unwrap();
+            match event {
+                crate::pipeline::PipelineEvent::LayerDegradation(info) => {
+                    assert_eq!(info.layer, "ebpf/file_io");
+                }
+                _ => panic!("expected LayerDegradation event"),
+            }
+        }
+    }
 }
