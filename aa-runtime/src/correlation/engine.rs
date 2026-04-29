@@ -121,8 +121,7 @@ impl CorrelationEngine {
             }
 
             if let Some((intent, delta)) = best_intent {
-                let strength = 1.0
-                    - (delta as f64 / self.config.window_ms as f64).min(1.0);
+                let strength = 1.0 - (delta as f64 / self.config.window_ms as f64).min(1.0);
                 results.push(CorrelationOutcome::Matched(CausalCorrelation {
                     intent_event_id: intent.event_id,
                     action_event_id: action.event_id,
