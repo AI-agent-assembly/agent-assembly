@@ -1,8 +1,14 @@
 //! Shared test utilities for aa-api integration tests.
 
-use std::sync::atomic::AtomicU64;
+use std::path::Path;
+use std::sync::atomic::{AtomicU64, AtomicUsize};
 use std::sync::Arc;
 
+use aa_api::auth::api_key::{ApiKey, ApiKeyEntry, ApiKeyStore};
+use aa_api::auth::config::{AuthConfig, AuthMode};
+use aa_api::auth::jwt::{JwtSigner, JwtVerifier};
+use aa_api::auth::rate_limit::RateLimiter;
+use aa_api::auth::scope::Scope;
 use aa_api::events::EventBroadcast;
 use aa_api::replay::ReplayBuffer;
 use aa_api::server::build_app;
@@ -13,10 +19,24 @@ use aa_gateway::engine::PolicyEngine;
 use aa_runtime::approval::ApprovalQueue;
 use axum::Router;
 
-/// Build a test `AppState` with minimal real dependencies.
+/// Default JWT test secret (>= 32 bytes).
+const TEST_SECRET: &[u8] = b"test-secret-key-that-is-at-least-32-bytes-long!!";
+
+/// Counter for generating unique temp file names across concurrent tests.
+static TEMP_COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+/// Build a minimal `AppState` for gateway/non-auth tests (auth disabled).
+#[allow(dead_code)]
 pub fn test_state() -> AppState {
+    test_state_with_auth(AuthMode::Off, &[], 1000)
+}
+
+/// Build an `AppState` with auth enabled and the given API key entries.
+#[allow(dead_code)]
+pub fn test_state_with_auth(mode: AuthMode, entries: &[ApiKeyEntry], rpm: u32) -> AppState {
     // PolicyEngine requires a policy file; use a minimal valid policy.
-    let policy_dir = std::env::temp_dir().join("aa-api-test-policy");
+    let policy_id = TEMP_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let policy_dir = std::env::temp_dir().join(format!("aa-api-test-policy-{}-{policy_id}", std::process::id()));
     std::fs::create_dir_all(&policy_dir).unwrap();
     let policy_path = policy_dir.join("test-policy.yaml");
     std::fs::write(
@@ -44,6 +64,40 @@ spec:
     ));
     let approval_queue = ApprovalQueue::new();
 
+    let jwt_secret = match mode {
+        AuthMode::On => Some(TEST_SECRET.to_vec()),
+        AuthMode::Off => None,
+    };
+
+    let auth_config = Arc::new(AuthConfig {
+        mode,
+        jwt_secret: jwt_secret.clone(),
+        api_keys_path: std::path::PathBuf::from("/dev/null"),
+        rate_limit_rpm: rpm,
+    });
+
+    let key_store = Arc::new(ApiKeyStore::load(Path::new("/dev/null")).unwrap_or_else(|_| {
+        // Fallback: construct empty store
+        ApiKeyStore::load(Path::new("/nonexistent")).unwrap()
+    }));
+
+    // For tests with pre-loaded keys, we need to build the store differently.
+    // We'll use a temp file approach.
+    let key_store = if entries.is_empty() {
+        key_store
+    } else {
+        let id = TEMP_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let tmp = std::env::temp_dir().join(format!("aa-api-test-keys-{}-{id}.json", std::process::id()));
+        let json = serde_json::to_string(entries).unwrap();
+        std::fs::write(&tmp, &json).unwrap();
+        Arc::new(ApiKeyStore::load(&tmp).unwrap())
+    };
+
+    let secret = jwt_secret.as_deref().unwrap_or(TEST_SECRET);
+    let jwt_signer = Arc::new(JwtSigner::new(secret));
+    let jwt_verifier = Arc::new(JwtVerifier::new(secret));
+    let rate_limiter = Arc::new(RateLimiter::new(rpm));
+
     AppState {
         policy_engine,
         budget_tracker,
@@ -51,11 +105,50 @@ spec:
         events,
         replay_buffer: ReplayBuffer::new(),
         next_event_id: Arc::new(AtomicU64::new(0)),
+        auth_config,
+        key_store,
+        rate_limiter,
+        jwt_signer,
+        jwt_verifier,
     }
 }
 
-/// Build the full app for testing (router + middleware + state).
+/// Build the full app for testing (router + middleware + state, auth disabled).
 #[allow(dead_code)]
 pub fn test_app() -> Router {
     build_app(test_state())
+}
+
+/// Build the full app with auth enabled and the given API key entries.
+#[allow(dead_code)]
+pub fn test_app_with_auth(entries: &[ApiKeyEntry], rpm: u32) -> Router {
+    build_app(test_state_with_auth(AuthMode::On, entries, rpm))
+}
+
+/// Build the full app with auth disabled (bypass mode).
+#[allow(dead_code)]
+pub fn test_app_no_auth() -> Router {
+    build_app(test_state_with_auth(AuthMode::Off, &[], 1000))
+}
+
+/// Generate a test API key and return (plaintext, ApiKeyEntry).
+#[allow(dead_code)]
+pub fn generate_test_api_key(id: &str, scopes: Vec<Scope>) -> (String, ApiKeyEntry) {
+    let key = ApiKey::generate();
+    let hash = key.hash().expect("hashing should succeed");
+    let entry = ApiKeyEntry {
+        id: id.to_string(),
+        key_hash: hash,
+        scopes,
+        created_at: 1700000000,
+        label: Some(format!("test key {id}")),
+    };
+    (key.as_str().to_string(), entry)
+}
+
+/// Generate a test JWT token for the given key ID and scopes.
+#[allow(dead_code)]
+pub fn generate_test_jwt(key_id: &str, scopes: &[Scope]) -> String {
+    let signer = JwtSigner::new(TEST_SECRET);
+    signer.sign(key_id, scopes).expect("signing should succeed")
 }

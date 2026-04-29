@@ -9,6 +9,9 @@ use crate::routes;
 use crate::state::AppState;
 
 /// Build the full Axum application with middleware and state.
+///
+/// Auth components are injected as individual `Extension` layers so the
+/// `AuthenticatedCaller` extractor can resolve them from request parts.
 pub fn build_app(state: AppState) -> Router {
     let api = routes::v1_router();
 
@@ -16,6 +19,14 @@ pub fn build_app(state: AppState) -> Router {
         .nest("/api/v1", api)
         .fallback(routes::fallback_404)
         .with_state(());
+
+    // Auth extensions — read by FromRequestParts extractors.
+    let app = app
+        .layer(axum::Extension(state.auth_config.clone()))
+        .layer(axum::Extension(state.key_store.clone()))
+        .layer(axum::Extension(state.rate_limiter.clone()))
+        .layer(axum::Extension(state.jwt_signer.clone()))
+        .layer(axum::Extension(state.jwt_verifier.clone()));
 
     let app = app.layer(axum::Extension(state));
 

@@ -6,7 +6,8 @@
 //! 3. CORS (allow dashboard origin)
 //! 4. Response compression (gzip)
 //!
-//! Authentication middleware will be added by AAASM-82.
+//! Authentication is handled by FromRequestParts extractors (see auth module),
+//! not middleware layers.
 
 pub mod compression;
 pub mod cors;
