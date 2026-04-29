@@ -16,6 +16,7 @@ use aa_api::state::AppState;
 use aa_gateway::budget::pricing::PricingTable;
 use aa_gateway::budget::tracker::BudgetTracker;
 use aa_gateway::engine::PolicyEngine;
+use aa_gateway::registry::AgentRegistry;
 use aa_runtime::approval::ApprovalQueue;
 use axum::Router;
 
@@ -64,6 +65,8 @@ spec:
     ));
     let approval_queue = ApprovalQueue::new();
 
+    let agent_registry = Arc::new(AgentRegistry::new());
+
     let jwt_secret = match mode {
         AuthMode::On => Some(TEST_SECRET.to_vec()),
         AuthMode::Off => None,
@@ -99,6 +102,7 @@ spec:
     let rate_limiter = Arc::new(RateLimiter::new(rpm));
 
     AppState {
+        agent_registry,
         policy_engine,
         budget_tracker,
         approval_queue,

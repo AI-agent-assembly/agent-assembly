@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use aa_gateway::budget::tracker::BudgetTracker;
 use aa_gateway::engine::PolicyEngine;
+use aa_gateway::registry::AgentRegistry;
 use aa_runtime::approval::ApprovalQueue;
 
 use crate::auth::api_key::ApiKeyStore;
@@ -17,6 +18,8 @@ use crate::replay::ReplayBuffer;
 /// Shared state available to all Axum handlers via `Extension<AppState>`.
 #[derive(Clone)]
 pub struct AppState {
+    /// Agent registry for tracking active agents.
+    pub agent_registry: Arc<AgentRegistry>,
     /// Policy engine for governance decisions.
     pub policy_engine: Arc<PolicyEngine>,
     /// Cost tracking and budget enforcement.
