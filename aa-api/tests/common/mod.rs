@@ -16,6 +16,7 @@ use aa_api::state::AppState;
 use aa_gateway::budget::pricing::PricingTable;
 use aa_gateway::budget::tracker::BudgetTracker;
 use aa_gateway::engine::PolicyEngine;
+use aa_gateway::policy::history::FsHistoryStore;
 use aa_gateway::registry::AgentRegistry;
 use aa_runtime::approval::ApprovalQueue;
 use axum::Router;
@@ -67,6 +68,8 @@ spec:
 
     let agent_registry = Arc::new(AgentRegistry::new());
 
+    let policy_history = Arc::new(FsHistoryStore::with_defaults());
+
     let jwt_secret = match mode {
         AuthMode::On => Some(TEST_SECRET.to_vec()),
         AuthMode::Off => None,
@@ -106,6 +109,7 @@ spec:
         policy_engine,
         budget_tracker,
         approval_queue,
+        policy_history,
         events,
         replay_buffer: ReplayBuffer::new(),
         next_event_id: Arc::new(AtomicU64::new(0)),
