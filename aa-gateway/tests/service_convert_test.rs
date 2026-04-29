@@ -2,12 +2,15 @@
 
 use aa_core::{FileMode, GovernanceAction, PolicyResult};
 use aa_gateway::engine::EvaluationResult;
-use aa_gateway::service::convert::{eval_result_to_response, request_to_core, result_to_response, ConvertError};
+use aa_gateway::service::convert::{
+    approval_decision_to_response, eval_result_to_response, request_to_core, result_to_response, ConvertError,
+};
 use aa_proto::assembly::common::v1::{ActionType, AgentId as ProtoAgentId, Decision};
 use aa_proto::assembly::policy::v1::{
     action_context::Action, ActionContext, CheckActionRequest, FileOpContext, LlmCallContext, NetworkCallContext,
     ProcessExecContext, ToolCallContext,
 };
+use aa_runtime::approval::ApprovalDecision;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -328,4 +331,61 @@ fn requires_approval_result_to_response_panics() {
         50,
         "approval_cond",
     );
+}
+
+// ── ApprovalDecision → CheckActionResponse tests ────────────────────────────
+
+#[test]
+fn approved_decision_maps_to_allow() {
+    let id = uuid::Uuid::new_v4();
+    let decision = ApprovalDecision::Approved {
+        by: "alice".to_string(),
+        reason: Some("looks good".to_string()),
+    };
+    let resp = approval_decision_to_response(&decision, &id, 55, "requires_approval");
+    assert_eq!(resp.decision, Decision::Allow as i32);
+    assert!(resp.reason.is_empty());
+    assert_eq!(resp.approval_id, id.to_string());
+    assert_eq!(resp.decision_latency_us, 55);
+    assert_eq!(resp.policy_rule, "requires_approval");
+}
+
+#[test]
+fn rejected_decision_maps_to_deny() {
+    let id = uuid::Uuid::new_v4();
+    let decision = ApprovalDecision::Rejected {
+        by: "bob".to_string(),
+        reason: "not allowed".to_string(),
+    };
+    let resp = approval_decision_to_response(&decision, &id, 88, "requires_approval");
+    assert_eq!(resp.decision, Decision::Deny as i32);
+    assert_eq!(resp.reason, "not allowed");
+    assert_eq!(resp.approval_id, id.to_string());
+    assert_eq!(resp.decision_latency_us, 88);
+}
+
+#[test]
+fn timed_out_decision_with_deny_fallback() {
+    let id = uuid::Uuid::new_v4();
+    let decision = ApprovalDecision::TimedOut {
+        fallback: PolicyResult::Deny {
+            reason: "approval timed out".to_string(),
+        },
+    };
+    let resp = approval_decision_to_response(&decision, &id, 120, "requires_approval");
+    assert_eq!(resp.decision, Decision::Deny as i32);
+    assert_eq!(resp.reason, "approval timed out");
+    assert_eq!(resp.approval_id, id.to_string());
+}
+
+#[test]
+fn timed_out_decision_with_allow_fallback() {
+    let id = uuid::Uuid::new_v4();
+    let decision = ApprovalDecision::TimedOut {
+        fallback: PolicyResult::Allow,
+    };
+    let resp = approval_decision_to_response(&decision, &id, 200, "requires_approval");
+    assert_eq!(resp.decision, Decision::Allow as i32);
+    assert!(resp.reason.is_empty());
+    assert_eq!(resp.approval_id, id.to_string());
 }
