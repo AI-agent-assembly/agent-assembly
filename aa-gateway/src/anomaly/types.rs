@@ -81,3 +81,23 @@ impl AnomalyResponse {
         }
     }
 }
+
+/// An anomaly detection event emitted when the engine identifies suspicious
+/// agent behavior.
+///
+/// Carries the anomaly classification, the chosen response action, and enough
+/// context to populate an [`AlertTriggered`](proto) message once the event bus
+/// (AAASM-141) is wired up.
+#[derive(Debug, Clone)]
+pub struct AnomalyEvent {
+    /// What kind of anomaly was detected.
+    pub anomaly_type: AnomalyType,
+    /// The response action that was (or will be) executed.
+    pub response: AnomalyResponse,
+    /// The agent that triggered the anomaly.
+    pub agent_id: aa_core::AgentId,
+    /// Human-readable explanation of the detection.
+    pub description: String,
+    /// When the anomaly was detected.
+    pub detected_at: chrono::DateTime<chrono::Utc>,
+}
