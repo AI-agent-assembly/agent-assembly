@@ -85,6 +85,57 @@ mod tests {
         }
     }
 
+    fn make_exec_event(filename: &str, args: &str) -> ExecEvent {
+        let mut fname_buf = [0u8; 256];
+        let fb = filename.as_bytes();
+        fname_buf[..fb.len()].copy_from_slice(fb);
+        let mut args_buf = [0u8; 512];
+        let ab = args.as_bytes();
+        args_buf[..ab.len()].copy_from_slice(ab);
+        ExecEvent {
+            timestamp_ns: 1_000_000,
+            pid: 42,
+            ppid: 1,
+            uid: 1000,
+            _pad: 0,
+            filename: fname_buf,
+            args: args_buf,
+        }
+    }
+
+    #[test]
+    fn exec_event_to_audit_extracts_command_and_args() {
+        let event = make_exec_event("/usr/bin/curl", "-s https://example.com");
+        let audit = exec_event_to_audit(&event);
+
+        assert_eq!(audit.action_type, ActionType::ProcessExec.into());
+        let detail = audit.detail.expect("detail should be set");
+        match detail {
+            Detail::Process(ref p) => {
+                assert_eq!(p.command, "/usr/bin/curl");
+                assert_eq!(p.args, vec!["-s", "https://example.com"]);
+                assert!(p.succeeded);
+                assert_eq!(p.exit_code, 0);
+            }
+            _ => panic!("expected Process detail, got {detail:?}"),
+        }
+    }
+
+    #[test]
+    fn exec_event_to_audit_handles_empty_args() {
+        let event = make_exec_event("/bin/true", "");
+        let audit = exec_event_to_audit(&event);
+
+        let detail = audit.detail.expect("detail should be set");
+        match detail {
+            Detail::Process(ref p) => {
+                assert_eq!(p.command, "/bin/true");
+                assert!(p.args.is_empty());
+            }
+            _ => panic!("expected Process detail"),
+        }
+    }
+
     #[test]
     fn file_io_to_audit_maps_all_syscall_kinds() {
         let cases = [
