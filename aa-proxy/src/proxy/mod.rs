@@ -10,7 +10,10 @@ use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer, Serve
 use rustls::ServerConfig;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::broadcast;
 use tokio_rustls::{TlsAcceptor, TlsConnector};
+
+use aa_runtime::pipeline::PipelineEvent;
 
 use crate::config::ProxyConfig;
 use crate::error::ProxyError;
@@ -32,14 +35,15 @@ pub struct ProxyServer {
 }
 
 impl ProxyServer {
-    /// Construct a `ProxyServer` from a validated config and an initialised CA.
-    pub fn new(config: ProxyConfig, ca: CaStore) -> Arc<Self> {
+    /// Construct a `ProxyServer` from a validated config, an initialised CA,
+    /// and a broadcast sender for emitting pipeline events.
+    pub fn new(config: ProxyConfig, ca: CaStore, event_tx: broadcast::Sender<PipelineEvent>) -> Arc<Self> {
         let certs = CertCache::new(config.cert_cache_capacity);
         Arc::new(Self {
             config,
             ca,
             certs,
-            interceptor: Interceptor::new(),
+            interceptor: Interceptor::new(event_tx),
         })
     }
 

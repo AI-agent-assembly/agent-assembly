@@ -31,7 +31,10 @@ pub use error::ProxyError;
 /// Loads or creates the CA from `config.ca_dir`, installs it into the macOS
 /// System Keychain if not already trusted, constructs a [`proxy::ProxyServer`],
 /// and enters the TCP accept loop. Returns only on unrecoverable error.
-pub async fn run(config: ProxyConfig) -> anyhow::Result<()> {
+pub async fn run(
+    config: ProxyConfig,
+    event_tx: tokio::sync::broadcast::Sender<aa_runtime::pipeline::PipelineEvent>,
+) -> anyhow::Result<()> {
     let ca = tls::CaStore::load_or_create(&config.ca_dir).await?;
 
     #[cfg(target_os = "macos")]
@@ -41,7 +44,7 @@ pub async fn run(config: ProxyConfig) -> anyhow::Result<()> {
         tracing::info!("CA installed successfully");
     }
 
-    let server = proxy::ProxyServer::new(config, ca);
+    let server = proxy::ProxyServer::new(config, ca, event_tx);
     server.run().await?;
     Ok(())
 }

@@ -4,26 +4,39 @@ pub mod detect;
 pub mod event;
 pub mod extract;
 
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use tokio::sync::broadcast;
+
+use aa_proto::assembly::audit::v1::{audit_event, AuditEvent, LlmCallDetail};
+use aa_proto::assembly::common::v1::ActionType;
+use aa_runtime::pipeline::event::{EnrichedEvent, EventSource};
+use aa_runtime::pipeline::PipelineEvent;
+
 use crate::error::ProxyError;
 use crate::intercept::detect::LlmApiPattern;
 use crate::intercept::extract::{extract_anthropic, extract_cohere, extract_openai, ExtractionError, LlmFields};
 
 /// Inspects a decrypted HTTP request/response pair, decides whether it is an
 /// LLM API call, and extracts audit-relevant fields from the body.
-pub struct Interceptor;
+///
+/// Holds a [`broadcast::Sender`] to emit [`PipelineEvent`]s for intercepted
+/// LLM calls into the runtime event pipeline.
+pub struct Interceptor {
+    event_tx: broadcast::Sender<PipelineEvent>,
+}
 
 impl Interceptor {
-    /// Create a new `Interceptor`.
-    pub fn new() -> Self {
-        Self
+    /// Create a new `Interceptor` that emits events on the given broadcast channel.
+    pub fn new(event_tx: broadcast::Sender<PipelineEvent>) -> Self {
+        Self { event_tx }
     }
 
-    /// Inspect an intercepted exchange, extract LLM fields from the body
-    /// (if available), and log the result.
+    /// Inspect an intercepted exchange, extract LLM fields from the body,
+    /// and emit a [`PipelineEvent::Audit`] on the broadcast channel.
     ///
-    /// Full policy evaluation (forwarding to `aa-gateway`) and pipeline
-    /// integration (`broadcast::Sender<PipelineEvent>`) will be added in a
-    /// future ticket. For now this extracts and logs.
+    /// Returns the extracted [`LlmFields`] (or `None` for non-LLM traffic
+    /// and extraction failures).
     pub async fn intercept(&self, event: &event::ProxyEvent) -> Result<Option<LlmFields>, ProxyError> {
         // Non-LLM traffic is passed through without extraction.
         if event.pattern == LlmApiPattern::Unknown {
@@ -60,7 +73,57 @@ impl Interceptor {
             "intercepted LLM API call"
         );
 
+        // Emit a PipelineEvent for every detected LLM call (even when body
+        // extraction failed — the audit record still captures the call).
+        let pipeline_event = Self::build_pipeline_event(event, fields.as_ref());
+        // send() returns Err only when there are zero receivers — that is
+        // normal during standalone proxy operation (no runtime attached).
+        let _ = self.event_tx.send(pipeline_event);
+
         Ok(fields)
+    }
+
+    /// Build a [`PipelineEvent::Audit`] from a proxy event and optional extracted fields.
+    fn build_pipeline_event(event: &event::ProxyEvent, fields: Option<&LlmFields>) -> PipelineEvent {
+        let now_ms = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64;
+
+        let llm_detail = LlmCallDetail {
+            model: fields.map(|f| f.model.clone()).unwrap_or_default(),
+            prompt_tokens: fields.and_then(|f| f.prompt_tokens).unwrap_or(0) as i32,
+            completion_tokens: fields.and_then(|f| f.completion_tokens).unwrap_or(0) as i32,
+            provider: Self::provider_name(&event.pattern).into(),
+            ..Default::default()
+        };
+
+        let audit = AuditEvent {
+            action_type: ActionType::LlmCall.into(),
+            detail: Some(audit_event::Detail::LlmCall(llm_detail)),
+            ..Default::default()
+        };
+
+        let enriched = EnrichedEvent {
+            inner: audit,
+            received_at_ms: now_ms,
+            source: EventSource::Proxy,
+            agent_id: event.agent_id.clone().unwrap_or_default(),
+            connection_id: 0,
+            sequence_number: 0,
+        };
+
+        PipelineEvent::Audit(Box::new(enriched))
+    }
+
+    /// Map a detected API pattern to the provider name stored in the audit record.
+    fn provider_name(pattern: &LlmApiPattern) -> &'static str {
+        match pattern {
+            LlmApiPattern::OpenAi => "openai",
+            LlmApiPattern::Anthropic => "anthropic",
+            LlmApiPattern::Cohere => "cohere",
+            LlmApiPattern::Unknown => "unknown",
+        }
     }
 
     /// Select the correct extractor based on the detected API pattern.
@@ -76,12 +139,6 @@ impl Interceptor {
     }
 }
 
-impl Default for Interceptor {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::time::SystemTime;
@@ -91,6 +148,14 @@ mod tests {
     use super::*;
     use crate::intercept::detect::LlmApiPattern;
     use crate::intercept::event::ProxyEvent;
+
+    /// Create a dummy `Interceptor` with a broadcast sender whose receiver is
+    /// dropped — sends silently fail, which is correct for unit tests that
+    /// only verify extraction logic.
+    fn make_interceptor() -> Interceptor {
+        let (tx, _rx) = broadcast::channel(16);
+        Interceptor::new(tx)
+    }
 
     fn make_event(pattern: LlmApiPattern) -> ProxyEvent {
         ProxyEvent {
@@ -106,21 +171,21 @@ mod tests {
 
     #[tokio::test]
     async fn intercept_openai_event_succeeds() {
-        let interceptor = Interceptor::new();
+        let interceptor = make_interceptor();
         let result = interceptor.intercept(&make_event(LlmApiPattern::OpenAi)).await;
         assert!(result.is_ok());
     }
 
     #[tokio::test]
     async fn intercept_anthropic_event_succeeds() {
-        let interceptor = Interceptor::new();
+        let interceptor = make_interceptor();
         let result = interceptor.intercept(&make_event(LlmApiPattern::Anthropic)).await;
         assert!(result.is_ok());
     }
 
     #[tokio::test]
     async fn intercept_unknown_returns_none() {
-        let interceptor = Interceptor::new();
+        let interceptor = make_interceptor();
         let result = interceptor
             .intercept(&make_event(LlmApiPattern::Unknown))
             .await
@@ -130,7 +195,7 @@ mod tests {
 
     #[tokio::test]
     async fn intercept_with_no_agent_id_succeeds() {
-        let interceptor = Interceptor::new();
+        let interceptor = make_interceptor();
         let mut event = make_event(LlmApiPattern::OpenAi);
         event.agent_id = None;
         assert!(interceptor.intercept(&event).await.is_ok());
@@ -138,7 +203,7 @@ mod tests {
 
     #[tokio::test]
     async fn intercept_openai_with_body_extracts_fields() {
-        let interceptor = Interceptor::new();
+        let interceptor = make_interceptor();
         let mut event = make_event(LlmApiPattern::OpenAi);
         event.response_body = Some(Bytes::from(
             r#"{"model":"gpt-4","usage":{"prompt_tokens":10,"completion_tokens":20}}"#,
@@ -151,7 +216,7 @@ mod tests {
 
     #[tokio::test]
     async fn intercept_anthropic_with_body_extracts_fields() {
-        let interceptor = Interceptor::new();
+        let interceptor = make_interceptor();
         let mut event = make_event(LlmApiPattern::Anthropic);
         event.response_body = Some(Bytes::from(
             r#"{"model":"claude-3-opus-20240229","usage":{"input_tokens":15,"output_tokens":30}}"#,
@@ -164,7 +229,7 @@ mod tests {
 
     #[tokio::test]
     async fn intercept_cohere_with_body_extracts_fields() {
-        let interceptor = Interceptor::new();
+        let interceptor = make_interceptor();
         let mut event = make_event(LlmApiPattern::Cohere);
         event.response_body = Some(Bytes::from(
             r#"{"model":"command-r-plus","message":"hello","meta":{"tokens":{"input_tokens":5,"output_tokens":12}}}"#,
@@ -178,7 +243,7 @@ mod tests {
 
     #[tokio::test]
     async fn intercept_prefers_response_body_over_request() {
-        let interceptor = Interceptor::new();
+        let interceptor = make_interceptor();
         let mut event = make_event(LlmApiPattern::OpenAi);
         event.request_body = Some(Bytes::from(
             r#"{"model":"gpt-4","messages":[{"role":"user","content":"hi"}]}"#,
@@ -195,7 +260,7 @@ mod tests {
 
     #[tokio::test]
     async fn intercept_falls_back_to_request_body() {
-        let interceptor = Interceptor::new();
+        let interceptor = make_interceptor();
         let mut event = make_event(LlmApiPattern::OpenAi);
         event.request_body = Some(Bytes::from(
             r#"{"model":"gpt-4","messages":[{"role":"user","content":"hi"}]}"#,
@@ -209,7 +274,7 @@ mod tests {
 
     #[tokio::test]
     async fn intercept_with_none_body_returns_none() {
-        let interceptor = Interceptor::new();
+        let interceptor = make_interceptor();
         let event = make_event(LlmApiPattern::OpenAi);
         // Both request_body and response_body are None
         let result = interceptor.intercept(&event).await.unwrap();
@@ -218,11 +283,55 @@ mod tests {
 
     #[tokio::test]
     async fn intercept_with_malformed_body_returns_none() {
-        let interceptor = Interceptor::new();
+        let interceptor = make_interceptor();
         let mut event = make_event(LlmApiPattern::OpenAi);
         event.response_body = Some(Bytes::from("not json"));
         // Malformed body logs a warning and returns None (not an error)
         let result = interceptor.intercept(&event).await.unwrap();
         assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn non_llm_traffic_emits_no_pipeline_event() {
+        let (tx, mut rx) = broadcast::channel(16);
+        let interceptor = Interceptor::new(tx);
+        let event = make_event(LlmApiPattern::Unknown);
+
+        interceptor.intercept(&event).await.unwrap();
+
+        // Channel should be empty — Unknown pattern skips emission.
+        assert!(rx.try_recv().is_err(), "non-LLM traffic must not emit a pipeline event");
+    }
+
+    #[tokio::test]
+    async fn llm_traffic_emits_pipeline_event_with_correct_fields() {
+        let (tx, mut rx) = broadcast::channel(16);
+        let interceptor = Interceptor::new(tx);
+        let mut event = make_event(LlmApiPattern::OpenAi);
+        event.response_body = Some(Bytes::from(
+            r#"{"model":"gpt-4","usage":{"prompt_tokens":10,"completion_tokens":20}}"#,
+        ));
+
+        interceptor.intercept(&event).await.unwrap();
+
+        let pipeline_event = rx.try_recv().expect("should have received a pipeline event");
+        match pipeline_event {
+            PipelineEvent::Audit(enriched) => {
+                assert_eq!(enriched.source, EventSource::Proxy);
+                assert_eq!(enriched.agent_id, "test-agent");
+                // Verify the LlmCallDetail inside the AuditEvent.
+                let detail = enriched.inner.detail.expect("detail must be set");
+                match detail {
+                    aa_proto::assembly::audit::v1::audit_event::Detail::LlmCall(llm) => {
+                        assert_eq!(llm.model, "gpt-4");
+                        assert_eq!(llm.prompt_tokens, 10);
+                        assert_eq!(llm.completion_tokens, 20);
+                        assert_eq!(llm.provider, "openai");
+                    }
+                    other => panic!("expected LlmCall detail, got {other:?}"),
+                }
+            }
+            other => panic!("expected Audit event, got {other:?}"),
+        }
     }
 }

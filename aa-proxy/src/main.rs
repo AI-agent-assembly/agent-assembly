@@ -10,5 +10,6 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     let config = aa_proxy::ProxyConfig::from_env()?;
-    aa_proxy::run(config).await
+    let (event_tx, _rx) = tokio::sync::broadcast::channel(256);
+    aa_proxy::run(config, event_tx).await
 }
