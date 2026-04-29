@@ -364,9 +364,13 @@ impl PolicyEngine {
     }
 
     /// Record a spend amount for an agent after an action completes.
+    ///
+    /// Converts the `f64` amount to `Decimal` and delegates to the advanced
+    /// tracker's `record_raw_spend`, which fires 80%/95% threshold alerts.
     pub fn record_spend(&self, ctx: &aa_core::AgentContext, amount_usd: f64) {
-        self.budget.record(ctx.agent_id.as_bytes(), amount_usd);
-        self.budget.record_monthly(ctx.agent_id.as_bytes(), amount_usd);
+        if let Ok(amount) = rust_decimal::Decimal::try_from(amount_usd) {
+            self.budget.record_raw_spend(ctx.agent_id, amount);
+        }
     }
 
     /// Check whether an agent is within both daily and monthly budget limits.
@@ -375,19 +379,24 @@ impl PolicyEngine {
     /// (or if no budget limits are configured). Used by the heartbeat handler to
     /// determine whether a budget-suspended agent can be auto-resumed.
     pub fn is_within_budget(&self, agent_id_bytes: &[u8; 16]) -> bool {
+        let agent_id = aa_core::identity::AgentId::from_bytes(*agent_id_bytes);
         let policy = self.policy.load();
         let bp = match &policy.budget {
             Some(bp) => bp,
             None => return true,
         };
         if let Some(limit) = bp.daily_limit_usd {
-            if self.budget.is_exceeded(agent_id_bytes, limit) {
-                return false;
+            if let Ok(limit_dec) = rust_decimal::Decimal::try_from(limit) {
+                if self.budget.check_daily(&agent_id, limit_dec) {
+                    return false;
+                }
             }
         }
         if let Some(limit) = bp.monthly_limit_usd {
-            if self.budget.is_monthly_exceeded(agent_id_bytes, limit) {
-                return false;
+            if let Ok(limit_dec) = rust_decimal::Decimal::try_from(limit) {
+                if self.budget.check_monthly(&agent_id, limit_dec) {
+                    return false;
+                }
             }
         }
         true
