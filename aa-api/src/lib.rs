@@ -6,3 +6,4 @@
 //! the generated spec — a drift failure blocks merge.
 
 pub mod error;
+pub mod events;
