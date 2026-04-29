@@ -2,4 +2,5 @@
 
 pub mod api_key;
 pub mod config;
+pub mod jwt;
 pub mod scope;
