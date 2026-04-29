@@ -87,4 +87,14 @@ impl KprobeManager {
             _links: links,
         })
     }
+
+    /// Attach kprobes — non-Linux stub.
+    ///
+    /// Returns an error immediately since eBPF is not supported on this platform.
+    #[cfg(not(target_os = "linux"))]
+    pub fn attach(_bpf: &mut (), _target_pid: Option<i32>) -> Result<Self, EbpfError> {
+        Err(EbpfError::ProbeAttach(
+            "kprobe attachment requires Linux".into(),
+        ))
+    }
 }
