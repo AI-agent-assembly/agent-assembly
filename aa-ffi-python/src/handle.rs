@@ -7,6 +7,8 @@ use std::sync::Mutex;
 
 use pyo3::prelude::*;
 
+use aa_core::CredentialScanner;
+
 use crate::ipc::{IpcCommand, IpcHandle};
 
 /// Handle to an active Agent Assembly session.
@@ -24,6 +26,7 @@ use crate::ipc::{IpcCommand, IpcHandle};
 pub struct AssemblyHandle {
     inner: Mutex<Option<IpcHandle>>,
     detected_frameworks: Vec<String>,
+    scanner: CredentialScanner,
 }
 
 impl AssemblyHandle {
@@ -32,6 +35,7 @@ impl AssemblyHandle {
         Self {
             inner: Mutex::new(Some(ipc_handle)),
             detected_frameworks,
+            scanner: CredentialScanner::new(),
         }
     }
 }
@@ -53,9 +57,22 @@ impl AssemblyHandle {
             pyo3::exceptions::PyRuntimeError::new_err("AssemblyHandle is shut down; cannot report events")
         })?;
 
+        // Redact any credentials from user-supplied details before they enter
+        // the audit pipeline.
+        let scan_result = self.scanner.scan(&details);
+        let safe_details = if scan_result.is_clean() {
+            details
+        } else {
+            tracing::warn!(
+                findings = scan_result.findings.len(),
+                "credentials detected in report_event details, redacting"
+            );
+            scan_result.redact(&details)
+        };
+
         let mut labels = std::collections::HashMap::new();
         labels.insert("event_type".to_string(), event_type);
-        labels.insert("details".to_string(), details);
+        labels.insert("details".to_string(), safe_details);
 
         let event = aa_proto::assembly::audit::v1::AuditEvent {
             event_id: unique_event_id(),
