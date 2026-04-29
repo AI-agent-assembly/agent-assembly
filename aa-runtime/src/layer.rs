@@ -85,10 +85,7 @@ fn uname_release() -> Option<String> {
         if libc::uname(&mut info) != 0 {
             return None;
         }
-        CStr::from_ptr(info.release.as_ptr())
-            .to_str()
-            .ok()
-            .map(String::from)
+        CStr::from_ptr(info.release.as_ptr()).to_str().ok().map(String::from)
     }
 }
 

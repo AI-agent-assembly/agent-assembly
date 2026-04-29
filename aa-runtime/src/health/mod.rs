@@ -316,7 +316,9 @@ mod tests {
         let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
-        let layers = json["active_layers"].as_array().expect("active_layers should be an array");
+        let layers = json["active_layers"]
+            .as_array()
+            .expect("active_layers should be an array");
         assert_eq!(layers.len(), 1);
         assert_eq!(layers[0], "sdk");
     }
@@ -327,8 +329,7 @@ mod tests {
         let (inbound_tx, _) = tokio::sync::mpsc::channel(1);
         let pipeline_metrics = Arc::new(crate::pipeline::PipelineMetrics::default());
 
-        let all_layers =
-            crate::layer::LayerSet::EBPF | crate::layer::LayerSet::PROXY | crate::layer::LayerSet::SDK;
+        let all_layers = crate::layer::LayerSet::EBPF | crate::layer::LayerSet::PROXY | crate::layer::LayerSet::SDK;
 
         let state = HealthState {
             start_time: std::time::Instant::now(),
@@ -347,7 +348,9 @@ mod tests {
         let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
-        let layers = json["active_layers"].as_array().expect("active_layers should be an array");
+        let layers = json["active_layers"]
+            .as_array()
+            .expect("active_layers should be an array");
         assert_eq!(layers.len(), 3);
         assert_eq!(layers[0], "ebpf");
         assert_eq!(layers[1], "proxy");
