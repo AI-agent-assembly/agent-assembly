@@ -1,21 +1,25 @@
-//! Daily spend tracker for per-agent budget enforcement.
+//! Daily and monthly spend tracker for per-agent budget enforcement.
 //!
-//! `BudgetTracker` maintains running daily spend totals per agent,
-//! automatically resetting at the configured timezone's midnight boundary.
+//! `BudgetTracker` maintains running daily and monthly spend totals per agent,
+//! automatically resetting at the configured timezone's midnight/month boundary.
 
-use chrono::NaiveDate;
+use chrono::{Datelike, NaiveDate};
 use dashmap::DashMap;
 
 fn today_in_tz(tz: chrono_tz::Tz) -> NaiveDate {
     chrono::Utc::now().with_timezone(&tz).date_naive()
 }
 
-/// Per-agent daily spend tracker with automatic midnight reset.
+fn month_tag(date: NaiveDate) -> u32 {
+    date.year() as u32 * 100 + date.month()
+}
+
+/// Per-agent daily and monthly spend tracker with automatic reset.
 pub(crate) struct BudgetTracker {
     /// DashMap<agent_id_bytes, (spent_today, date)>
-    /// Maps agent UUID (16 bytes) to (cumulative spend, date recorded).
-    /// When date differs from today's date in the configured timezone, spend is reset to 0.
     pub(crate) state: DashMap<[u8; 16], (f64, NaiveDate)>,
+    /// DashMap<agent_id_bytes, (spent_this_month, month_tag)>
+    pub(crate) monthly_state: DashMap<[u8; 16], (f64, u32)>,
     timezone: chrono_tz::Tz,
 }
 
@@ -24,6 +28,7 @@ impl BudgetTracker {
     pub(crate) fn new(timezone: chrono_tz::Tz) -> Self {
         Self {
             state: DashMap::new(),
+            monthly_state: DashMap::new(),
             timezone,
         }
     }
@@ -70,6 +75,38 @@ impl BudgetTracker {
                 *spent += amount;
             })
             .or_insert_with(|| (amount, today));
+    }
+
+    /// Returns true if agent has met or exceeded their monthly limit.
+    pub(crate) fn is_monthly_exceeded(&self, agent_id: &[u8; 16], limit: f64) -> bool {
+        let current_month = month_tag(today_in_tz(self.timezone));
+
+        if let Some(mut entry) = self.monthly_state.get_mut(agent_id) {
+            let (spent, stored_month) = entry.value_mut();
+            if *stored_month != current_month {
+                *spent = 0.0;
+                *stored_month = current_month;
+            }
+            *spent >= limit
+        } else {
+            false
+        }
+    }
+
+    /// Add amount to this agent's running monthly total.
+    pub(crate) fn record_monthly(&self, agent_id: &[u8; 16], amount: f64) {
+        let current_month = month_tag(today_in_tz(self.timezone));
+
+        self.monthly_state
+            .entry(*agent_id)
+            .and_modify(|(spent, stored_month)| {
+                if *stored_month != current_month {
+                    *spent = 0.0;
+                    *stored_month = current_month;
+                }
+                *spent += amount;
+            })
+            .or_insert_with(|| (amount, current_month));
     }
 }
 
@@ -128,5 +165,43 @@ mod tests {
     fn timezone_is_stored() {
         let tracker = BudgetTracker::new(chrono_tz::Asia::Tokyo);
         assert_eq!(tracker.timezone, chrono_tz::Asia::Tokyo);
+    }
+
+    #[test]
+    fn new_agent_monthly_is_not_exceeded() {
+        let tracker = BudgetTracker::new(chrono_tz::UTC);
+        let agent_id = [10u8; 16];
+        assert!(!tracker.is_monthly_exceeded(&agent_id, 100.0));
+    }
+
+    #[test]
+    fn record_monthly_accumulates() {
+        let tracker = BudgetTracker::new(chrono_tz::UTC);
+        let agent_id = [11u8; 16];
+
+        tracker.record_monthly(&agent_id, 3.0);
+        tracker.record_monthly(&agent_id, 4.0);
+
+        assert!(tracker.is_monthly_exceeded(&agent_id, 7.0));
+        assert!(!tracker.is_monthly_exceeded(&agent_id, 8.0));
+    }
+
+    #[test]
+    fn monthly_resets_on_month_change() {
+        use chrono::Datelike;
+        let tracker = BudgetTracker::new(chrono_tz::UTC);
+        let agent_id = [12u8; 16];
+
+        tracker.record_monthly(&agent_id, 5.0);
+
+        // Backdate to a different month
+        if let Some(mut entry) = tracker.monthly_state.get_mut(&agent_id) {
+            let today = chrono::Utc::now().date_naive();
+            let last_month = today - chrono::Duration::days(32);
+            entry.1 = last_month.year() as u32 * 100 + last_month.month();
+        }
+
+        // After month change, spend resets — should not be exceeded
+        assert!(!tracker.is_monthly_exceeded(&agent_id, 5.0));
     }
 }

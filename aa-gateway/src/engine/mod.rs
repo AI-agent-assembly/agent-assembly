@@ -273,8 +273,19 @@ impl PolicyEngine {
             (Some(redacted), all_findings)
         };
 
-        // Stage 7 — Budget check.
+        // Stage 7 — Budget check (monthly first, then daily).
         if let Some(bp) = &policy.budget {
+            if let Some(limit) = bp.monthly_limit_usd {
+                if self.budget.is_monthly_exceeded(ctx.agent_id.as_bytes(), limit) {
+                    return EvaluationResult {
+                        decision: aa_core::PolicyResult::Deny {
+                            reason: "monthly budget exceeded".into(),
+                        },
+                        redacted_payload,
+                        credential_findings,
+                    };
+                }
+            }
             if let Some(limit) = bp.daily_limit_usd {
                 if self.budget.is_exceeded(ctx.agent_id.as_bytes(), limit) {
                     return EvaluationResult {
@@ -298,6 +309,7 @@ impl PolicyEngine {
     /// Record a spend amount for an agent after an action completes.
     pub fn record_spend(&self, ctx: &aa_core::AgentContext, amount_usd: f64) {
         self.budget.record(ctx.agent_id.as_bytes(), amount_usd);
+        self.budget.record_monthly(ctx.agent_id.as_bytes(), amount_usd);
     }
 }
 
@@ -587,6 +599,7 @@ mod tests {
         let mut doc = empty_doc();
         doc.budget = Some(BudgetPolicy {
             daily_limit_usd: Some(1.0),
+            monthly_limit_usd: None,
             timezone: None,
         });
         let engine = make_engine(doc);
@@ -599,6 +612,68 @@ mod tests {
             engine.evaluate(&ctx, &action).decision,
             PolicyResult::Deny {
                 reason: "daily budget exceeded".into()
+            }
+        );
+    }
+
+    #[test]
+    fn monthly_budget_denies_when_exceeded() {
+        let mut doc = empty_doc();
+        doc.budget = Some(BudgetPolicy {
+            daily_limit_usd: None,
+            monthly_limit_usd: Some(5.0),
+            timezone: None,
+        });
+        let engine = make_engine(doc);
+        let ctx = make_ctx();
+
+        engine.record_spend(&ctx, 5.0);
+
+        let action = tool_call("any", "");
+        assert_eq!(
+            engine.evaluate(&ctx, &action).decision,
+            PolicyResult::Deny {
+                reason: "monthly budget exceeded".into()
+            }
+        );
+    }
+
+    #[test]
+    fn monthly_budget_within_limit_allows() {
+        let mut doc = empty_doc();
+        doc.budget = Some(BudgetPolicy {
+            daily_limit_usd: None,
+            monthly_limit_usd: Some(10.0),
+            timezone: None,
+        });
+        let engine = make_engine(doc);
+        let ctx = make_ctx();
+
+        engine.record_spend(&ctx, 1.0);
+
+        let action = tool_call("any", "");
+        assert_eq!(engine.evaluate(&ctx, &action).decision, PolicyResult::Allow);
+    }
+
+    #[test]
+    fn monthly_denies_before_daily_when_both_exceeded() {
+        let mut doc = empty_doc();
+        doc.budget = Some(BudgetPolicy {
+            daily_limit_usd: Some(2.0),
+            monthly_limit_usd: Some(5.0),
+            timezone: None,
+        });
+        let engine = make_engine(doc);
+        let ctx = make_ctx();
+
+        engine.record_spend(&ctx, 5.0);
+
+        let action = tool_call("any", "");
+        // Monthly check comes first in the pipeline
+        assert_eq!(
+            engine.evaluate(&ctx, &action).decision,
+            PolicyResult::Deny {
+                reason: "monthly budget exceeded".into()
             }
         );
     }

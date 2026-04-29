@@ -30,7 +30,9 @@ pub struct SchedulePolicy {
 pub struct BudgetPolicy {
     /// Maximum USD spend per calendar day; `None` means no limit.
     pub daily_limit_usd: Option<f64>,
-    /// IANA timezone for daily reset boundary. `None` means UTC.
+    /// Maximum USD spend per calendar month; `None` means no limit.
+    pub monthly_limit_usd: Option<f64>,
+    /// IANA timezone for daily/monthly reset boundary. `None` means UTC.
     pub timezone: Option<String>,
 }
 

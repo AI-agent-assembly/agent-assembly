@@ -196,6 +196,23 @@ impl PolicyValidator {
             }
         }
 
+        if let Some(limit) = raw.monthly_limit_usd {
+            if limit <= 0.0 {
+                errors.push(ValidationError::new(
+                    "budget.monthly_limit_usd",
+                    "must be greater than 0",
+                ));
+            }
+            if let Some(daily) = raw.daily_limit_usd {
+                if limit < daily {
+                    errors.push(ValidationError::new(
+                        "budget.monthly_limit_usd",
+                        "must be >= daily_limit_usd",
+                    ));
+                }
+            }
+        }
+
         // Validate timezone string if provided
         if let Some(tz_str) = &raw.timezone {
             if tz_str.parse::<chrono_tz::Tz>().is_err() {
@@ -208,6 +225,7 @@ impl PolicyValidator {
 
         Some(BudgetPolicy {
             daily_limit_usd: raw.daily_limit_usd,
+            monthly_limit_usd: raw.monthly_limit_usd,
             timezone: raw.timezone,
         })
     }
@@ -420,6 +438,63 @@ mod tests {
             "expected error mentioning budget.timezone, got: {:?}",
             errors
         );
+    }
+
+    // ── Monthly budget validation ─────────────────────────────────────────
+
+    #[test]
+    fn budget_valid_monthly_limit_round_trips() {
+        let yaml = "budget:\n  monthly_limit_usd: 500.0\n";
+        let out = PolicyValidator::from_yaml(yaml).unwrap();
+        let bp = out.document.budget.unwrap();
+        assert_eq!(bp.monthly_limit_usd, Some(500.0));
+    }
+
+    #[test]
+    fn budget_negative_monthly_limit_is_an_error() {
+        let yaml = "budget:\n  monthly_limit_usd: -10.0\n";
+        let result = PolicyValidator::from_yaml(yaml);
+        assert!(result.is_err());
+        let errs = result.unwrap_err();
+        assert!(errs.iter().any(|e| e.field == "budget.monthly_limit_usd"));
+    }
+
+    #[test]
+    fn budget_zero_monthly_limit_is_an_error() {
+        let yaml = "budget:\n  monthly_limit_usd: 0.0\n";
+        let result = PolicyValidator::from_yaml(yaml);
+        assert!(result.is_err());
+        let errs = result.unwrap_err();
+        assert!(errs.iter().any(|e| e.field == "budget.monthly_limit_usd"));
+    }
+
+    #[test]
+    fn budget_monthly_less_than_daily_is_an_error() {
+        let yaml = "budget:\n  daily_limit_usd: 100.0\n  monthly_limit_usd: 50.0\n";
+        let result = PolicyValidator::from_yaml(yaml);
+        assert!(result.is_err());
+        let errs = result.unwrap_err();
+        assert!(errs
+            .iter()
+            .any(|e| e.field == "budget.monthly_limit_usd" && e.message.contains(">= daily_limit_usd")));
+    }
+
+    #[test]
+    fn budget_monthly_equal_to_daily_is_valid() {
+        let yaml = "budget:\n  daily_limit_usd: 100.0\n  monthly_limit_usd: 100.0\n";
+        let out = PolicyValidator::from_yaml(yaml).unwrap();
+        let bp = out.document.budget.unwrap();
+        assert_eq!(bp.monthly_limit_usd, Some(100.0));
+        assert_eq!(bp.daily_limit_usd, Some(100.0));
+    }
+
+    #[test]
+    fn budget_monthly_without_daily_is_valid() {
+        let yaml = "budget:\n  monthly_limit_usd: 1000.0\n";
+        let out = PolicyValidator::from_yaml(yaml).unwrap();
+        let bp = out.document.budget.unwrap();
+        assert_eq!(bp.monthly_limit_usd, Some(1000.0));
+        assert!(bp.daily_limit_usd.is_none());
     }
 
     // ── Schedule active_hours validation ───────────────────────────────────
