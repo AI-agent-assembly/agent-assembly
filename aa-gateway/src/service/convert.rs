@@ -223,3 +223,17 @@ pub fn approval_event_to_proto(req: &ApprovalRequest) -> ApprovalEvent {
         timeout_secs: req.timeout_secs,
     }
 }
+
+/// Errors specific to approval decision conversion.
+#[derive(Debug, thiserror::Error)]
+pub enum ApprovalConvertError {
+    /// The `request_id` field is not a valid UUID.
+    #[error("invalid request_id UUID: {0}")]
+    InvalidRequestId(#[from] uuid::Error),
+    /// The `decision` field is unspecified or unknown.
+    #[error("decision type is unspecified")]
+    UnspecifiedDecision,
+    /// REJECTED decision requires a non-empty reason.
+    #[error("rejection reason is required")]
+    MissingRejectionReason,
+}
