@@ -6,6 +6,7 @@ use axum::{Extension, Json};
 use serde::Serialize;
 use utoipa::ToSchema;
 
+use crate::error::ProblemDetail;
 use crate::pagination::{PaginatedResponse, PaginationParams};
 use crate::state::AppState;
 
@@ -52,4 +53,24 @@ pub async fn list_approvals(
             total: 0,
         }),
     )
+}
+
+/// `POST /api/v1/approvals/:id/approve` — approve a pending action.
+#[utoipa::path(
+    post,
+    path = "/api/v1/approvals/{id}/approve",
+    params(("id" = String, Path, description = "Approval request identifier")),
+    responses(
+        (status = 200, description = "Action approved", body = ApprovalResponse),
+        (status = 404, description = "Approval request not found")
+    ),
+    tag = "approvals"
+)]
+pub async fn approve_action(
+    Extension(_state): Extension<AppState>,
+    axum::extract::Path(id): axum::extract::Path<String>,
+) -> Result<(StatusCode, Json<ApprovalResponse>), ProblemDetail> {
+    // TODO: wire to approval queue resolve
+    Err(ProblemDetail::from_status(StatusCode::NOT_FOUND)
+        .with_detail(format!("Approval request not found: {id}")))
 }
