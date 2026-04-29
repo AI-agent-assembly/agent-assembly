@@ -16,9 +16,19 @@ impl Interceptor {
     }
 
     /// Inspect an intercepted exchange and, if it matches an LLM API pattern,
-    /// construct and return the corresponding [`event::ProxyEvent`].
-    pub async fn intercept(&self, _event: event::ProxyEvent) -> Result<(), ProxyError> {
-        todo!()
+    /// log and return the corresponding [`event::ProxyEvent`].
+    ///
+    /// Full policy evaluation (forwarding to `aa-gateway`) will be added in a
+    /// future ticket. For now this captures and logs the event.
+    pub async fn intercept(&self, event: event::ProxyEvent) -> Result<(), ProxyError> {
+        tracing::info!(
+            agent_id = event.agent_id.as_deref().unwrap_or("<unknown>"),
+            pattern = ?event.pattern,
+            method = %event.method,
+            path = %event.path,
+            "intercepted LLM API call"
+        );
+        Ok(())
     }
 }
 
