@@ -123,3 +123,102 @@ impl AgentBaseline {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn empty_baseline_has_zero_action_count() {
+        let b = AgentBaseline::new(3600);
+        assert_eq!(b.action_count(), 0);
+    }
+
+    #[test]
+    fn empty_baseline_returns_zero_mean_stddev() {
+        let b = AgentBaseline::new(3600);
+        let (mean, stddev) = b.action_mean_stddev();
+        assert!((mean - 0.0).abs() < f64::EPSILON);
+        assert!((stddev - 0.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn record_action_increases_count() {
+        let mut b = AgentBaseline::new(3600);
+        b.record_action(1000);
+        b.record_action(2000);
+        b.record_action(3000);
+        assert_eq!(b.action_count(), 3);
+    }
+
+    #[test]
+    fn evict_removes_old_entries() {
+        let mut b = AgentBaseline::new(10); // 10 second window = 10_000 ms
+        b.record_action(1000);
+        b.record_action(5000);
+        b.record_action(12000);
+        // now=12000, window=10000ms, cutoff=2000 → ts=1000 evicted
+        assert_eq!(b.action_count(), 2);
+    }
+
+    #[test]
+    fn evict_clears_tool_counts_when_empty() {
+        let mut b = AgentBaseline::new(1); // 1 second window
+        b.record_tool_call(42, 1000);
+        assert_eq!(b.tool_call_count(42), 1);
+        // Evict everything: now=10000, window=1000ms, cutoff=9000
+        b.evict(10000);
+        assert_eq!(b.tool_call_count(42), 0);
+        assert_eq!(b.action_count(), 0);
+    }
+
+    #[test]
+    fn tool_call_count_tracks_per_hash() {
+        let mut b = AgentBaseline::new(3600);
+        b.record_tool_call(1, 1000);
+        b.record_tool_call(1, 2000);
+        b.record_tool_call(2, 3000);
+        assert_eq!(b.tool_call_count(1), 2);
+        assert_eq!(b.tool_call_count(2), 1);
+        assert_eq!(b.tool_call_count(99), 0);
+    }
+
+    #[test]
+    fn credential_finding_tracking() {
+        let mut b = AgentBaseline::new(3600);
+        assert_eq!(b.credential_findings_count(), 0);
+        b.record_credential_finding();
+        b.record_credential_finding();
+        assert_eq!(b.credential_findings_count(), 2);
+        b.reset_credential_findings();
+        assert_eq!(b.credential_findings_count(), 0);
+    }
+
+    #[test]
+    fn mean_stddev_uniform_distribution() {
+        let mut b = AgentBaseline::new(3600);
+        // Insert 120 actions evenly spread over 12 seconds (1 per 100ms).
+        // Each of the 12 buckets should get ~10 actions → stddev ≈ 0.
+        for i in 0..120 {
+            b.record_action(1000 + i * 100);
+        }
+        let (mean, stddev) = b.action_mean_stddev();
+        assert!((mean - 10.0).abs() < 1.0, "mean should be ~10, got {mean}");
+        assert!(stddev < 2.0, "stddev should be near 0 for uniform, got {stddev}");
+    }
+
+    #[test]
+    fn mean_stddev_spike_distribution() {
+        let mut b = AgentBaseline::new(3600);
+        // Insert 10 actions in the first bucket, 0 in the rest.
+        for i in 0..10 {
+            b.record_action(1000 + i);
+        }
+        // Add 1 action far away to create a span.
+        b.record_action(13000);
+        let (mean, stddev) = b.action_mean_stddev();
+        // Most buckets are 0, one has ~10, one has 1 → high stddev.
+        assert!(stddev > 1.0, "stddev should be high for spiked distribution, got {stddev}");
+        assert!(mean > 0.0, "mean should be positive, got {mean}");
+    }
+}
