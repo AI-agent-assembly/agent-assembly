@@ -190,6 +190,183 @@ tools:
     assert_eq!(resp.responses[2].decision, Decision::Allow as i32);
 }
 
+// ── Budget suspend integration test ────────────────────────────────────────
+
+/// Start a PolicyService with an attached AgentRegistry, returning the address,
+/// the engine (for recording spend), and the registry (for verifying suspension).
+async fn start_server_with_registry(
+    policy_yaml: &str,
+) -> (
+    SocketAddr,
+    Arc<aa_gateway::PolicyEngine>,
+    Arc<aa_gateway::registry::AgentRegistry>,
+) {
+    use aa_gateway::registry::AgentRegistry;
+
+    let mut tmp = tempfile::NamedTempFile::new().unwrap();
+    write!(tmp, "{}", policy_yaml).unwrap();
+    tmp.flush().unwrap();
+
+    let engine = Arc::new(PolicyEngine::load_from_file(tmp.path()).unwrap());
+    let registry = Arc::new(AgentRegistry::new());
+    let (audit_tx, _audit_rx) = tokio::sync::mpsc::channel(4096);
+    let audit_drops = Arc::new(AtomicU64::new(0));
+    let service = PolicyServiceImpl::with_registry(
+        Arc::clone(&engine),
+        Arc::clone(&registry),
+        audit_tx,
+        audit_drops,
+        [0u8; 32],
+    );
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+
+    tokio::spawn(async move {
+        let _tmp = tmp;
+        let incoming = tokio_stream::wrappers::TcpListenerStream::new(listener);
+        Server::builder()
+            .add_service(PolicyServiceServer::new(service))
+            .serve_with_incoming(incoming)
+            .await
+            .unwrap();
+    });
+
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    (addr, engine, registry)
+}
+
+#[tokio::test]
+async fn check_action_suspends_agent_on_budget_exceeded_with_suspend_policy() {
+    use aa_gateway::registry::convert::proto_agent_id_to_key;
+    use aa_gateway::registry::store::AgentRecord;
+    use aa_gateway::registry::{AgentStatus, SuspendReason};
+
+    let yaml = r#"
+version: "1"
+budget:
+  daily_limit_usd: 1.0
+  action_on_exceed: suspend
+"#;
+    let (addr, engine, registry) = start_server_with_registry(yaml).await;
+
+    // Pre-register the agent in the registry so suspend_and_notify can find it.
+    let proto_id = ProtoAgentId {
+        org_id: "org".into(),
+        team_id: "team".into(),
+        agent_id: "agent-1".into(),
+    };
+    let agent_key = proto_agent_id_to_key(&proto_id);
+    let record = AgentRecord {
+        agent_id: agent_key,
+        name: "budget-test-agent".into(),
+        framework: "custom".into(),
+        version: "1.0.0".into(),
+        risk_tier: 0,
+        tool_names: vec![],
+        public_key: "pk_test".into(),
+        credential_token: "tok_test".into(),
+        metadata: std::collections::BTreeMap::new(),
+        registered_at: chrono::Utc::now(),
+        last_heartbeat: chrono::Utc::now(),
+        status: AgentStatus::Active,
+    };
+    registry.register(record).unwrap();
+
+    // Push budget over the limit using the engine's budget tracker.
+    // The engine uses hash_to_16("agent-1") as the budget key (from request_to_core).
+    let agent_ctx = aa_core::AgentContext {
+        agent_id: aa_core::identity::AgentId::from_bytes(aa_gateway::service::convert::hash_to_16("agent-1")),
+        session_id: aa_core::identity::SessionId::from_bytes([0u8; 16]),
+        pid: 0,
+        started_at: aa_core::time::Timestamp::from_nanos(0),
+        metadata: std::collections::BTreeMap::new(),
+    };
+    engine.record_spend(&agent_ctx, 2.0); // exceeds $1.0 daily limit
+
+    // Send a CheckAction — should get Deny and trigger suspension.
+    let mut client = PolicyServiceClient::connect(format!("http://{addr}")).await.unwrap();
+    let resp = client
+        .check_action(tool_call_request("any_tool"))
+        .await
+        .unwrap()
+        .into_inner();
+
+    assert_eq!(resp.decision, Decision::Deny as i32);
+    assert!(resp.reason.contains("budget exceeded"));
+
+    // Verify the agent was suspended in the registry.
+    let status = registry.agent_status(&agent_key).unwrap();
+    assert_eq!(
+        status,
+        AgentStatus::Suspended(SuspendReason::BudgetExceeded),
+        "agent should be suspended after budget-exceeded with action_on_exceed=suspend"
+    );
+}
+
+#[tokio::test]
+async fn check_action_does_not_suspend_agent_on_budget_exceeded_with_deny_policy() {
+    use aa_gateway::registry::convert::proto_agent_id_to_key;
+    use aa_gateway::registry::store::AgentRecord;
+    use aa_gateway::registry::AgentStatus;
+
+    let yaml = r#"
+version: "1"
+budget:
+  daily_limit_usd: 1.0
+  action_on_exceed: deny
+"#;
+    let (addr, engine, registry) = start_server_with_registry(yaml).await;
+
+    let proto_id = ProtoAgentId {
+        org_id: "org".into(),
+        team_id: "team".into(),
+        agent_id: "agent-1".into(),
+    };
+    let agent_key = proto_agent_id_to_key(&proto_id);
+    let record = AgentRecord {
+        agent_id: agent_key,
+        name: "deny-test-agent".into(),
+        framework: "custom".into(),
+        version: "1.0.0".into(),
+        risk_tier: 0,
+        tool_names: vec![],
+        public_key: "pk_test".into(),
+        credential_token: "tok_test".into(),
+        metadata: std::collections::BTreeMap::new(),
+        registered_at: chrono::Utc::now(),
+        last_heartbeat: chrono::Utc::now(),
+        status: AgentStatus::Active,
+    };
+    registry.register(record).unwrap();
+
+    let agent_ctx = aa_core::AgentContext {
+        agent_id: aa_core::identity::AgentId::from_bytes(aa_gateway::service::convert::hash_to_16("agent-1")),
+        session_id: aa_core::identity::SessionId::from_bytes([0u8; 16]),
+        pid: 0,
+        started_at: aa_core::time::Timestamp::from_nanos(0),
+        metadata: std::collections::BTreeMap::new(),
+    };
+    engine.record_spend(&agent_ctx, 2.0);
+
+    let mut client = PolicyServiceClient::connect(format!("http://{addr}")).await.unwrap();
+    let resp = client
+        .check_action(tool_call_request("any_tool"))
+        .await
+        .unwrap()
+        .into_inner();
+
+    assert_eq!(resp.decision, Decision::Deny as i32);
+
+    // Agent should still be Active — deny policy does not suspend.
+    let status = registry.agent_status(&agent_key).unwrap();
+    assert_eq!(
+        status,
+        AgentStatus::Active,
+        "agent should remain active with action_on_exceed=deny"
+    );
+}
+
 // ── GatewayClient integration test ──────────────────────────────────────────
 
 #[tokio::test]
