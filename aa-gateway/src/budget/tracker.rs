@@ -629,4 +629,58 @@ mod tests {
         let alert = rx.try_recv().expect("alert should arrive on external channel");
         assert_eq!(alert.threshold_pct, 80);
     }
+
+    // ── Ported from engine::budget (simple tracker) ─────────────────────
+
+    #[test]
+    fn check_daily_exact_limit_is_exceeded() {
+        let t = tracker_with_limit("1.00");
+        let id = agent(40);
+        t.record_raw_spend(id, "1.00".parse().unwrap());
+        // 1.00 >= 1.00 is true (not strictly greater)
+        assert!(t.check_daily(&id, "1.00".parse().unwrap()));
+    }
+
+    #[test]
+    fn check_daily_resets_on_new_date() {
+        let t = tracker_with_limit("1.00");
+        let id = agent(41);
+        t.record_raw_spend(id, "0.90".parse().unwrap());
+        // Backdate the entry to yesterday
+        t.per_agent.alter(&id, |_, mut s| {
+            s.date = chrono::Utc::now().date_naive() - chrono::Duration::days(1);
+            s
+        });
+        // After date reset, spend should be 0 — not exceeded
+        assert!(!t.check_daily(&id, "1.00".parse().unwrap()));
+    }
+
+    #[test]
+    fn check_monthly_accumulates_raw_spend() {
+        let t = tracker_with_monthly_limit("7.00");
+        let id = agent(42);
+        t.record_raw_spend(id, "3.00".parse().unwrap());
+        t.record_raw_spend(id, "4.00".parse().unwrap());
+        // 7.00 >= 7.00
+        assert!(t.check_monthly(&id, "7.00".parse().unwrap()));
+        // 7.00 < 8.00
+        assert!(!t.check_monthly(&id, "8.00".parse().unwrap()));
+    }
+
+    #[test]
+    fn check_monthly_resets_on_month_change() {
+        use chrono::Datelike;
+        let t = tracker_with_monthly_limit("5.00");
+        let id = agent(43);
+        t.record_raw_spend(id, "5.00".parse().unwrap());
+        // Backdate to last month
+        let last_month = chrono::Utc::now().date_naive() - chrono::Duration::days(32);
+        t.per_agent.alter(&id, |_, mut s| {
+            s.date = last_month;
+            s.month = last_month.year() as u32 * 100 + last_month.month();
+            s
+        });
+        // After month change, monthly spend resets — not exceeded
+        assert!(!t.check_monthly(&id, "5.00".parse().unwrap()));
+    }
 }
