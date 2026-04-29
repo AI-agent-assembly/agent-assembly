@@ -52,9 +52,26 @@ impl Interceptor {
 
         // Pick the body to extract from: prefer response (has usage stats),
         // fall back to request.
-        let body = event.response_body.as_ref().or(event.request_body.as_ref());
+        let raw_body = event.response_body.as_ref().or(event.request_body.as_ref());
 
-        let fields = match body {
+        // Scan for credentials and redact before any further processing so
+        // that secrets never appear in audit events or log output.
+        let body: Option<bytes::Bytes> = raw_body.map(|b| {
+            let text = String::from_utf8_lossy(b);
+            let result = self.scanner.scan(&text);
+            if result.is_clean() {
+                b.clone()
+            } else {
+                tracing::warn!(
+                    findings = result.findings.len(),
+                    agent_id = event.agent_id.as_deref().unwrap_or("<unknown>"),
+                    "credentials detected in LLM body, redacting before audit"
+                );
+                bytes::Bytes::from(result.redact(&text))
+            }
+        });
+
+        let fields = match body.as_ref() {
             Some(bytes) => match Self::extract_for_pattern(&event.pattern, bytes) {
                 Ok(f) => Some(f),
                 Err(e) => {
