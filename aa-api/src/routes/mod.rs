@@ -11,7 +11,9 @@ use crate::error::ProblemDetail;
 
 /// Build the v1 API router with all registered routes.
 pub fn v1_router() -> Router {
-    Router::new().route("/health", get(health::health))
+    Router::new()
+        .route("/health", get(health::health))
+        .route("/ws/events", get(crate::ws::handler::ws_events_handler))
 }
 
 /// Fallback handler returning a 404 RFC 7807 response.
