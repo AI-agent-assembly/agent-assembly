@@ -166,4 +166,42 @@ mod tests {
         let tracker = BudgetTracker::new(chrono_tz::Asia::Tokyo);
         assert_eq!(tracker.timezone, chrono_tz::Asia::Tokyo);
     }
+
+    #[test]
+    fn new_agent_monthly_is_not_exceeded() {
+        let tracker = BudgetTracker::new(chrono_tz::UTC);
+        let agent_id = [10u8; 16];
+        assert!(!tracker.is_monthly_exceeded(&agent_id, 100.0));
+    }
+
+    #[test]
+    fn record_monthly_accumulates() {
+        let tracker = BudgetTracker::new(chrono_tz::UTC);
+        let agent_id = [11u8; 16];
+
+        tracker.record_monthly(&agent_id, 3.0);
+        tracker.record_monthly(&agent_id, 4.0);
+
+        assert!(tracker.is_monthly_exceeded(&agent_id, 7.0));
+        assert!(!tracker.is_monthly_exceeded(&agent_id, 8.0));
+    }
+
+    #[test]
+    fn monthly_resets_on_month_change() {
+        use chrono::Datelike;
+        let tracker = BudgetTracker::new(chrono_tz::UTC);
+        let agent_id = [12u8; 16];
+
+        tracker.record_monthly(&agent_id, 5.0);
+
+        // Backdate to a different month
+        if let Some(mut entry) = tracker.monthly_state.get_mut(&agent_id) {
+            let today = chrono::Utc::now().date_naive();
+            let last_month = today - chrono::Duration::days(32);
+            entry.1 = last_month.year() as u32 * 100 + last_month.month();
+        }
+
+        // After month change, spend resets — should not be exceeded
+        assert!(!tracker.is_monthly_exceeded(&agent_id, 5.0));
+    }
 }

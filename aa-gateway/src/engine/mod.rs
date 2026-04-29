@@ -617,6 +617,68 @@ mod tests {
     }
 
     #[test]
+    fn monthly_budget_denies_when_exceeded() {
+        let mut doc = empty_doc();
+        doc.budget = Some(BudgetPolicy {
+            daily_limit_usd: None,
+            monthly_limit_usd: Some(5.0),
+            timezone: None,
+        });
+        let engine = make_engine(doc);
+        let ctx = make_ctx();
+
+        engine.record_spend(&ctx, 5.0);
+
+        let action = tool_call("any", "");
+        assert_eq!(
+            engine.evaluate(&ctx, &action).decision,
+            PolicyResult::Deny {
+                reason: "monthly budget exceeded".into()
+            }
+        );
+    }
+
+    #[test]
+    fn monthly_budget_within_limit_allows() {
+        let mut doc = empty_doc();
+        doc.budget = Some(BudgetPolicy {
+            daily_limit_usd: None,
+            monthly_limit_usd: Some(10.0),
+            timezone: None,
+        });
+        let engine = make_engine(doc);
+        let ctx = make_ctx();
+
+        engine.record_spend(&ctx, 1.0);
+
+        let action = tool_call("any", "");
+        assert_eq!(engine.evaluate(&ctx, &action).decision, PolicyResult::Allow);
+    }
+
+    #[test]
+    fn monthly_denies_before_daily_when_both_exceeded() {
+        let mut doc = empty_doc();
+        doc.budget = Some(BudgetPolicy {
+            daily_limit_usd: Some(2.0),
+            monthly_limit_usd: Some(5.0),
+            timezone: None,
+        });
+        let engine = make_engine(doc);
+        let ctx = make_ctx();
+
+        engine.record_spend(&ctx, 5.0);
+
+        let action = tool_call("any", "");
+        // Monthly check comes first in the pipeline
+        assert_eq!(
+            engine.evaluate(&ctx, &action).decision,
+            PolicyResult::Deny {
+                reason: "monthly budget exceeded".into()
+            }
+        );
+    }
+
+    #[test]
     fn short_circuit_stops_at_first_deny() {
         // Tool deny (Stage 3) fires before the credential scan (Stage 6).
         let mut doc = empty_doc();
