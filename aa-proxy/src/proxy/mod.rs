@@ -125,6 +125,20 @@ impl ProxyServer {
             // Extract hostname (strip port) for certificate generation.
             let host = target.split(':').next().unwrap_or(target);
 
+            // When llm_only is enabled, skip TLS MitM for non-LLM hosts and
+            // just tunnel the raw TCP bytes transparently.
+            if self.config.llm_only && detect_api(host) == LlmApiPattern::Unknown {
+                tracing::debug!(%host, "llm_only mode — transparent tunnel (no MitM)");
+                let upstream = TcpStream::connect(target).await?;
+                let (mut cr, mut cw) = tokio::io::split(stream);
+                let (mut ur, mut uw) = tokio::io::split(upstream);
+                tokio::select! {
+                    r = tokio::io::copy(&mut cr, &mut uw) => { r?; }
+                    r = tokio::io::copy(&mut ur, &mut cw) => { r?; }
+                }
+                return Ok(());
+            }
+
             // --- TLS MitM: act as TLS server to the client ---
             let ck = self.certs.get_or_insert(host, &self.ca)?;
             let cert = CertificateDer::from(ck.cert_der.clone());
