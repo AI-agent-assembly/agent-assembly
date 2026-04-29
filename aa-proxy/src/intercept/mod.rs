@@ -4,8 +4,13 @@ pub mod detect;
 pub mod event;
 pub mod extract;
 
+use std::time::{SystemTime, UNIX_EPOCH};
+
 use tokio::sync::broadcast;
 
+use aa_proto::assembly::audit::v1::{audit_event, AuditEvent, LlmCallDetail};
+use aa_proto::assembly::common::v1::ActionType;
+use aa_runtime::pipeline::event::{EnrichedEvent, EventSource};
 use aa_runtime::pipeline::PipelineEvent;
 
 use crate::error::ProxyError;
@@ -27,12 +32,11 @@ impl Interceptor {
         Self { event_tx }
     }
 
-    /// Inspect an intercepted exchange, extract LLM fields from the body
-    /// (if available), and log the result.
+    /// Inspect an intercepted exchange, extract LLM fields from the body,
+    /// and emit a [`PipelineEvent::Audit`] on the broadcast channel.
     ///
-    /// Full policy evaluation (forwarding to `aa-gateway`) and pipeline
-    /// integration (`broadcast::Sender<PipelineEvent>`) will be added in a
-    /// future ticket. For now this extracts and logs.
+    /// Returns the extracted [`LlmFields`] (or `None` for non-LLM traffic
+    /// and extraction failures).
     pub async fn intercept(&self, event: &event::ProxyEvent) -> Result<Option<LlmFields>, ProxyError> {
         // Non-LLM traffic is passed through without extraction.
         if event.pattern == LlmApiPattern::Unknown {
@@ -69,7 +73,60 @@ impl Interceptor {
             "intercepted LLM API call"
         );
 
+        // Emit a PipelineEvent for every detected LLM call (even when body
+        // extraction failed — the audit record still captures the call).
+        let pipeline_event = Self::build_pipeline_event(event, fields.as_ref());
+        // send() returns Err only when there are zero receivers — that is
+        // normal during standalone proxy operation (no runtime attached).
+        let _ = self.event_tx.send(pipeline_event);
+
         Ok(fields)
+    }
+
+    /// Build a [`PipelineEvent::Audit`] from a proxy event and optional extracted fields.
+    fn build_pipeline_event(
+        event: &event::ProxyEvent,
+        fields: Option<&LlmFields>,
+    ) -> PipelineEvent {
+        let now_ms = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64;
+
+        let llm_detail = LlmCallDetail {
+            model: fields.map(|f| f.model.clone()).unwrap_or_default(),
+            prompt_tokens: fields.and_then(|f| f.prompt_tokens).unwrap_or(0) as i32,
+            completion_tokens: fields.and_then(|f| f.completion_tokens).unwrap_or(0) as i32,
+            provider: Self::provider_name(&event.pattern).into(),
+            ..Default::default()
+        };
+
+        let audit = AuditEvent {
+            action_type: ActionType::LlmCall.into(),
+            detail: Some(audit_event::Detail::LlmCall(llm_detail)),
+            ..Default::default()
+        };
+
+        let enriched = EnrichedEvent {
+            inner: audit,
+            received_at_ms: now_ms,
+            source: EventSource::Proxy,
+            agent_id: event.agent_id.clone().unwrap_or_default(),
+            connection_id: 0,
+            sequence_number: 0,
+        };
+
+        PipelineEvent::Audit(Box::new(enriched))
+    }
+
+    /// Map a detected API pattern to the provider name stored in the audit record.
+    fn provider_name(pattern: &LlmApiPattern) -> &'static str {
+        match pattern {
+            LlmApiPattern::OpenAi => "openai",
+            LlmApiPattern::Anthropic => "anthropic",
+            LlmApiPattern::Cohere => "cohere",
+            LlmApiPattern::Unknown => "unknown",
+        }
     }
 
     /// Select the correct extractor based on the detected API pattern.
