@@ -43,9 +43,24 @@ impl ApprovalService for ApprovalServiceImpl {
 
     async fn decide(
         &self,
-        _request: Request<DecideRequest>,
+        request: Request<DecideRequest>,
     ) -> Result<Response<DecideResponse>, Status> {
-        Err(Status::unimplemented("not yet implemented"))
+        let req = request.into_inner();
+
+        let (id, decision) = convert::decide_request_to_core(&req).map_err(|e| {
+            Status::invalid_argument(e.to_string())
+        })?;
+
+        match self.queue.decide(id, decision) {
+            Ok(()) => Ok(Response::new(DecideResponse {
+                success: true,
+                error_message: String::new(),
+            })),
+            Err(e) => Ok(Response::new(DecideResponse {
+                success: false,
+                error_message: e.to_string(),
+            })),
+        }
     }
 
     async fn watch_approvals(
