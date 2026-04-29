@@ -155,3 +155,25 @@ async fn decide_reject_resolves_request() {
         .into_inner();
     assert!(list_resp.requests.is_empty());
 }
+
+#[tokio::test]
+async fn decide_unknown_id_returns_failure() {
+    let (addr, _queue) = start_server().await;
+    let mut client = ApprovalServiceClient::connect(format!("http://{addr}"))
+        .await
+        .unwrap();
+
+    let resp = client
+        .decide(DecideRequest {
+            request_id: Uuid::new_v4().to_string(),
+            decision: ApprovalDecisionType::Approved as i32,
+            decided_by: "alice".to_string(),
+            reason: String::new(),
+        })
+        .await
+        .unwrap()
+        .into_inner();
+
+    assert!(!resp.success);
+    assert!(!resp.error_message.is_empty());
+}
