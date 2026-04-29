@@ -7,6 +7,7 @@
 pub mod budget;
 pub mod engine;
 pub mod policy;
+pub mod server;
 pub mod service;
 pub mod simulation;
 

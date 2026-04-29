@@ -186,3 +186,33 @@ tools:
     assert_eq!(resp.responses[1].decision, Decision::Deny as i32);
     assert_eq!(resp.responses[2].decision, Decision::Allow as i32);
 }
+
+// ── GatewayClient integration test ──────────────────────────────────────────
+
+#[tokio::test]
+async fn gateway_client_check_action_round_trip() {
+    let addr = start_server(
+        r#"
+version: "1"
+tools:
+  web_search:
+    allow: true
+"#,
+    )
+    .await;
+
+    let mut client = aa_runtime::gateway_client::GatewayClient::connect(&format!("http://{addr}"))
+        .await
+        .unwrap();
+
+    let resp = client.check_action(tool_call_request("web_search")).await.unwrap();
+
+    assert_eq!(resp.decision, Decision::Allow as i32);
+}
+
+#[tokio::test]
+async fn gateway_client_connect_failure() {
+    // Attempt to connect to a port that is not listening.
+    let result = aa_runtime::gateway_client::GatewayClient::connect("http://127.0.0.1:1").await;
+    assert!(result.is_err(), "should fail to connect to closed port");
+}
