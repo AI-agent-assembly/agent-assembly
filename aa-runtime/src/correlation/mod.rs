@@ -97,3 +97,117 @@ fn extract_action_fields(detail: &Option<Detail>, action_type: ActionType) -> (S
         _ => (action_type.as_str_name().to_string(), String::new()),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use aa_proto::assembly::audit::v1::AuditEvent;
+    use crate::pipeline::event::{EnrichedEvent, EventSource};
+
+    /// Helper to build an `EnrichedEvent` with the given source and action_type.
+    fn make_enriched(source: EventSource, action_type: ActionType) -> EnrichedEvent {
+        EnrichedEvent {
+            inner: AuditEvent {
+                event_id: "550e8400-e29b-41d4-a716-446655440000".to_string(),
+                action_type: action_type as i32,
+                ..AuditEvent::default()
+            },
+            received_at_ms: 1000,
+            source,
+            agent_id: "test-agent".to_string(),
+            connection_id: 1,
+            sequence_number: 0,
+        }
+    }
+
+    #[test]
+    fn sdk_tool_call_produces_intent() {
+        let event = make_enriched(EventSource::Sdk, ActionType::ToolCall);
+        let result = try_from_enriched(&event);
+        assert!(matches!(result, Some(CorrelationEvent::Intent(_))));
+    }
+
+    #[test]
+    fn sdk_llm_call_produces_intent() {
+        let event = make_enriched(EventSource::Sdk, ActionType::LlmCall);
+        let result = try_from_enriched(&event);
+        assert!(matches!(result, Some(CorrelationEvent::Intent(_))));
+    }
+
+    #[test]
+    fn ebpf_file_operation_produces_action() {
+        let event = make_enriched(EventSource::EBpf, ActionType::FileOperation);
+        let result = try_from_enriched(&event);
+        assert!(matches!(result, Some(CorrelationEvent::Action(_))));
+    }
+
+    #[test]
+    fn ebpf_network_call_produces_action() {
+        let event = make_enriched(EventSource::EBpf, ActionType::NetworkCall);
+        let result = try_from_enriched(&event);
+        assert!(matches!(result, Some(CorrelationEvent::Action(_))));
+    }
+
+    #[test]
+    fn ebpf_process_exec_produces_action() {
+        let event = make_enriched(EventSource::EBpf, ActionType::ProcessExec);
+        let result = try_from_enriched(&event);
+        assert!(matches!(result, Some(CorrelationEvent::Action(_))));
+    }
+
+    #[test]
+    fn sdk_file_operation_returns_none() {
+        let event = make_enriched(EventSource::Sdk, ActionType::FileOperation);
+        assert!(try_from_enriched(&event).is_none());
+    }
+
+    #[test]
+    fn ebpf_llm_call_returns_none() {
+        let event = make_enriched(EventSource::EBpf, ActionType::LlmCall);
+        assert!(try_from_enriched(&event).is_none());
+    }
+
+    #[test]
+    fn proxy_source_returns_none() {
+        let event = make_enriched(EventSource::Proxy, ActionType::ToolCall);
+        assert!(try_from_enriched(&event).is_none());
+    }
+
+    #[test]
+    fn unspecified_action_type_returns_none() {
+        let event = make_enriched(EventSource::Sdk, ActionType::ActionUnspecified);
+        assert!(try_from_enriched(&event).is_none());
+    }
+
+    #[test]
+    fn intent_preserves_timestamp_and_event_id() {
+        let event = make_enriched(EventSource::Sdk, ActionType::ToolCall);
+        let result = try_from_enriched(&event).unwrap();
+        match result {
+            CorrelationEvent::Intent(intent) => {
+                assert_eq!(intent.timestamp_ms, 1000);
+                assert_eq!(
+                    intent.event_id.to_string(),
+                    "550e8400-e29b-41d4-a716-446655440000"
+                );
+            }
+            _ => panic!("expected Intent"),
+        }
+    }
+
+    #[test]
+    fn action_preserves_timestamp_and_event_id() {
+        let event = make_enriched(EventSource::EBpf, ActionType::FileOperation);
+        let result = try_from_enriched(&event).unwrap();
+        match result {
+            CorrelationEvent::Action(action) => {
+                assert_eq!(action.timestamp_ms, 1000);
+                assert_eq!(
+                    action.event_id.to_string(),
+                    "550e8400-e29b-41d4-a716-446655440000"
+                );
+            }
+            _ => panic!("expected Action"),
+        }
+    }
+}
