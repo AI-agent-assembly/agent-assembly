@@ -326,27 +326,31 @@ impl PolicyEngine {
                 ActionOnExceed::Deny => None,
             };
             if let Some(limit) = bp.monthly_limit_usd {
-                if self.budget.is_monthly_exceeded(ctx.agent_id.as_bytes(), limit) {
-                    return EvaluationResult {
-                        decision: aa_core::PolicyResult::Deny {
-                            reason: "monthly budget exceeded".into(),
-                        },
-                        redacted_payload,
-                        credential_findings,
-                        deny_action,
-                    };
+                if let Ok(limit_dec) = rust_decimal::Decimal::try_from(limit) {
+                    if self.budget.check_monthly(&ctx.agent_id, limit_dec) {
+                        return EvaluationResult {
+                            decision: aa_core::PolicyResult::Deny {
+                                reason: "monthly budget exceeded".into(),
+                            },
+                            redacted_payload,
+                            credential_findings,
+                            deny_action,
+                        };
+                    }
                 }
             }
             if let Some(limit) = bp.daily_limit_usd {
-                if self.budget.is_exceeded(ctx.agent_id.as_bytes(), limit) {
-                    return EvaluationResult {
-                        decision: aa_core::PolicyResult::Deny {
-                            reason: "daily budget exceeded".into(),
-                        },
-                        redacted_payload,
-                        credential_findings,
-                        deny_action,
-                    };
+                if let Ok(limit_dec) = rust_decimal::Decimal::try_from(limit) {
+                    if self.budget.check_daily(&ctx.agent_id, limit_dec) {
+                        return EvaluationResult {
+                            decision: aa_core::PolicyResult::Deny {
+                                reason: "daily budget exceeded".into(),
+                            },
+                            redacted_payload,
+                            credential_findings,
+                            deny_action,
+                        };
+                    }
                 }
             }
         }
