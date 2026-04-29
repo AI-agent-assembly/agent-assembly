@@ -24,12 +24,14 @@ pub struct PolicyResponse {
 }
 
 /// `GET /api/v1/policies` — list all policy versions.
+///
+/// List all governance policy versions with pagination.
 #[utoipa::path(
     get,
     path = "/api/v1/policies",
     params(PaginationParams),
     responses(
-        (status = 200, description = "Paginated list of policy versions")
+        (status = 200, description = "Paginated list of policy versions", body = Vec<PolicyResponse>)
     ),
     tag = "policies"
 )]
@@ -59,6 +61,8 @@ pub struct CreatePolicyRequest {
 }
 
 /// `POST /api/v1/policies` — apply a new governance policy.
+///
+/// Submit and activate a new governance policy from YAML.
 #[utoipa::path(
     post,
     path = "/api/v1/policies",
@@ -74,11 +78,12 @@ pub async fn create_policy(
     Json(_body): Json<CreatePolicyRequest>,
 ) -> Result<(StatusCode, Json<PolicyResponse>), ProblemDetail> {
     // TODO: validate YAML, store version, reload engine
-    Err(ProblemDetail::from_status(StatusCode::NOT_IMPLEMENTED)
-        .with_detail("Policy creation not yet wired"))
+    Err(ProblemDetail::from_status(StatusCode::NOT_IMPLEMENTED).with_detail("Policy creation not yet wired"))
 }
 
 /// `GET /api/v1/policies/active` — get the currently active policy.
+///
+/// Retrieve the currently active governance policy.
 #[utoipa::path(
     get,
     path = "/api/v1/policies/active",
@@ -92,6 +97,5 @@ pub async fn get_active_policy(
     Extension(_state): Extension<AppState>,
 ) -> Result<(StatusCode, Json<PolicyResponse>), ProblemDetail> {
     // TODO: read active policy from engine
-    Err(ProblemDetail::from_status(StatusCode::NOT_FOUND)
-        .with_detail("No active policy loaded"))
+    Err(ProblemDetail::from_status(StatusCode::NOT_FOUND).with_detail("No active policy loaded"))
 }

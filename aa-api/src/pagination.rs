@@ -31,9 +31,7 @@ impl PaginationParams {
 
     /// Resolved items per page (clamped to 1..=100).
     pub fn per_page(&self) -> u32 {
-        self.per_page
-            .unwrap_or(DEFAULT_PER_PAGE)
-            .clamp(1, MAX_PER_PAGE)
+        self.per_page.unwrap_or(DEFAULT_PER_PAGE).clamp(1, MAX_PER_PAGE)
     }
 
     /// Compute the zero-based offset for slicing.

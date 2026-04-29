@@ -19,8 +19,7 @@ fn parse_agent_id(id: &str) -> Result<[u8; 16], ProblemDetail> {
         .map(|i| u8::from_str_radix(&id[i..i + 2], 16))
         .collect::<Result<Vec<u8>, _>>()
         .map_err(|_| {
-            ProblemDetail::from_status(StatusCode::BAD_REQUEST)
-                .with_detail(format!("Invalid agent ID format: {id}"))
+            ProblemDetail::from_status(StatusCode::BAD_REQUEST).with_detail(format!("Invalid agent ID format: {id}"))
         })?;
 
     let arr: [u8; 16] = bytes.try_into().map_err(|_| {
@@ -64,12 +63,15 @@ pub struct AgentResponse {
 }
 
 /// `GET /api/v1/agents` — list all registered agents with pagination.
+///
+/// Returns a paginated list of all agents currently known to the registry.
 #[utoipa::path(
     get,
     path = "/api/v1/agents",
+
     params(PaginationParams),
     responses(
-        (status = 200, description = "Paginated list of agents")
+        (status = 200, description = "Paginated list of agents", body = Vec<AgentResponse>)
     ),
     tag = "agents"
 )]
@@ -101,9 +103,12 @@ pub async fn list_agents(
 }
 
 /// `GET /api/v1/agents/:id` — inspect a specific agent by ID.
+///
+/// Retrieve details of a specific agent by its hex-encoded UUID.
 #[utoipa::path(
     get,
     path = "/api/v1/agents/{id}",
+
     params(("id" = String, Path, description = "Hex-encoded agent UUID")),
     responses(
         (status = 200, description = "Agent details", body = AgentResponse),
@@ -119,17 +124,19 @@ pub async fn get_agent(
     let agent_id = parse_agent_id(&id)?;
 
     let record = state.agent_registry.get(&agent_id).ok_or_else(|| {
-        ProblemDetail::from_status(StatusCode::NOT_FOUND)
-            .with_detail(format!("Agent not found: {id}"))
+        ProblemDetail::from_status(StatusCode::NOT_FOUND).with_detail(format!("Agent not found: {id}"))
     })?;
 
     Ok((StatusCode::OK, Json(record_to_response(record))))
 }
 
 /// `DELETE /api/v1/agents/:id` — deregister (kill) an agent.
+///
+/// Deregister and terminate the agent process.
 #[utoipa::path(
     delete,
     path = "/api/v1/agents/{id}",
+
     params(("id" = String, Path, description = "Hex-encoded agent UUID")),
     responses(
         (status = 204, description = "Agent deregistered"),
@@ -144,10 +151,10 @@ pub async fn delete_agent(
 ) -> Result<StatusCode, ProblemDetail> {
     let agent_id = parse_agent_id(&id)?;
 
-    state.agent_registry.deregister(&agent_id).map_err(|_| {
-        ProblemDetail::from_status(StatusCode::NOT_FOUND)
-            .with_detail(format!("Agent not found: {id}"))
-    })?;
+    state
+        .agent_registry
+        .deregister(&agent_id)
+        .map_err(|_| ProblemDetail::from_status(StatusCode::NOT_FOUND).with_detail(format!("Agent not found: {id}")))?;
 
     Ok(StatusCode::NO_CONTENT)
 }

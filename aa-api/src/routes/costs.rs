@@ -19,6 +19,8 @@ pub struct CostSummary {
 }
 
 /// `GET /api/v1/costs` — cost and budget summary.
+///
+/// Retrieve the current daily and monthly cost and budget summary.
 #[utoipa::path(
     get,
     path = "/api/v1/costs",
@@ -27,9 +29,7 @@ pub struct CostSummary {
     ),
     tag = "costs"
 )]
-pub async fn get_cost_summary(
-    Extension(state): Extension<AppState>,
-) -> (StatusCode, Json<CostSummary>) {
+pub async fn get_cost_summary(Extension(state): Extension<AppState>) -> (StatusCode, Json<CostSummary>) {
     let snapshot = state.budget_tracker.snapshot();
 
     let summary = CostSummary {

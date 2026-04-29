@@ -28,12 +28,14 @@ pub struct ApprovalResponse {
 }
 
 /// `GET /api/v1/approvals` — list pending approval requests.
+///
+/// List pending human-in-the-loop approval requests with pagination.
 #[utoipa::path(
     get,
     path = "/api/v1/approvals",
     params(PaginationParams),
     responses(
-        (status = 200, description = "Paginated list of pending approvals")
+        (status = 200, description = "Paginated list of pending approvals", body = Vec<ApprovalResponse>)
     ),
     tag = "approvals"
 )]
@@ -56,6 +58,8 @@ pub async fn list_approvals(
 }
 
 /// `POST /api/v1/approvals/:id/approve` — approve a pending action.
+///
+/// Approve a pending governance action, unblocking the agent.
 #[utoipa::path(
     post,
     path = "/api/v1/approvals/{id}/approve",
@@ -71,11 +75,12 @@ pub async fn approve_action(
     axum::extract::Path(id): axum::extract::Path<String>,
 ) -> Result<(StatusCode, Json<ApprovalResponse>), ProblemDetail> {
     // TODO: wire to approval queue resolve
-    Err(ProblemDetail::from_status(StatusCode::NOT_FOUND)
-        .with_detail(format!("Approval request not found: {id}")))
+    Err(ProblemDetail::from_status(StatusCode::NOT_FOUND).with_detail(format!("Approval request not found: {id}")))
 }
 
 /// `POST /api/v1/approvals/:id/reject` — reject a pending action.
+///
+/// Reject a pending governance action, denying the agent request.
 #[utoipa::path(
     post,
     path = "/api/v1/approvals/{id}/reject",
@@ -91,6 +96,5 @@ pub async fn reject_action(
     axum::extract::Path(id): axum::extract::Path<String>,
 ) -> Result<(StatusCode, Json<ApprovalResponse>), ProblemDetail> {
     // TODO: wire to approval queue resolve
-    Err(ProblemDetail::from_status(StatusCode::NOT_FOUND)
-        .with_detail(format!("Approval request not found: {id}")))
+    Err(ProblemDetail::from_status(StatusCode::NOT_FOUND).with_detail(format!("Approval request not found: {id}")))
 }

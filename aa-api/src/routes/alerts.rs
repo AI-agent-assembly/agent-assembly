@@ -27,12 +27,14 @@ pub struct AlertResponse {
 }
 
 /// `GET /api/v1/alerts` — list recent governance alerts.
+///
+/// List recent governance alerts such as budget warnings and policy violations.
 #[utoipa::path(
     get,
     path = "/api/v1/alerts",
     params(PaginationParams),
     responses(
-        (status = 200, description = "Paginated list of recent alerts")
+        (status = 200, description = "Paginated list of recent alerts", body = Vec<AlertResponse>)
     ),
     tag = "alerts"
 )]

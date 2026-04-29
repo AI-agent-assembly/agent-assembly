@@ -27,12 +27,14 @@ pub struct LogEntry {
 }
 
 /// `GET /api/v1/logs` — paginated audit log query.
+///
+/// Query the paginated audit log of governance events.
 #[utoipa::path(
     get,
     path = "/api/v1/logs",
     params(PaginationParams),
     responses(
-        (status = 200, description = "Paginated audit log entries")
+        (status = 200, description = "Paginated audit log entries", body = Vec<LogEntry>)
     ),
     tag = "logs"
 )]
