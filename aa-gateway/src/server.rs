@@ -6,11 +6,11 @@ use std::sync::Arc;
 
 use tonic::transport::Server;
 
-use aa_core::AuditEntry;
 use crate::audit::AuditWriter;
 use crate::engine::PolicyEngine;
 use crate::registry::AgentRegistry;
 use crate::service::{AgentLifecycleServiceImpl, AuditServiceImpl, PolicyServiceImpl};
+use aa_core::AuditEntry;
 use aa_proto::assembly::agent::v1::agent_lifecycle_service_server::AgentLifecycleServiceServer;
 use aa_proto::assembly::audit::v1::audit_service_server::AuditServiceServer;
 use aa_proto::assembly::policy::v1::policy_service_server::PolicyServiceServer;
