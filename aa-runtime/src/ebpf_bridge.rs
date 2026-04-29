@@ -3,7 +3,7 @@
 //! Maps raw eBPF event types from `aa_ebpf` into `AuditEvent` proto messages
 //! and enriches them for the broadcast channel.
 
-use aa_ebpf::events::{ExecEvent, FileIoEvent};
+use aa_ebpf::events::{ExecEvent, FileIoEvent, ProcessExitEvent};
 use aa_ebpf::syscall::SyscallKind;
 use aa_proto::assembly::audit::v1::audit_event::Detail;
 use aa_proto::assembly::audit::v1::{AuditEvent, FileOpDetail, ProcessExecDetail};
@@ -63,6 +63,25 @@ pub fn exec_event_to_audit(event: &ExecEvent) -> AuditEvent {
             exit_code: 0,
             duration_ms: 0,
             succeeded: true,
+        })),
+        ..AuditEvent::default()
+    }
+}
+
+/// Convert a process-exit event into an [`AuditEvent`] proto message.
+///
+/// Sets `succeeded` based on whether the exit code is zero and populates
+/// a `ProcessExecDetail` with the exit code. Command and args are empty
+/// because the exit event only carries the PID and exit code.
+pub fn exit_event_to_audit(event: &ProcessExitEvent) -> AuditEvent {
+    AuditEvent {
+        action_type: ActionType::ProcessExec.into(),
+        detail: Some(Detail::Process(ProcessExecDetail {
+            command: String::new(),
+            args: Vec::new(),
+            exit_code: event.exit_code,
+            duration_ms: 0,
+            succeeded: event.exit_code == 0,
         })),
         ..AuditEvent::default()
     }
