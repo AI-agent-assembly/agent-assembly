@@ -110,11 +110,17 @@ impl AgentLifecycleService for AgentLifecycleServiceImpl {
             .update_heartbeat(&agent_key)
             .map_err(|e| Status::not_found(e.to_string()))?;
 
-        tracing::debug!(agent_id = ?proto_id.agent_id, "heartbeat received");
+        let should_suspend = self
+            .registry
+            .agent_status(&agent_key)
+            .map(|s| matches!(s, AgentStatus::Suspended(_)))
+            .unwrap_or(false);
+
+        tracing::debug!(agent_id = ?proto_id.agent_id, should_suspend, "heartbeat received");
 
         Ok(Response::new(HeartbeatResponse {
             policy_updated: false,
-            should_suspend: false,
+            should_suspend,
         }))
     }
 

@@ -230,3 +230,97 @@ async fn duplicate_register_returns_already_exists() {
     let status = client.register(req).await.unwrap_err();
     assert_eq!(status.code(), tonic::Code::AlreadyExists);
 }
+
+// ── Heartbeat suspend signaling ──────────────────────────────────────────
+
+#[tokio::test]
+async fn heartbeat_returns_should_suspend_true_for_suspended_agent() {
+    use aa_gateway::registry::SuspendReason;
+
+    let (addr, registry) = start_server().await;
+    let mut client = AgentLifecycleServiceClient::connect(format!("http://{addr}"))
+        .await
+        .unwrap();
+
+    let agent_id = test_agent_id();
+    let public_key = test_ed25519_public_key_hex();
+
+    let reg_resp = client
+        .register(RegisterRequest {
+            agent_id: Some(agent_id.clone()),
+            name: "suspend-test-agent".into(),
+            framework: "custom".into(),
+            version: "1.0.0".into(),
+            risk_tier: 0,
+            tool_names: vec![],
+            public_key,
+            metadata: Default::default(),
+        })
+        .await
+        .unwrap()
+        .into_inner();
+
+    let token = reg_resp.credential_token;
+
+    // Suspend the agent directly via the registry
+    use aa_gateway::registry::convert::proto_agent_id_to_key;
+    let agent_key = proto_agent_id_to_key(&agent_id);
+    registry
+        .suspend_agent(&agent_key, SuspendReason::BudgetExceeded)
+        .unwrap();
+
+    // Heartbeat should return should_suspend = true
+    let hb_resp = client
+        .heartbeat(HeartbeatRequest {
+            agent_id: Some(agent_id),
+            credential_token: token,
+            active_runs: 0,
+            actions_count: 0,
+        })
+        .await
+        .unwrap()
+        .into_inner();
+
+    assert!(hb_resp.should_suspend);
+}
+
+#[tokio::test]
+async fn heartbeat_returns_should_suspend_false_for_active_agent() {
+    let (addr, _registry) = start_server().await;
+    let mut client = AgentLifecycleServiceClient::connect(format!("http://{addr}"))
+        .await
+        .unwrap();
+
+    let agent_id = test_agent_id();
+    let public_key = test_ed25519_public_key_hex();
+
+    let reg_resp = client
+        .register(RegisterRequest {
+            agent_id: Some(agent_id.clone()),
+            name: "active-test-agent".into(),
+            framework: "custom".into(),
+            version: "1.0.0".into(),
+            risk_tier: 0,
+            tool_names: vec![],
+            public_key,
+            metadata: Default::default(),
+        })
+        .await
+        .unwrap()
+        .into_inner();
+
+    let token = reg_resp.credential_token;
+
+    let hb_resp = client
+        .heartbeat(HeartbeatRequest {
+            agent_id: Some(agent_id),
+            credential_token: token,
+            active_runs: 0,
+            actions_count: 0,
+        })
+        .await
+        .unwrap()
+        .into_inner();
+
+    assert!(!hb_resp.should_suspend);
+}
