@@ -55,15 +55,6 @@ impl PolicyServiceImpl {
         Ok(convert::eval_result_to_response(&eval, latency_us, policy_rule))
     }
 
-    /// Map a `PolicyResult` to the corresponding `AuditEventType`.
-    fn decision_to_event_type(decision: &aa_core::PolicyResult) -> AuditEventType {
-        match decision {
-            aa_core::PolicyResult::Allow => AuditEventType::ToolCallIntercepted,
-            aa_core::PolicyResult::Deny { .. } => AuditEventType::PolicyViolation,
-            aa_core::PolicyResult::RequiresApproval { .. } => AuditEventType::ApprovalRequested,
-        }
-    }
-
     /// Build an `AuditEntry` from a request and evaluation result, then fire-and-forget
     /// via `try_send`. Never blocks the caller.
     fn record_audit(
