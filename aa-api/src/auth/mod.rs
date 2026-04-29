@@ -18,12 +18,12 @@ use axum::http::request::Parts;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 
-use crate::error::ProblemDetail;
 use self::api_key::ApiKeyStore;
 use self::config::{AuthConfig, AuthMode};
 use self::jwt::JwtVerifier;
 use self::rate_limit::RateLimiter;
 use self::scope::Scope;
+use crate::error::ProblemDetail;
 
 /// Authentication / authorization errors returned by extractors.
 #[derive(Debug)]
@@ -53,11 +53,9 @@ impl IntoResponse for AuthError {
                 .with_detail("Missing Authorization header")
                 .into_response(),
 
-            AuthError::InvalidToken(reason) => {
-                ProblemDetail::from_status(StatusCode::UNAUTHORIZED)
-                    .with_detail(format!("Invalid token: {reason}"))
-                    .into_response()
-            }
+            AuthError::InvalidToken(reason) => ProblemDetail::from_status(StatusCode::UNAUTHORIZED)
+                .with_detail(format!("Invalid token: {reason}"))
+                .into_response(),
 
             AuthError::ExpiredToken => ProblemDetail::from_status(StatusCode::UNAUTHORIZED)
                 .with_detail("Token has expired")
@@ -65,9 +63,7 @@ impl IntoResponse for AuthError {
 
             AuthError::RateLimited { retry_after_secs } => {
                 let problem = ProblemDetail::from_status(StatusCode::TOO_MANY_REQUESTS)
-                    .with_detail(format!(
-                        "Rate limit exceeded. Retry after {retry_after_secs} seconds"
-                    ));
+                    .with_detail(format!("Rate limit exceeded. Retry after {retry_after_secs} seconds"));
                 let mut response = problem.into_response();
                 response.headers_mut().insert(
                     "retry-after",
@@ -79,11 +75,9 @@ impl IntoResponse for AuthError {
                 response
             }
 
-            AuthError::InsufficientScope { required } => {
-                ProblemDetail::from_status(StatusCode::FORBIDDEN)
-                    .with_detail(format!("Insufficient scope: requires '{required}'"))
-                    .into_response()
-            }
+            AuthError::InsufficientScope { required } => ProblemDetail::from_status(StatusCode::FORBIDDEN)
+                .with_detail(format!("Insufficient scope: requires '{required}'"))
+                .into_response(),
         }
     }
 }

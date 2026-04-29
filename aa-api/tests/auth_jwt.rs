@@ -62,9 +62,7 @@ async fn test_wrong_secret_jwt_returns_401() {
     let (_plaintext, entry) = common::generate_test_api_key("key-1", vec![Scope::Read]);
     let app = common::test_app_with_auth(&[entry], 1000);
 
-    let wrong_signer = aa_api::auth::jwt::JwtSigner::new(
-        b"different-secret-that-is-also-32-bytes-long!!",
-    );
+    let wrong_signer = aa_api::auth::jwt::JwtSigner::new(b"different-secret-that-is-also-32-bytes-long!!");
     let jwt = wrong_signer
         .sign("key-1", &[Scope::Read])
         .expect("signing should succeed");
@@ -87,8 +85,7 @@ async fn test_wrong_secret_jwt_returns_401() {
 
 #[tokio::test]
 async fn test_token_endpoint_issues_jwt() {
-    let (plaintext, entry) =
-        common::generate_test_api_key("key-1", vec![Scope::Read, Scope::Write]);
+    let (plaintext, entry) = common::generate_test_api_key("key-1", vec![Scope::Read, Scope::Write]);
     let app = common::test_app_with_auth(&[entry], 1000);
 
     let response = app
@@ -106,9 +103,7 @@ async fn test_token_endpoint_issues_jwt() {
 
     assert_eq!(response.status(), StatusCode::OK);
 
-    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
-        .await
-        .unwrap();
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert!(json["token"].is_string(), "response should contain a token");
     assert!(json["expires_at"].is_u64(), "response should contain expires_at");

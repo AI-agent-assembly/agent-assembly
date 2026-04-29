@@ -11,14 +11,9 @@ use aa_api::server::build_app;
 
 #[tokio::test]
 async fn test_rate_limit_allows_under_threshold() {
-    let (plaintext, entry) =
-        common::generate_test_api_key("key-1", vec![Scope::Read, Scope::Write]);
+    let (plaintext, entry) = common::generate_test_api_key("key-1", vec![Scope::Read, Scope::Write]);
     // Set RPM high enough that 3 requests are fine.
-    let state = common::test_state_with_auth(
-        aa_api::auth::config::AuthMode::On,
-        &[entry],
-        100,
-    );
+    let state = common::test_state_with_auth(aa_api::auth::config::AuthMode::On, &[entry], 100);
     let app = build_app(state);
 
     // Send 3 requests — all should succeed.
@@ -42,14 +37,9 @@ async fn test_rate_limit_allows_under_threshold() {
 
 #[tokio::test]
 async fn test_rate_limit_returns_429_with_retry_after() {
-    let (plaintext, entry) =
-        common::generate_test_api_key("key-1", vec![Scope::Read, Scope::Write]);
+    let (plaintext, entry) = common::generate_test_api_key("key-1", vec![Scope::Read, Scope::Write]);
     // Set RPM to 2 so we can exhaust it quickly.
-    let state = common::test_state_with_auth(
-        aa_api::auth::config::AuthMode::On,
-        &[entry],
-        2,
-    );
+    let state = common::test_state_with_auth(aa_api::auth::config::AuthMode::On, &[entry], 2);
     let app = build_app(state);
 
     // Exhaust the 2-request limit.
@@ -93,16 +83,10 @@ async fn test_rate_limit_returns_429_with_retry_after() {
 
 #[tokio::test]
 async fn test_rate_limit_per_key_isolation() {
-    let (plaintext_a, entry_a) =
-        common::generate_test_api_key("key-a", vec![Scope::Read, Scope::Write]);
-    let (plaintext_b, entry_b) =
-        common::generate_test_api_key("key-b", vec![Scope::Read, Scope::Write]);
+    let (plaintext_a, entry_a) = common::generate_test_api_key("key-a", vec![Scope::Read, Scope::Write]);
+    let (plaintext_b, entry_b) = common::generate_test_api_key("key-b", vec![Scope::Read, Scope::Write]);
     // RPM = 2: key-a will exhaust its bucket.
-    let state = common::test_state_with_auth(
-        aa_api::auth::config::AuthMode::On,
-        &[entry_a, entry_b],
-        2,
-    );
+    let state = common::test_state_with_auth(aa_api::auth::config::AuthMode::On, &[entry_a, entry_b], 2);
     let app = build_app(state);
 
     // Exhaust key-a.

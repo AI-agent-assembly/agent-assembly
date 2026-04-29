@@ -49,13 +49,8 @@ pub async fn issue_token(
             // Validate that each requested scope is satisfied by the caller's scopes.
             for scope in &requested {
                 if !scope.is_satisfied_by(&caller.scopes) {
-                    return Err(
-                        ProblemDetail::from_status(axum::http::StatusCode::FORBIDDEN).with_detail(
-                            format!(
-                                "Requested scope '{scope}' exceeds caller's granted scopes"
-                            ),
-                        ),
-                    );
+                    return Err(ProblemDetail::from_status(axum::http::StatusCode::FORBIDDEN)
+                        .with_detail(format!("Requested scope '{scope}' exceeds caller's granted scopes")));
                 }
             }
             requested
@@ -63,12 +58,10 @@ pub async fn issue_token(
         None => caller.scopes.clone(),
     };
 
-    let token = jwt_signer
-        .sign(&caller.key_id, &token_scopes)
-        .map_err(|e| {
-            ProblemDetail::from_status(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
-                .with_detail(format!("Failed to sign token: {e}"))
-        })?;
+    let token = jwt_signer.sign(&caller.key_id, &token_scopes).map_err(|e| {
+        ProblemDetail::from_status(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
+            .with_detail(format!("Failed to sign token: {e}"))
+    })?;
 
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

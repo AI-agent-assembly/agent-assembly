@@ -49,9 +49,7 @@ async fn test_invalid_api_key_returns_401() {
 
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
 
-    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
-        .await
-        .unwrap();
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(json["status"], 401);
 }

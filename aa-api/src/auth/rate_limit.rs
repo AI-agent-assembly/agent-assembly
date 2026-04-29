@@ -112,7 +112,7 @@ mod tests {
     #[test]
     fn test_token_bucket_refills_over_time() {
         let mut bucket = TokenBucket::new(60); // 1 token per second
-        // Exhaust all tokens.
+                                               // Exhaust all tokens.
         for _ in 0..60 {
             bucket.try_consume().unwrap();
         }

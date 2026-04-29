@@ -45,9 +45,7 @@ async fn test_bypass_mode_grants_admin_scope() {
 
     assert_eq!(response.status(), StatusCode::OK);
 
-    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
-        .await
-        .unwrap();
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     let scopes = json["scopes"].as_array().expect("scopes should be array");
     assert!(

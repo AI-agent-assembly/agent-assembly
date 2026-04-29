@@ -57,8 +57,7 @@ async fn test_read_scope_blocks_write_token() {
 
 #[tokio::test]
 async fn test_write_scope_allows_write_token() {
-    let (plaintext, entry) =
-        common::generate_test_api_key("key-1", vec![Scope::Read, Scope::Write]);
+    let (plaintext, entry) = common::generate_test_api_key("key-1", vec![Scope::Read, Scope::Write]);
     let app = common::test_app_with_auth(&[entry], 1000);
 
     let response = app
@@ -79,8 +78,7 @@ async fn test_write_scope_allows_write_token() {
 
 #[tokio::test]
 async fn test_admin_scope_allows_all_token_scopes() {
-    let (plaintext, entry) =
-        common::generate_test_api_key("key-1", vec![Scope::Read, Scope::Write, Scope::Admin]);
+    let (plaintext, entry) = common::generate_test_api_key("key-1", vec![Scope::Read, Scope::Write, Scope::Admin]);
     let app = common::test_app_with_auth(&[entry], 1000);
 
     // Admin caller requests all scopes — allowed.
@@ -99,9 +97,7 @@ async fn test_admin_scope_allows_all_token_scopes() {
 
     assert_eq!(response.status(), StatusCode::OK);
 
-    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
-        .await
-        .unwrap();
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     let scopes = json["scopes"].as_array().expect("scopes should be array");
     assert_eq!(scopes.len(), 3);

@@ -26,9 +26,7 @@ impl ApiKey {
     ///
     /// Returns an error if the key doesn't match `aa_<32-hex-chars>`.
     pub fn parse(raw: &str) -> Result<Self, ApiKeyError> {
-        let hex_part = raw
-            .strip_prefix(API_KEY_PREFIX)
-            .ok_or(ApiKeyError::InvalidPrefix)?;
+        let hex_part = raw.strip_prefix(API_KEY_PREFIX).ok_or(ApiKeyError::InvalidPrefix)?;
 
         if hex_part.len() != API_KEY_HEX_LEN {
             return Err(ApiKeyError::InvalidLength {
@@ -75,9 +73,7 @@ impl ApiKey {
         let Ok(parsed) = PasswordHash::new(hash) else {
             return false;
         };
-        Argon2::default()
-            .verify_password(self.0.as_bytes(), &parsed)
-            .is_ok()
+        Argon2::default().verify_password(self.0.as_bytes(), &parsed).is_ok()
     }
 }
 
@@ -108,9 +104,7 @@ impl ApiKeyStore {
     /// Returns an empty store if the file does not exist.
     pub fn load(path: &Path) -> Result<Self, ApiKeyError> {
         if !path.exists() {
-            return Ok(Self {
-                entries: Vec::new(),
-            });
+            return Ok(Self { entries: Vec::new() });
         }
 
         let content = std::fs::read_to_string(path).map_err(|e| ApiKeyError::Io(e.to_string()))?;
@@ -196,7 +190,10 @@ mod tests {
         let result = ApiKey::parse("aa_0011");
         assert!(matches!(
             result,
-            Err(ApiKeyError::InvalidLength { expected: 32, actual: 4 })
+            Err(ApiKeyError::InvalidLength {
+                expected: 32,
+                actual: 4
+            })
         ));
     }
 
@@ -239,9 +236,7 @@ mod tests {
             created_at: 1700000000,
             label: Some("test key".to_string()),
         };
-        let store = ApiKeyStore {
-            entries: vec![entry],
-        };
+        let store = ApiKeyStore { entries: vec![entry] };
 
         let result = store.validate(key.as_str());
         assert!(result.is_some());
@@ -260,9 +255,7 @@ mod tests {
             created_at: 1700000000,
             label: None,
         };
-        let store = ApiKeyStore {
-            entries: vec![entry],
-        };
+        let store = ApiKeyStore { entries: vec![entry] };
 
         let result = store.validate(key2.as_str());
         assert!(result.is_none());

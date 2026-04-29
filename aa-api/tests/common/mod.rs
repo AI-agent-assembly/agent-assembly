@@ -23,11 +23,13 @@ use axum::Router;
 const TEST_SECRET: &[u8] = b"test-secret-key-that-is-at-least-32-bytes-long!!";
 
 /// Build a minimal `AppState` for gateway/non-auth tests (auth disabled).
+#[allow(dead_code)]
 pub fn test_state() -> AppState {
     test_state_with_auth(AuthMode::Off, &[], 1000)
 }
 
 /// Build an `AppState` with auth enabled and the given API key entries.
+#[allow(dead_code)]
 pub fn test_state_with_auth(mode: AuthMode, entries: &[ApiKeyEntry], rpm: u32) -> AppState {
     // PolicyEngine requires a policy file; use a minimal valid policy.
     let policy_dir = std::env::temp_dir().join("aa-api-test-policy");
@@ -49,8 +51,7 @@ spec:
 
     let events = Arc::new(EventBroadcast::default());
     let budget_alert_tx = events.budget_sender();
-    let policy_engine =
-        Arc::new(PolicyEngine::load_from_file(&policy_path, budget_alert_tx).unwrap());
+    let policy_engine = Arc::new(PolicyEngine::load_from_file(&policy_path, budget_alert_tx).unwrap());
     let budget_tracker = Arc::new(BudgetTracker::new(
         PricingTable::default_table(),
         None,
@@ -114,16 +115,19 @@ pub fn test_app() -> Router {
 }
 
 /// Build the full app with auth enabled and the given API key entries.
+#[allow(dead_code)]
 pub fn test_app_with_auth(entries: &[ApiKeyEntry], rpm: u32) -> Router {
     build_app(test_state_with_auth(AuthMode::On, entries, rpm))
 }
 
 /// Build the full app with auth disabled (bypass mode).
+#[allow(dead_code)]
 pub fn test_app_no_auth() -> Router {
     build_app(test_state_with_auth(AuthMode::Off, &[], 1000))
 }
 
 /// Generate a test API key and return (plaintext, ApiKeyEntry).
+#[allow(dead_code)]
 pub fn generate_test_api_key(id: &str, scopes: Vec<Scope>) -> (String, ApiKeyEntry) {
     let key = ApiKey::generate();
     let hash = key.hash().expect("hashing should succeed");
@@ -138,6 +142,7 @@ pub fn generate_test_api_key(id: &str, scopes: Vec<Scope>) -> (String, ApiKeyEnt
 }
 
 /// Generate a test JWT token for the given key ID and scopes.
+#[allow(dead_code)]
 pub fn generate_test_jwt(key_id: &str, scopes: &[Scope]) -> String {
     let signer = JwtSigner::new(TEST_SECRET);
     signer.sign(key_id, scopes).expect("signing should succeed")

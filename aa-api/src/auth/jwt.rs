@@ -51,12 +51,7 @@ impl JwtSigner {
 
     /// Sign a JWT with a custom expiry (for testing).
     #[cfg(test)]
-    fn sign_with_expiry(
-        &self,
-        key_id: &str,
-        scopes: &[Scope],
-        exp: u64,
-    ) -> Result<String, JwtError> {
+    fn sign_with_expiry(&self, key_id: &str, scopes: &[Scope], exp: u64) -> Result<String, JwtError> {
         let claims = Claims {
             sub: key_id.to_string(),
             iat: now_epoch_secs(),
@@ -88,8 +83,7 @@ impl JwtVerifier {
     ///
     /// Returns an error if the signature is invalid or the token has expired.
     pub fn verify(&self, token: &str) -> Result<Claims, JwtError> {
-        let data = decode::<Claims>(token, &self.decoding_key, &self.validation)
-            .map_err(JwtError::Decode)?;
+        let data = decode::<Claims>(token, &self.decoding_key, &self.validation).map_err(JwtError::Decode)?;
         Ok(data.claims)
     }
 }
@@ -152,9 +146,7 @@ mod tests {
         let signer = JwtSigner::new(TEST_SECRET);
         let verifier = JwtVerifier::new(b"different-secret-that-is-also-32-bytes-long!!");
 
-        let token = signer
-            .sign("key-123", &[Scope::Read])
-            .expect("signing should succeed");
+        let token = signer.sign("key-123", &[Scope::Read]).expect("signing should succeed");
 
         let result = verifier.verify(&token);
         assert!(result.is_err(), "token signed with different secret should be rejected");
@@ -166,9 +158,7 @@ mod tests {
         let verifier = JwtVerifier::new(TEST_SECRET);
 
         let scopes = vec![Scope::Read, Scope::Write, Scope::Admin];
-        let token = signer
-            .sign("key-456", &scopes)
-            .expect("signing should succeed");
+        let token = signer.sign("key-456", &scopes).expect("signing should succeed");
         let claims = verifier.verify(&token).expect("verification should succeed");
 
         assert_eq!(claims.scope, scopes);

@@ -40,9 +40,7 @@ pub struct AuthConfig {
 pub enum AuthConfigError {
     #[error("AA_JWT_SECRET must be set when authentication is enabled")]
     MissingJwtSecret,
-    #[error(
-        "AA_JWT_SECRET must be at least {MIN_JWT_SECRET_LEN} bytes (got {actual} bytes)"
-    )]
+    #[error("AA_JWT_SECRET must be at least {MIN_JWT_SECRET_LEN} bytes (got {actual} bytes)")]
     JwtSecretTooShort { actual: usize },
     #[error("AA_RATE_LIMIT_RPM must be a positive integer: {0}")]
     InvalidRateLimit(String),
@@ -67,27 +65,21 @@ impl AuthConfig {
         };
 
         let jwt_secret = if mode == AuthMode::On {
-            let secret = std::env::var("AA_JWT_SECRET")
-                .map_err(|_| AuthConfigError::MissingJwtSecret)?;
+            let secret = std::env::var("AA_JWT_SECRET").map_err(|_| AuthConfigError::MissingJwtSecret)?;
             let bytes = secret.into_bytes();
             if bytes.len() < MIN_JWT_SECRET_LEN {
-                return Err(AuthConfigError::JwtSecretTooShort {
-                    actual: bytes.len(),
-                });
+                return Err(AuthConfigError::JwtSecretTooShort { actual: bytes.len() });
             }
             Some(bytes)
         } else {
             None
         };
 
-        let api_keys_path = std::env::var("AA_API_KEYS_PATH")
-            .unwrap_or_else(|_| DEFAULT_API_KEYS_PATH.to_string());
+        let api_keys_path = std::env::var("AA_API_KEYS_PATH").unwrap_or_else(|_| DEFAULT_API_KEYS_PATH.to_string());
         let api_keys_path = expand_tilde(&api_keys_path);
 
         let rate_limit_rpm = match std::env::var("AA_RATE_LIMIT_RPM") {
-            Ok(val) => val
-                .parse::<u32>()
-                .map_err(|_| AuthConfigError::InvalidRateLimit(val))?,
+            Ok(val) => val.parse::<u32>().map_err(|_| AuthConfigError::InvalidRateLimit(val))?,
             Err(_) => DEFAULT_RATE_LIMIT_RPM,
         };
 
@@ -161,10 +153,7 @@ mod tests {
 
         let result = AuthConfig::from_env();
         assert!(result.is_err());
-        assert!(matches!(
-            result.unwrap_err(),
-            AuthConfigError::JwtSecretTooShort { .. }
-        ));
+        assert!(matches!(result.unwrap_err(), AuthConfigError::JwtSecretTooShort { .. }));
     }
 
     #[test]
