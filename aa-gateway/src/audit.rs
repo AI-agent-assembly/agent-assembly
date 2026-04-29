@@ -25,15 +25,28 @@ pub struct AuditWriter {
 
 impl AuditWriter {
     /// Create a new writer that appends to `<audit_dir>/<agent_id>-<session_id>.jsonl`.
+    ///
+    /// Creates the `audit_dir` if it does not exist. Opens the target file in
+    /// append mode so existing entries are preserved across restarts.
     pub async fn new(
-        _audit_dir: PathBuf,
-        _agent_id: &str,
-        _session_id: &str,
+        audit_dir: PathBuf,
+        agent_id: &str,
+        session_id: &str,
         receiver: mpsc::Receiver<AuditEntry>,
     ) -> io::Result<Self> {
-        // Skeleton — will be implemented in a subsequent commit.
-        let _ = receiver;
-        todo!("AuditWriter::new")
+        tokio::fs::create_dir_all(&audit_dir).await?;
+
+        let filename = format!("{agent_id}-{session_id}.jsonl");
+        let path = audit_dir.join(filename);
+
+        let file = tokio::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+            .await?;
+        let file = tokio::io::BufWriter::new(file);
+
+        Ok(Self { receiver, file, path })
     }
 
     /// Background consumption loop — call via `tokio::spawn(writer.run())`.
