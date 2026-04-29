@@ -57,10 +57,7 @@ impl PolicyValidator {
 
         let approval_timeout_secs = match raw.approval_timeout_secs {
             Some(0) => {
-                errors.push(ValidationError::new(
-                    "approval_timeout_secs",
-                    "must be greater than 0",
-                ));
+                errors.push(ValidationError::new("approval_timeout_secs", "must be greater than 0"));
                 300
             }
             Some(v) => v,
