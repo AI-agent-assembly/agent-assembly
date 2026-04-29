@@ -13,12 +13,15 @@ use aa_core::{AuditEntry, AuditEventType};
 use aa_proto::assembly::policy::v1::policy_service_server::PolicyService;
 use aa_proto::assembly::policy::v1::{BatchCheckRequest, BatchCheckResponse, CheckActionRequest, CheckActionResponse};
 
-use crate::engine::PolicyEngine;
+use crate::engine::{DenyAction, PolicyEngine};
+use crate::registry::convert::proto_agent_id_to_key;
+use crate::registry::{AgentRegistry, SuspendReason};
 use crate::service::convert;
 
 /// gRPC service implementation wiring `CheckAction` / `BatchCheck` to [`PolicyEngine`].
 pub struct PolicyServiceImpl {
     engine: Arc<PolicyEngine>,
+    registry: Option<Arc<AgentRegistry>>,
     audit_tx: mpsc::Sender<AuditEntry>,
     audit_drops: Arc<AtomicU64>,
     seq: AtomicU64,
@@ -39,6 +42,7 @@ impl PolicyServiceImpl {
     ) -> Self {
         Self {
             engine,
+            registry: None,
             audit_tx,
             audit_drops,
             seq: AtomicU64::new(0),
@@ -46,9 +50,31 @@ impl PolicyServiceImpl {
         }
     }
 
-    /// Evaluate a single request against the engine, returning the gRPC response.
+    /// Create a new service with an agent registry attached.
+    ///
+    /// When a registry is provided, the service can suspend agents when the
+    /// policy engine returns `DenyAction::SuspendAgent` on budget exceeded.
+    pub fn with_registry(
+        engine: Arc<PolicyEngine>,
+        registry: Arc<AgentRegistry>,
+        audit_tx: mpsc::Sender<AuditEntry>,
+        audit_drops: Arc<AtomicU64>,
+        initial_hash: [u8; 32],
+    ) -> Self {
+        Self {
+            engine,
+            registry: Some(registry),
+            audit_tx,
+            audit_drops,
+            seq: AtomicU64::new(0),
+            last_hash: Mutex::new(initial_hash),
+        }
+    }
+
+    /// Evaluate a single request against the engine, returning the gRPC response
+    /// and the optional deny-action side-effect.
     #[allow(clippy::result_large_err)] // tonic::Status is the standard gRPC error type
-    fn evaluate_one(&self, req: &CheckActionRequest) -> Result<CheckActionResponse, Status> {
+    fn evaluate_one(&self, req: &CheckActionRequest) -> Result<(CheckActionResponse, Option<DenyAction>), Status> {
         let (ctx, action) = convert::request_to_core(req).map_err(|e| {
             tracing::error!(error = %e, "failed to convert CheckActionRequest");
             Status::invalid_argument(e.to_string())
@@ -65,7 +91,40 @@ impl PolicyServiceImpl {
             aa_core::PolicyResult::RequiresApproval { .. } => "requires_approval",
         };
 
-        Ok(convert::eval_result_to_response(&eval, latency_us, policy_rule))
+        let deny_action = eval.deny_action;
+        Ok((
+            convert::eval_result_to_response(&eval, latency_us, policy_rule),
+            deny_action,
+        ))
+    }
+
+    /// Execute the suspension side-effect when the engine signals `SuspendAgent`.
+    ///
+    /// Suspends the agent in the registry and sends a `SuspendCommand` via the
+    /// control stream. Best-effort: if the registry is not attached or the agent
+    /// is not found, the suspension is skipped (the deny response still applies).
+    async fn maybe_suspend_agent(&self, req: &CheckActionRequest, deny_action: Option<DenyAction>) {
+        if deny_action != Some(DenyAction::SuspendAgent) {
+            return;
+        }
+        let registry = match &self.registry {
+            Some(r) => r,
+            None => return,
+        };
+        let proto_agent = match req.agent_id.as_ref() {
+            Some(a) => a,
+            None => return,
+        };
+        let agent_key = proto_agent_id_to_key(proto_agent);
+        let reason_text = "budget limit exceeded";
+        if let Err(e) = registry
+            .suspend_and_notify(&agent_key, SuspendReason::BudgetExceeded, reason_text)
+            .await
+        {
+            tracing::warn!(error = %e, "failed to suspend agent on budget exceeded");
+        } else {
+            tracing::info!(agent_id = ?proto_agent.agent_id, "agent suspended: {reason_text}");
+        }
     }
 
     /// Build an `AuditEntry` from a request and evaluation result, then fire-and-forget
@@ -142,7 +201,7 @@ impl PolicyService for PolicyServiceImpl {
             "check_action request"
         );
 
-        let response = self.evaluate_one(&req)?;
+        let (response, deny_action) = self.evaluate_one(&req)?;
 
         tracing::debug!(
             decision = response.decision,
@@ -159,6 +218,9 @@ impl PolicyService for PolicyServiceImpl {
             );
         }
 
+        // Suspend the agent if the engine signaled SuspendAgent.
+        self.maybe_suspend_agent(&req, deny_action).await;
+
         // Fire-and-forget audit entry — never blocks the response.
         self.record_audit(&req, &response).await;
 
@@ -170,7 +232,8 @@ impl PolicyService for PolicyServiceImpl {
         let mut responses = Vec::with_capacity(batch.requests.len());
 
         for req in &batch.requests {
-            let resp = self.evaluate_one(req)?;
+            let (resp, deny_action) = self.evaluate_one(req)?;
+            self.maybe_suspend_agent(req, deny_action).await;
             self.record_audit(req, &resp).await;
             responses.push(resp);
         }

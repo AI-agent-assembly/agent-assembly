@@ -13,7 +13,17 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use crate::policy::document::ActionOnExceed;
 use crate::policy::{PolicyDocument, PolicyValidator};
+
+/// Side-effect action the service layer should take when a request is denied.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DenyAction {
+    /// Default: just deny this request, keep the agent active.
+    Block,
+    /// Deny this request and request that the caller suspend the agent.
+    SuspendAgent,
+}
 
 /// The outcome of a [`PolicyEngine::evaluate`] call.
 ///
@@ -32,6 +42,9 @@ pub struct EvaluationResult {
     /// All credential and PII findings detected during the scanner pass.
     /// Empty when the payload was clean.
     pub credential_findings: Vec<aa_core::CredentialFinding>,
+    /// Optional side-effect action for the service layer when the decision is `Deny`.
+    /// `None` means no side-effect beyond denying the request.
+    pub deny_action: Option<DenyAction>,
 }
 
 /// Assembled policy engine that evaluates governance actions through a 7-step pipeline.
@@ -144,6 +157,7 @@ impl PolicyEngine {
                         },
                         redacted_payload: None,
                         credential_findings: vec![],
+                        deny_action: None,
                     };
                 }
             }
@@ -167,6 +181,7 @@ impl PolicyEngine {
                             },
                             redacted_payload: None,
                             credential_findings: vec![],
+                            deny_action: None,
                         };
                     }
                 }
@@ -183,6 +198,7 @@ impl PolicyEngine {
                         },
                         redacted_payload: None,
                         credential_findings: vec![],
+                        deny_action: None,
                     };
                 }
             }
@@ -204,6 +220,7 @@ impl PolicyEngine {
                             },
                             redacted_payload: None,
                             credential_findings: vec![],
+                            deny_action: None,
                         };
                     }
                 }
@@ -219,6 +236,7 @@ impl PolicyEngine {
                             decision: aa_core::PolicyResult::RequiresApproval { timeout_secs: 30 },
                             redacted_payload: None,
                             credential_findings: vec![],
+                            deny_action: None,
                         };
                     }
                 }
@@ -275,6 +293,10 @@ impl PolicyEngine {
 
         // Stage 7 — Budget check (monthly first, then daily).
         if let Some(bp) = &policy.budget {
+            let deny_action = match bp.action_on_exceed {
+                ActionOnExceed::Suspend => Some(DenyAction::SuspendAgent),
+                ActionOnExceed::Deny => None,
+            };
             if let Some(limit) = bp.monthly_limit_usd {
                 if self.budget.is_monthly_exceeded(ctx.agent_id.as_bytes(), limit) {
                     return EvaluationResult {
@@ -283,6 +305,7 @@ impl PolicyEngine {
                         },
                         redacted_payload,
                         credential_findings,
+                        deny_action,
                     };
                 }
             }
@@ -294,6 +317,7 @@ impl PolicyEngine {
                         },
                         redacted_payload,
                         credential_findings,
+                        deny_action,
                     };
                 }
             }
@@ -303,6 +327,7 @@ impl PolicyEngine {
             decision: aa_core::PolicyResult::Allow,
             redacted_payload,
             credential_findings,
+            deny_action: None,
         }
     }
 
@@ -310,6 +335,30 @@ impl PolicyEngine {
     pub fn record_spend(&self, ctx: &aa_core::AgentContext, amount_usd: f64) {
         self.budget.record(ctx.agent_id.as_bytes(), amount_usd);
         self.budget.record_monthly(ctx.agent_id.as_bytes(), amount_usd);
+    }
+
+    /// Check whether an agent is within both daily and monthly budget limits.
+    ///
+    /// Returns `true` if the agent has not exceeded any configured budget limit
+    /// (or if no budget limits are configured). Used by the heartbeat handler to
+    /// determine whether a budget-suspended agent can be auto-resumed.
+    pub fn is_within_budget(&self, agent_id_bytes: &[u8; 16]) -> bool {
+        let policy = self.policy.load();
+        let bp = match &policy.budget {
+            Some(bp) => bp,
+            None => return true,
+        };
+        if let Some(limit) = bp.daily_limit_usd {
+            if self.budget.is_exceeded(agent_id_bytes, limit) {
+                return false;
+            }
+        }
+        if let Some(limit) = bp.monthly_limit_usd {
+            if self.budget.is_monthly_exceeded(agent_id_bytes, limit) {
+                return false;
+            }
+        }
+        true
     }
 }
 
@@ -338,7 +387,8 @@ impl aa_core::PolicyEvaluator for PolicyEngine {
 mod tests {
     use super::*;
     use crate::policy::document::{
-        ActiveHours, BudgetPolicy, DataPolicy, NetworkPolicy, PolicyDocument, SchedulePolicy, ToolPolicy,
+        ActionOnExceed, ActiveHours, BudgetPolicy, DataPolicy, NetworkPolicy, PolicyDocument, SchedulePolicy,
+        ToolPolicy,
     };
     use aa_core::{
         identity::{AgentId, SessionId},
@@ -601,6 +651,7 @@ mod tests {
             daily_limit_usd: Some(1.0),
             monthly_limit_usd: None,
             timezone: None,
+            action_on_exceed: ActionOnExceed::default(),
         });
         let engine = make_engine(doc);
         let ctx = make_ctx();
@@ -623,6 +674,7 @@ mod tests {
             daily_limit_usd: None,
             monthly_limit_usd: Some(5.0),
             timezone: None,
+            action_on_exceed: ActionOnExceed::default(),
         });
         let engine = make_engine(doc);
         let ctx = make_ctx();
@@ -645,6 +697,7 @@ mod tests {
             daily_limit_usd: None,
             monthly_limit_usd: Some(10.0),
             timezone: None,
+            action_on_exceed: ActionOnExceed::default(),
         });
         let engine = make_engine(doc);
         let ctx = make_ctx();
@@ -662,6 +715,7 @@ mod tests {
             daily_limit_usd: Some(2.0),
             monthly_limit_usd: Some(5.0),
             timezone: None,
+            action_on_exceed: ActionOnExceed::default(),
         });
         let engine = make_engine(doc);
         let ctx = make_ctx();
@@ -676,6 +730,93 @@ mod tests {
                 reason: "monthly budget exceeded".into()
             }
         );
+    }
+
+    #[test]
+    fn budget_exceed_with_action_deny_returns_no_deny_action() {
+        let mut doc = empty_doc();
+        doc.budget = Some(BudgetPolicy {
+            daily_limit_usd: Some(1.0),
+            monthly_limit_usd: None,
+            timezone: None,
+            action_on_exceed: ActionOnExceed::Deny,
+        });
+        let engine = make_engine(doc);
+        let ctx = make_ctx();
+        engine.record_spend(&ctx, 1.0);
+
+        let result = engine.evaluate(&ctx, &tool_call("any", ""));
+        assert_eq!(
+            result.decision,
+            PolicyResult::Deny {
+                reason: "daily budget exceeded".into()
+            }
+        );
+        assert_eq!(result.deny_action, None);
+    }
+
+    #[test]
+    fn budget_exceed_with_action_suspend_returns_suspend_agent() {
+        let mut doc = empty_doc();
+        doc.budget = Some(BudgetPolicy {
+            daily_limit_usd: Some(1.0),
+            monthly_limit_usd: None,
+            timezone: None,
+            action_on_exceed: ActionOnExceed::Suspend,
+        });
+        let engine = make_engine(doc);
+        let ctx = make_ctx();
+        engine.record_spend(&ctx, 1.0);
+
+        let result = engine.evaluate(&ctx, &tool_call("any", ""));
+        assert_eq!(
+            result.decision,
+            PolicyResult::Deny {
+                reason: "daily budget exceeded".into()
+            }
+        );
+        assert_eq!(result.deny_action, Some(DenyAction::SuspendAgent));
+    }
+
+    #[test]
+    fn monthly_budget_exceed_with_suspend_returns_suspend_agent() {
+        let mut doc = empty_doc();
+        doc.budget = Some(BudgetPolicy {
+            daily_limit_usd: None,
+            monthly_limit_usd: Some(5.0),
+            timezone: None,
+            action_on_exceed: ActionOnExceed::Suspend,
+        });
+        let engine = make_engine(doc);
+        let ctx = make_ctx();
+        engine.record_spend(&ctx, 5.0);
+
+        let result = engine.evaluate(&ctx, &tool_call("any", ""));
+        assert_eq!(
+            result.decision,
+            PolicyResult::Deny {
+                reason: "monthly budget exceeded".into()
+            }
+        );
+        assert_eq!(result.deny_action, Some(DenyAction::SuspendAgent));
+    }
+
+    #[test]
+    fn action_deny_within_budget_allows_normally() {
+        let mut doc = empty_doc();
+        doc.budget = Some(BudgetPolicy {
+            daily_limit_usd: Some(10.0),
+            monthly_limit_usd: None,
+            timezone: None,
+            action_on_exceed: ActionOnExceed::Deny,
+        });
+        let engine = make_engine(doc);
+        let ctx = make_ctx();
+        engine.record_spend(&ctx, 1.0);
+
+        let result = engine.evaluate(&ctx, &tool_call("any", ""));
+        assert_eq!(result.decision, PolicyResult::Allow);
+        assert_eq!(result.deny_action, None);
     }
 
     #[test]

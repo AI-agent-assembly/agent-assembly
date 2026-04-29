@@ -47,6 +47,8 @@ pub struct RawBudgetPolicy {
     pub monthly_limit_usd: Option<f64>,
     /// Optional IANA timezone for daily/monthly reset boundary. Defaults to UTC if absent.
     pub timezone: Option<String>,
+    /// Action when budget is exceeded: `"deny"` (default) or `"suspend"`.
+    pub action_on_exceed: Option<String>,
     /// Unknown keys captured for warning emission.
     #[serde(flatten)]
     pub unknown: HashMap<String, serde_yaml::Value>,
@@ -191,6 +193,20 @@ mod tests {
         let yaml = "{}\n";
         let raw: RawBudgetPolicy = serde_yaml::from_str(yaml).unwrap();
         assert_eq!(raw.daily_limit_usd, None);
+    }
+
+    #[test]
+    fn raw_budget_deserializes_action_on_exceed() {
+        let yaml = "daily_limit_usd: 50.0\naction_on_exceed: suspend\n";
+        let raw: RawBudgetPolicy = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(raw.action_on_exceed, Some("suspend".to_string()));
+    }
+
+    #[test]
+    fn raw_budget_absent_action_on_exceed_is_none() {
+        let yaml = "daily_limit_usd: 50.0\n";
+        let raw: RawBudgetPolicy = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(raw.action_on_exceed, None);
     }
 
     // ── RawDataPolicy ───────────────────────────────────────────────────────

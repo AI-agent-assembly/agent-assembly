@@ -3,7 +3,10 @@
 use std::collections::HashMap;
 
 use crate::policy::{
-    document::{ActiveHours, BudgetPolicy, DataPolicy, NetworkPolicy, PolicyDocument, SchedulePolicy, ToolPolicy},
+    document::{
+        ActionOnExceed, ActiveHours, BudgetPolicy, DataPolicy, NetworkPolicy, PolicyDocument, SchedulePolicy,
+        ToolPolicy,
+    },
     error::{ValidationError, ValidationWarning},
     raw::RawPolicyDocument,
 };
@@ -223,10 +226,24 @@ impl PolicyValidator {
             }
         }
 
+        // Validate action_on_exceed if provided
+        let action_on_exceed = match raw.action_on_exceed.as_deref() {
+            Some("deny") | None => ActionOnExceed::Deny,
+            Some("suspend") => ActionOnExceed::Suspend,
+            Some(other) => {
+                errors.push(ValidationError::new(
+                    "budget.action_on_exceed",
+                    format!("must be 'deny' or 'suspend', got '{}'", other),
+                ));
+                ActionOnExceed::Deny
+            }
+        };
+
         Some(BudgetPolicy {
             daily_limit_usd: raw.daily_limit_usd,
             monthly_limit_usd: raw.monthly_limit_usd,
             timezone: raw.timezone,
+            action_on_exceed,
         })
     }
 
@@ -495,6 +512,41 @@ mod tests {
         let bp = out.document.budget.unwrap();
         assert_eq!(bp.monthly_limit_usd, Some(1000.0));
         assert!(bp.daily_limit_usd.is_none());
+    }
+
+    // ── action_on_exceed validation ────────────────────────────────────────
+
+    #[test]
+    fn budget_action_on_exceed_deny_round_trips() {
+        let yaml = "budget:\n  daily_limit_usd: 50.0\n  action_on_exceed: deny\n";
+        let out = PolicyValidator::from_yaml(yaml).unwrap();
+        let bp = out.document.budget.unwrap();
+        assert_eq!(bp.action_on_exceed, ActionOnExceed::Deny);
+    }
+
+    #[test]
+    fn budget_action_on_exceed_suspend_round_trips() {
+        let yaml = "budget:\n  daily_limit_usd: 50.0\n  action_on_exceed: suspend\n";
+        let out = PolicyValidator::from_yaml(yaml).unwrap();
+        let bp = out.document.budget.unwrap();
+        assert_eq!(bp.action_on_exceed, ActionOnExceed::Suspend);
+    }
+
+    #[test]
+    fn budget_action_on_exceed_invalid_value_is_an_error() {
+        let yaml = "budget:\n  daily_limit_usd: 50.0\n  action_on_exceed: quarantine\n";
+        let result = PolicyValidator::from_yaml(yaml);
+        assert!(result.is_err());
+        let errs = result.unwrap_err();
+        assert!(errs.iter().any(|e| e.field == "budget.action_on_exceed"));
+    }
+
+    #[test]
+    fn budget_action_on_exceed_absent_defaults_to_deny() {
+        let yaml = "budget:\n  daily_limit_usd: 50.0\n";
+        let out = PolicyValidator::from_yaml(yaml).unwrap();
+        let bp = out.document.budget.unwrap();
+        assert_eq!(bp.action_on_exceed, ActionOnExceed::Deny);
     }
 
     // ── Schedule active_hours validation ───────────────────────────────────

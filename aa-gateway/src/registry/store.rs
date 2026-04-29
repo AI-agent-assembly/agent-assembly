@@ -7,7 +7,8 @@ use dashmap::DashMap;
 use tokio::sync::mpsc;
 use tonic::Status;
 
-use aa_proto::assembly::agent::v1::ControlCommand;
+use aa_proto::assembly::agent::v1::control_command::Command;
+use aa_proto::assembly::agent::v1::{ControlCommand, SuspendCommand};
 
 use super::{AgentStatus, RegistryError};
 
@@ -134,6 +135,58 @@ impl AgentRegistry {
     /// Return a snapshot of all currently registered agents.
     pub fn list(&self) -> Vec<AgentRecord> {
         self.agents.iter().map(|r| r.value().clone()).collect()
+    }
+
+    /// Suspend an agent with the given reason.
+    pub fn suspend_agent(&self, agent_id: &[u8; 16], reason: super::SuspendReason) -> Result<(), RegistryError> {
+        let mut entry = self
+            .agents
+            .get_mut(agent_id)
+            .ok_or(RegistryError::NotFound(*agent_id))?;
+        entry.status = AgentStatus::Suspended(reason);
+        Ok(())
+    }
+
+    /// Suspend an agent and send a [`SuspendCommand`] via the control stream.
+    ///
+    /// Sets the agent status to `Suspended(reason)` and, if a control stream
+    /// is open, pushes a `SuspendCommand` with the given reason string.
+    /// The control stream send is best-effort: if the stream is closed or full,
+    /// the suspension still takes effect.
+    pub async fn suspend_and_notify(
+        &self,
+        agent_id: &[u8; 16],
+        reason: super::SuspendReason,
+        reason_text: &str,
+    ) -> Result<(), RegistryError> {
+        self.suspend_agent(agent_id, reason)?;
+
+        let cmd = ControlCommand {
+            command: Some(Command::Suspend(SuspendCommand {
+                reason: reason_text.to_string(),
+            })),
+        };
+        // Best-effort: ignore errors if the stream is not open.
+        let _ = self.send_command(agent_id, cmd).await;
+        Ok(())
+    }
+
+    /// Resume a suspended agent back to Active status.
+    pub fn resume_agent(&self, agent_id: &[u8; 16]) -> Result<(), RegistryError> {
+        let mut entry = self
+            .agents
+            .get_mut(agent_id)
+            .ok_or(RegistryError::NotFound(*agent_id))?;
+        entry.status = AgentStatus::Active;
+        Ok(())
+    }
+
+    /// Query the current status of an agent.
+    pub fn agent_status(&self, agent_id: &[u8; 16]) -> Result<AgentStatus, RegistryError> {
+        self.agents
+            .get(agent_id)
+            .map(|r| r.status)
+            .ok_or(RegistryError::NotFound(*agent_id))
     }
 }
 
