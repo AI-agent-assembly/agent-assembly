@@ -13,7 +13,9 @@ use aa_core::{AuditEntry, AuditEventType};
 use aa_proto::assembly::policy::v1::policy_service_server::PolicyService;
 use aa_proto::assembly::policy::v1::{BatchCheckRequest, BatchCheckResponse, CheckActionRequest, CheckActionResponse};
 
-use crate::engine::{DenyAction, PolicyEngine};
+use aa_runtime::approval::{ApprovalQueue, ApprovalRequest};
+
+use crate::engine::{DenyAction, EvaluationResult, PolicyEngine};
 use crate::registry::convert::proto_agent_id_to_key;
 use crate::registry::{AgentRegistry, SuspendReason};
 use crate::service::convert;
@@ -22,6 +24,7 @@ use crate::service::convert;
 pub struct PolicyServiceImpl {
     engine: Arc<PolicyEngine>,
     registry: Option<Arc<AgentRegistry>>,
+    approval_queue: Option<Arc<ApprovalQueue>>,
     audit_tx: mpsc::Sender<AuditEntry>,
     audit_drops: Arc<AtomicU64>,
     seq: AtomicU64,
@@ -43,6 +46,7 @@ impl PolicyServiceImpl {
         Self {
             engine,
             registry: None,
+            approval_queue: None,
             audit_tx,
             audit_drops,
             seq: AtomicU64::new(0),
@@ -64,6 +68,7 @@ impl PolicyServiceImpl {
         Self {
             engine,
             registry: Some(registry),
+            approval_queue: None,
             audit_tx,
             audit_drops,
             seq: AtomicU64::new(0),
@@ -71,10 +76,38 @@ impl PolicyServiceImpl {
         }
     }
 
-    /// Evaluate a single request against the engine, returning the gRPC response
-    /// and the optional deny-action side-effect.
+    /// Create a new service with both an agent registry and approval queue.
+    ///
+    /// When an approval queue is provided, actions that require human approval
+    /// are submitted to the queue and the gRPC call blocks until the operator
+    /// decides (or the timeout elapses).
+    pub fn with_registry_and_approval(
+        engine: Arc<PolicyEngine>,
+        registry: Arc<AgentRegistry>,
+        approval_queue: Arc<ApprovalQueue>,
+        audit_tx: mpsc::Sender<AuditEntry>,
+        audit_drops: Arc<AtomicU64>,
+        initial_hash: [u8; 32],
+    ) -> Self {
+        Self {
+            engine,
+            registry: Some(registry),
+            approval_queue: Some(approval_queue),
+            audit_tx,
+            audit_drops,
+            seq: AtomicU64::new(0),
+            last_hash: Mutex::new(initial_hash),
+        }
+    }
+
+    /// Evaluate a single request against the engine, returning the raw
+    /// evaluation result, measured latency, and the policy rule label.
+    ///
+    /// Callers are responsible for converting the [`EvaluationResult`] into a
+    /// proto response — this allows `RequiresApproval` to be intercepted before
+    /// the conversion.
     #[allow(clippy::result_large_err)] // tonic::Status is the standard gRPC error type
-    fn evaluate_one(&self, req: &CheckActionRequest) -> Result<(CheckActionResponse, Option<DenyAction>), Status> {
+    fn evaluate_one(&self, req: &CheckActionRequest) -> Result<(EvaluationResult, i64, String), Status> {
         let (ctx, action) = convert::request_to_core(req).map_err(|e| {
             tracing::error!(error = %e, "failed to convert CheckActionRequest");
             Status::invalid_argument(e.to_string())
@@ -86,16 +119,12 @@ impl PolicyServiceImpl {
 
         // Derive a policy_rule label from the deny/approval reason.
         let policy_rule = match &eval.decision {
-            aa_core::PolicyResult::Allow => "",
-            aa_core::PolicyResult::Deny { reason } => reason.as_str(),
-            aa_core::PolicyResult::RequiresApproval { .. } => "requires_approval",
+            aa_core::PolicyResult::Allow => String::new(),
+            aa_core::PolicyResult::Deny { reason } => reason.clone(),
+            aa_core::PolicyResult::RequiresApproval { .. } => "requires_approval".to_string(),
         };
 
-        let deny_action = eval.deny_action;
-        Ok((
-            convert::eval_result_to_response(&eval, latency_us, policy_rule),
-            deny_action,
-        ))
+        Ok((eval, latency_us, policy_rule))
     }
 
     /// Execute the suspension side-effect when the engine signals `SuspendAgent`.
@@ -125,6 +154,104 @@ impl PolicyServiceImpl {
         } else {
             tracing::info!(agent_id = ?proto_agent.agent_id, "agent suspended: {reason_text}");
         }
+    }
+
+    /// Build an [`ApprovalRequest`] from a gRPC request and the policy timeout.
+    fn build_approval_request(req: &CheckActionRequest, timeout_secs: u32) -> ApprovalRequest {
+        let agent_id = req.agent_id.as_ref().map(|a| a.agent_id.clone()).unwrap_or_default();
+        let now = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        ApprovalRequest {
+            request_id: uuid::Uuid::new_v4(),
+            agent_id,
+            action: format!("action_type={}", req.action_type),
+            condition_triggered: "requires_approval".to_string(),
+            submitted_at: now,
+            timeout_secs: u64::from(timeout_secs),
+            fallback: aa_core::PolicyResult::Deny {
+                reason: "approval timed out".to_string(),
+            },
+        }
+    }
+
+    /// Submit a `RequiresApproval` evaluation to the approval queue, await
+    /// the human decision (with timeout), and return the final response.
+    ///
+    /// Returns `Some(response)` when the evaluation was `RequiresApproval` and
+    /// the queue was available. Returns `None` when the evaluation is not
+    /// `RequiresApproval` or the queue is absent (degraded mode — caller falls
+    /// through to the normal conversion path).
+    async fn maybe_submit_approval(
+        &self,
+        req: &CheckActionRequest,
+        eval: &EvaluationResult,
+        latency_us: i64,
+        policy_rule: &str,
+    ) -> Option<CheckActionResponse> {
+        let timeout_secs = match &eval.decision {
+            aa_core::PolicyResult::RequiresApproval { timeout_secs } => *timeout_secs,
+            _ => return None,
+        };
+
+        let queue = match &self.approval_queue {
+            Some(q) => q,
+            None => {
+                tracing::warn!(
+                    "RequiresApproval decision but no approval_queue attached — \
+                     returning Pending without queue submission (degraded mode)"
+                );
+                return None;
+            }
+        };
+
+        let approval_req = Self::build_approval_request(req, timeout_secs);
+        let approval_id = approval_req.request_id;
+
+        tracing::info!(
+            approval_id = %approval_id,
+            agent_id = %approval_req.agent_id,
+            action = %approval_req.action,
+            timeout_secs,
+            "submitting to approval queue"
+        );
+
+        let (_id, future) = queue.submit(approval_req);
+
+        // Await the operator's decision with a timeout guard.
+        // The ApprovalQueue also spawns its own timeout task, so both race;
+        // whichever fires first wins (the queue's resolve is idempotent).
+        let timeout_duration = std::time::Duration::from_secs(u64::from(timeout_secs));
+        let decision = match tokio::time::timeout(timeout_duration, future).await {
+            Ok(Ok(decision)) => decision,
+            Ok(Err(_recv_err)) => {
+                // Oneshot sender was dropped — the queue entry was removed
+                // externally (should not happen in normal operation).
+                tracing::warn!(approval_id = %approval_id, "approval channel closed unexpectedly");
+                aa_runtime::approval::ApprovalDecision::Rejected {
+                    by: "system".to_string(),
+                    reason: "approval channel closed".to_string(),
+                }
+            }
+            Err(_elapsed) => {
+                // Our timeout fired before the queue's timeout task.
+                tracing::info!(approval_id = %approval_id, "approval timed out");
+                aa_runtime::approval::ApprovalDecision::TimedOut {
+                    fallback: aa_core::PolicyResult::Deny {
+                        reason: "approval timed out".to_string(),
+                    },
+                }
+            }
+        };
+
+        Some(convert::approval_decision_to_response(
+            &decision,
+            &approval_id,
+            latency_us,
+            policy_rule,
+        ))
     }
 
     /// Build an `AuditEntry` from a request and evaluation result, then fire-and-forget
@@ -201,7 +328,16 @@ impl PolicyService for PolicyServiceImpl {
             "check_action request"
         );
 
-        let (response, deny_action) = self.evaluate_one(&req)?;
+        let (eval, latency_us, policy_rule) = self.evaluate_one(&req)?;
+        let deny_action = eval.deny_action;
+
+        // If RequiresApproval, submit to the queue and block until decided.
+        let response =
+            if let Some(approval_response) = self.maybe_submit_approval(&req, &eval, latency_us, &policy_rule).await {
+                approval_response
+            } else {
+                convert::eval_result_to_response(&eval, latency_us, &policy_rule)
+            };
 
         tracing::debug!(
             decision = response.decision,
@@ -232,7 +368,15 @@ impl PolicyService for PolicyServiceImpl {
         let mut responses = Vec::with_capacity(batch.requests.len());
 
         for req in &batch.requests {
-            let (resp, deny_action) = self.evaluate_one(req)?;
+            let (eval, latency_us, policy_rule) = self.evaluate_one(req)?;
+            let deny_action = eval.deny_action;
+            let resp = if let Some(approval_response) =
+                self.maybe_submit_approval(req, &eval, latency_us, &policy_rule).await
+            {
+                approval_response
+            } else {
+                convert::eval_result_to_response(&eval, latency_us, &policy_rule)
+            };
             self.maybe_suspend_agent(req, deny_action).await;
             self.record_audit(req, &resp).await;
             responses.push(resp);

@@ -65,8 +65,10 @@ pub async fn serve_tcp(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let engine = PolicyEngine::load_from_file(policy_path).map_err(|e| format!("failed to load policy: {e:?}"))?;
     let (audit_tx, audit_drops, initial_hash) = setup_audit("gateway", "default").await?;
-    let policy_svc = PolicyServiceImpl::new(
+    let policy_svc = PolicyServiceImpl::with_registry_and_approval(
         Arc::new(engine),
+        Arc::clone(&registry),
+        Arc::clone(&approval_queue),
         audit_tx.clone(),
         Arc::clone(&audit_drops),
         initial_hash,
@@ -102,8 +104,10 @@ pub async fn serve_uds(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let engine = PolicyEngine::load_from_file(policy_path).map_err(|e| format!("failed to load policy: {e:?}"))?;
     let (audit_tx, audit_drops, initial_hash) = setup_audit("gateway", "default").await?;
-    let policy_svc = PolicyServiceImpl::new(
+    let policy_svc = PolicyServiceImpl::with_registry_and_approval(
         Arc::new(engine),
+        Arc::clone(&registry),
+        Arc::clone(&approval_queue),
         audit_tx.clone(),
         Arc::clone(&audit_drops),
         initial_hash,
