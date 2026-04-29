@@ -779,6 +779,47 @@ mod tests {
     }
 
     #[test]
+    fn monthly_budget_exceed_with_suspend_returns_suspend_agent() {
+        let mut doc = empty_doc();
+        doc.budget = Some(BudgetPolicy {
+            daily_limit_usd: None,
+            monthly_limit_usd: Some(5.0),
+            timezone: None,
+            action_on_exceed: ActionOnExceed::Suspend,
+        });
+        let engine = make_engine(doc);
+        let ctx = make_ctx();
+        engine.record_spend(&ctx, 5.0);
+
+        let result = engine.evaluate(&ctx, &tool_call("any", ""));
+        assert_eq!(
+            result.decision,
+            PolicyResult::Deny {
+                reason: "monthly budget exceeded".into()
+            }
+        );
+        assert_eq!(result.deny_action, Some(DenyAction::SuspendAgent));
+    }
+
+    #[test]
+    fn action_deny_within_budget_allows_normally() {
+        let mut doc = empty_doc();
+        doc.budget = Some(BudgetPolicy {
+            daily_limit_usd: Some(10.0),
+            monthly_limit_usd: None,
+            timezone: None,
+            action_on_exceed: ActionOnExceed::Deny,
+        });
+        let engine = make_engine(doc);
+        let ctx = make_ctx();
+        engine.record_spend(&ctx, 1.0);
+
+        let result = engine.evaluate(&ctx, &tool_call("any", ""));
+        assert_eq!(result.decision, PolicyResult::Allow);
+        assert_eq!(result.deny_action, None);
+    }
+
+    #[test]
     fn short_circuit_stops_at_first_deny() {
         // Tool deny (Stage 3) fires before the credential scan (Stage 6).
         let mut doc = empty_doc();
