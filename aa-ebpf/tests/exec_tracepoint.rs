@@ -22,8 +22,7 @@ fn aa_exec_probes_loads_and_attaches() {
     let mut bpf = Ebpf::load(AA_EXEC_BPF)
         .expect("failed to load aa-exec-probes BPF program — ensure the test is running as root");
 
-    let _manager = TracepointManager::attach(&mut bpf)
-        .expect("TracepointManager::attach failed");
+    let _manager = TracepointManager::attach(&mut bpf).expect("TracepointManager::attach failed");
 
     // Reaching this line confirms the full pipeline works.
     // TracepointManager is dropped here, which detaches the probes from the kernel.
@@ -35,8 +34,7 @@ fn tracepoint_manager_explicit_detach() {
     let mut bpf = Ebpf::load(AA_EXEC_BPF)
         .expect("failed to load aa-exec-probes BPF program — ensure the test is running as root");
 
-    let mut manager = TracepointManager::attach(&mut bpf)
-        .expect("TracepointManager::attach failed");
+    let mut manager = TracepointManager::attach(&mut bpf).expect("TracepointManager::attach failed");
 
     // Explicit detach should succeed.
     manager.detach();
