@@ -6,4 +6,5 @@
 
 mod codec;
 mod config;
+mod handle;
 mod ipc;
