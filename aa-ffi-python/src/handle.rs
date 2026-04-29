@@ -26,16 +26,28 @@ use crate::ipc::{IpcCommand, IpcHandle};
 pub struct AssemblyHandle {
     inner: Mutex<Option<IpcHandle>>,
     detected_frameworks: Vec<String>,
-    scanner: CredentialScanner,
+    scanner: Option<CredentialScanner>,
 }
 
 impl AssemblyHandle {
-    /// Create a new handle wrapping an IPC connection.
+    /// Create a new handle with default credential scanning enabled.
     pub fn new(ipc_handle: IpcHandle, detected_frameworks: Vec<String>) -> Self {
+        Self::with_scanner(ipc_handle, detected_frameworks, Some(CredentialScanner::new()))
+    }
+
+    /// Create a new handle with an explicit scanner configuration.
+    ///
+    /// Pass `None` to disable credential scanning, or `Some(scanner)` to use
+    /// a custom-configured [`CredentialScanner`].
+    pub fn with_scanner(
+        ipc_handle: IpcHandle,
+        detected_frameworks: Vec<String>,
+        scanner: Option<CredentialScanner>,
+    ) -> Self {
         Self {
             inner: Mutex::new(Some(ipc_handle)),
             detected_frameworks,
-            scanner: CredentialScanner::new(),
+            scanner,
         }
     }
 }
@@ -59,15 +71,19 @@ impl AssemblyHandle {
 
         // Redact any credentials from user-supplied details before they enter
         // the audit pipeline.
-        let scan_result = self.scanner.scan(&details);
-        let safe_details = if scan_result.is_clean() {
-            details
+        let safe_details = if let Some(scanner) = &self.scanner {
+            let scan_result = scanner.scan(&details);
+            if scan_result.is_clean() {
+                details
+            } else {
+                tracing::warn!(
+                    findings = scan_result.findings.len(),
+                    "credentials detected in report_event details, redacting"
+                );
+                scan_result.redact(&details)
+            }
         } else {
-            tracing::warn!(
-                findings = scan_result.findings.len(),
-                "credentials detected in report_event details, redacting"
-            );
-            scan_result.redact(&details)
+            details
         };
 
         let mut labels = std::collections::HashMap::new();
