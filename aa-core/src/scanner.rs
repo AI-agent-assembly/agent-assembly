@@ -222,13 +222,34 @@ impl ScanResult {
     }
 }
 
+/// Configuration for the credential scanner.
+///
+/// Controls whether scanning is enabled and allows adding custom literal
+/// patterns beyond the built-in set.
+#[derive(Debug, Clone, Default)]
+pub struct ScannerConfig {
+    /// When `true`, scanning is disabled and [`CredentialScanner::scan`] always
+    /// returns an empty [`ScanResult`].
+    pub disabled: bool,
+    /// Additional literal prefixes to detect as [`CredentialKind::Custom`].
+    /// Each string is compiled into the Aho-Corasick automaton alongside the
+    /// built-in patterns.
+    pub custom_patterns: Vec<String>,
+}
+
 /// Pre-compiled multi-pattern credential scanner.
 ///
-/// Construct once with [`CredentialScanner::new`] and call [`CredentialScanner::scan`]
-/// repeatedly. Pattern compilation happens at construction time; each scan call is
-/// O(n) in the length of the input text.
+/// Construct once with [`CredentialScanner::new`] (or [`CredentialScanner::with_config`])
+/// and call [`CredentialScanner::scan`] repeatedly. Pattern compilation happens at
+/// construction time; each scan call is O(n) in the length of the input text.
 pub struct CredentialScanner {
     patterns: AhoCorasick,
+    /// Maps each AC pattern index to its [`CredentialKind`]. Built-in patterns
+    /// use the static `AC_KINDS` entries; custom patterns are appended as
+    /// [`CredentialKind::Custom`].
+    kinds: Vec<CredentialKind>,
+    /// When `true`, [`scan`](Self::scan) short-circuits and returns an empty result.
+    disabled: bool,
 }
 
 impl Default for CredentialScanner {
@@ -238,18 +259,40 @@ impl Default for CredentialScanner {
 }
 
 impl CredentialScanner {
-    /// Build the scanner, compiling all patterns into an Aho-Corasick automaton.
+    /// Build the scanner with all built-in patterns and scanning enabled.
     ///
     /// # Panics
     ///
     /// Panics only if the hard-coded AC patterns are somehow invalid — this
     /// cannot happen in practice.
     pub fn new() -> Self {
+        Self::with_config(ScannerConfig::default())
+    }
+
+    /// Build the scanner from explicit configuration.
+    ///
+    /// Custom patterns are appended after the built-in set and are tagged as
+    /// [`CredentialKind::Custom`]. If `config.disabled` is true the scanner
+    /// is inert — [`scan`](Self::scan) always returns an empty result.
+    pub fn with_config(config: ScannerConfig) -> Self {
+        let mut all_patterns: Vec<&str> = AC_PATTERNS.to_vec();
+        // Collect custom pattern references — lifetime tied to `config`.
+        let custom_refs: Vec<&str> = config.custom_patterns.iter().map(|s| s.as_str()).collect();
+        all_patterns.extend_from_slice(&custom_refs);
+
+        let mut kinds: Vec<CredentialKind> = AC_KINDS.to_vec();
+        kinds.extend(std::iter::repeat_n(CredentialKind::Custom, config.custom_patterns.len()));
+
         let ac = AhoCorasick::builder()
             .match_kind(aho_corasick::MatchKind::LeftmostFirst)
-            .build(AC_PATTERNS)
-            .expect("static AC patterns are always valid");
-        Self { patterns: ac }
+            .build(&all_patterns)
+            .expect("AC patterns are always valid");
+
+        Self {
+            patterns: ac,
+            kinds,
+            disabled: config.disabled,
+        }
     }
 
     /// Scan `text` for credential patterns and return a [`ScanResult`].
@@ -261,12 +304,18 @@ impl CredentialScanner {
     /// 3. Email address scan.
     /// 4. High-entropy token scan (Shannon entropy > 4.5 bits/char, length 20–64).
     pub fn scan(&self, text: &str) -> ScanResult {
+        if self.disabled {
+            return ScanResult {
+                findings: Vec::new(),
+            };
+        }
+
         let mut findings = Vec::new();
 
         // Phase 1: AC literal prefix scan (API keys, auth tokens, cloud creds,
-        //          database URLs, PEM private key headers — 18 patterns)
+        //          database URLs, PEM private key headers — 18 patterns + custom)
         for mat in self.patterns.find_iter(text) {
-            let kind = AC_KINDS[mat.pattern()].clone();
+            let kind = self.kinds[mat.pattern()].clone();
             let offset = mat.start();
             let end = token_end(text, mat.end());
             findings.push(CredentialFinding::new(kind, offset, end));
