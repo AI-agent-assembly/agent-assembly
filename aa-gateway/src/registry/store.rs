@@ -135,6 +135,38 @@ impl AgentRegistry {
     pub fn list(&self) -> Vec<AgentRecord> {
         self.agents.iter().map(|r| r.value().clone()).collect()
     }
+
+    /// Suspend an agent with the given reason.
+    pub fn suspend_agent(
+        &self,
+        agent_id: &[u8; 16],
+        reason: super::SuspendReason,
+    ) -> Result<(), RegistryError> {
+        let mut entry = self
+            .agents
+            .get_mut(agent_id)
+            .ok_or(RegistryError::NotFound(*agent_id))?;
+        entry.status = AgentStatus::Suspended(reason);
+        Ok(())
+    }
+
+    /// Resume a suspended agent back to Active status.
+    pub fn resume_agent(&self, agent_id: &[u8; 16]) -> Result<(), RegistryError> {
+        let mut entry = self
+            .agents
+            .get_mut(agent_id)
+            .ok_or(RegistryError::NotFound(*agent_id))?;
+        entry.status = AgentStatus::Active;
+        Ok(())
+    }
+
+    /// Query the current status of an agent.
+    pub fn agent_status(&self, agent_id: &[u8; 16]) -> Result<AgentStatus, RegistryError> {
+        self.agents
+            .get(agent_id)
+            .map(|r| r.status)
+            .ok_or(RegistryError::NotFound(*agent_id))
+    }
 }
 
 impl Default for AgentRegistry {

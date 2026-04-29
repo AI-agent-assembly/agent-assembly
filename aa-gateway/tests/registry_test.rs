@@ -220,3 +220,41 @@ async fn concurrent_registration_of_100_agents() {
 
     assert_eq!(reg.list().len(), 100);
 }
+
+// ── Suspend / Resume / Status ─────────────���───────────────────────────────
+
+#[test]
+fn suspend_agent_sets_status_to_suspended() {
+    use aa_gateway::registry::SuspendReason;
+
+    let reg = AgentRegistry::new();
+    reg.register(make_record(key(1))).unwrap();
+
+    reg.suspend_agent(&key(1), SuspendReason::BudgetExceeded).unwrap();
+
+    let status = reg.agent_status(&key(1)).unwrap();
+    assert_eq!(status, AgentStatus::Suspended(SuspendReason::BudgetExceeded));
+}
+
+#[test]
+fn resume_agent_sets_status_to_active() {
+    use aa_gateway::registry::SuspendReason;
+
+    let reg = AgentRegistry::new();
+    reg.register(make_record(key(1))).unwrap();
+
+    reg.suspend_agent(&key(1), SuspendReason::BudgetExceeded).unwrap();
+    reg.resume_agent(&key(1)).unwrap();
+
+    let status = reg.agent_status(&key(1)).unwrap();
+    assert_eq!(status, AgentStatus::Active);
+}
+
+#[test]
+fn suspend_agent_not_found_returns_error() {
+    use aa_gateway::registry::SuspendReason;
+
+    let reg = AgentRegistry::new();
+    let result = reg.suspend_agent(&key(99), SuspendReason::Manual);
+    assert!(result.is_err());
+}
