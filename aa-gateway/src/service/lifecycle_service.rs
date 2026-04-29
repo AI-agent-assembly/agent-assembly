@@ -126,10 +126,7 @@ impl AgentLifecycleService for AgentLifecycleServiceImpl {
             .update_heartbeat(&agent_key)
             .map_err(|e| Status::not_found(e.to_string()))?;
 
-        let status = self
-            .registry
-            .agent_status(&agent_key)
-            .unwrap_or(AgentStatus::Active);
+        let status = self.registry.agent_status(&agent_key).unwrap_or(AgentStatus::Active);
 
         // Lazy auto-resume: if agent was suspended due to budget and budget has
         // since reset (daily/monthly boundary crossed), resume the agent.

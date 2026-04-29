@@ -138,11 +138,7 @@ impl AgentRegistry {
     }
 
     /// Suspend an agent with the given reason.
-    pub fn suspend_agent(
-        &self,
-        agent_id: &[u8; 16],
-        reason: super::SuspendReason,
-    ) -> Result<(), RegistryError> {
+    pub fn suspend_agent(&self, agent_id: &[u8; 16], reason: super::SuspendReason) -> Result<(), RegistryError> {
         let mut entry = self
             .agents
             .get_mut(agent_id)

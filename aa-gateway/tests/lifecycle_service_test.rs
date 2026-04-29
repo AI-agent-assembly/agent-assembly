@@ -68,8 +68,7 @@ async fn start_server_with_engine(
     std::io::Write::write_all(&mut tmp, policy_yaml.as_bytes()).unwrap();
     let engine = Arc::new(PolicyEngine::load_from_file(tmp.path()).unwrap());
 
-    let service =
-        AgentLifecycleServiceImpl::with_policy_engine(Arc::clone(&registry), Arc::clone(&engine));
+    let service = AgentLifecycleServiceImpl::with_policy_engine(Arc::clone(&registry), Arc::clone(&engine));
 
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -444,9 +443,7 @@ async fn heartbeat_does_not_resume_manually_suspended_agent() {
 
     // Manually suspend the agent
     let agent_key = proto_agent_id_to_key(&agent_id);
-    registry
-        .suspend_agent(&agent_key, SuspendReason::Manual)
-        .unwrap();
+    registry.suspend_agent(&agent_key, SuspendReason::Manual).unwrap();
 
     // Heartbeat: manual suspension is not auto-resumable
     let hb_resp = client
