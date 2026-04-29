@@ -16,6 +16,7 @@ use crate::registry::AgentRegistry;
 /// gRPC service implementation wiring `Register` / `Heartbeat` / `Deregister` /
 /// `ControlStream` to the in-memory [`AgentRegistry`].
 pub struct AgentLifecycleServiceImpl {
+    #[allow(dead_code)] // will be used when RPC stubs are implemented
     registry: Arc<AgentRegistry>,
 }
 
