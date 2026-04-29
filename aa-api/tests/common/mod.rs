@@ -1,7 +1,7 @@
 //! Shared test utilities for aa-api integration tests.
 
 use std::path::Path;
-use std::sync::atomic::AtomicU64;
+use std::sync::atomic::{AtomicU64, AtomicUsize};
 use std::sync::Arc;
 
 use aa_api::auth::api_key::{ApiKey, ApiKeyEntry, ApiKeyStore};
@@ -22,6 +22,9 @@ use axum::Router;
 /// Default JWT test secret (>= 32 bytes).
 const TEST_SECRET: &[u8] = b"test-secret-key-that-is-at-least-32-bytes-long!!";
 
+/// Counter for generating unique temp file names across concurrent tests.
+static TEMP_COUNTER: AtomicUsize = AtomicUsize::new(0);
+
 /// Build a minimal `AppState` for gateway/non-auth tests (auth disabled).
 #[allow(dead_code)]
 pub fn test_state() -> AppState {
@@ -32,7 +35,8 @@ pub fn test_state() -> AppState {
 #[allow(dead_code)]
 pub fn test_state_with_auth(mode: AuthMode, entries: &[ApiKeyEntry], rpm: u32) -> AppState {
     // PolicyEngine requires a policy file; use a minimal valid policy.
-    let policy_dir = std::env::temp_dir().join("aa-api-test-policy");
+    let policy_id = TEMP_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let policy_dir = std::env::temp_dir().join(format!("aa-api-test-policy-{}-{policy_id}", std::process::id()));
     std::fs::create_dir_all(&policy_dir).unwrap();
     let policy_path = policy_dir.join("test-policy.yaml");
     std::fs::write(
@@ -82,7 +86,8 @@ spec:
     let key_store = if entries.is_empty() {
         key_store
     } else {
-        let tmp = std::env::temp_dir().join("aa-api-test-keys.json");
+        let id = TEMP_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let tmp = std::env::temp_dir().join(format!("aa-api-test-keys-{}-{id}.json", std::process::id()));
         let json = serde_json::to_string(entries).unwrap();
         std::fs::write(&tmp, &json).unwrap();
         Arc::new(ApiKeyStore::load(&tmp).unwrap())
