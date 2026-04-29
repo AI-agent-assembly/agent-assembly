@@ -2,8 +2,15 @@
 //!
 //! All endpoints are nested under `/api/v1/`.
 
+pub mod agents;
+pub mod alerts;
+pub mod approvals;
 pub mod auth;
+pub mod costs;
 pub mod health;
+pub mod logs;
+pub mod policies;
+pub mod traces;
 
 use axum::routing::{get, post};
 use axum::Router;
