@@ -77,6 +77,28 @@ impl BudgetTracker {
         }
     }
 
+    /// Create a new tracker that sends alerts on an externally-owned channel.
+    ///
+    /// Use this when the broadcast channel is created upstream (e.g. `main.rs`)
+    /// and shared with other consumers like the webhook delivery loop.
+    pub fn new_with_alert_sender(
+        pricing: PricingTable,
+        daily_limit_usd: Option<Decimal>,
+        monthly_limit_usd: Option<Decimal>,
+        timezone: chrono_tz::Tz,
+        alert_tx: broadcast::Sender<BudgetAlert>,
+    ) -> Self {
+        Self {
+            per_agent: DashMap::new(),
+            global: Mutex::new(BudgetState::new_for_date(today_in_tz(timezone))),
+            pricing,
+            daily_limit_usd,
+            monthly_limit_usd,
+            alert_tx,
+            timezone,
+        }
+    }
+
     /// Create a tracker pre-loaded with persisted state (call after `load_from_disk`).
     pub fn with_state(
         pricing: PricingTable,
