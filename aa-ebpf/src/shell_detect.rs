@@ -37,10 +37,10 @@ impl ShellDetector {
     pub fn check(&self, filename: &str) -> Option<AlertLevel> {
         let basename = filename.rsplit('/').next().unwrap_or(filename);
 
-        if self.critical.iter().any(|&pat| basename == pat) {
+        if self.critical.contains(&basename) {
             return Some(AlertLevel::Critical);
         }
-        if self.warning.iter().any(|&pat| basename == pat) {
+        if self.warning.contains(&basename) {
             return Some(AlertLevel::Warning);
         }
 

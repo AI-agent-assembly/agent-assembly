@@ -39,7 +39,9 @@ impl EbpfLoader {
 
 // ── File I/O kprobe loader (AAASM-38) ───────────────────────────────────
 
+#[cfg(target_os = "linux")]
 use crate::alert::SensitivePathDetector;
+#[cfg(target_os = "linux")]
 use crate::events::FileIoEvent;
 use crate::maps::PathPattern;
 
@@ -51,6 +53,7 @@ use crate::maps::PathPattern;
 /// other platforms it returns [`EbpfError::ProgramLoad`] immediately.
 pub struct FileIoLoader {
     /// Target PID to monitor (and its descendants).
+    #[allow(dead_code)]
     target_pid: u32,
     /// Loaded BPF object handle (Linux only).
     #[cfg(target_os = "linux")]
@@ -76,7 +79,7 @@ impl FileIoLoader {
     pub fn load(&mut self) -> Result<(), EbpfError> {
         #[cfg(not(target_os = "linux"))]
         {
-            return Err(EbpfError::ProgramLoad("eBPF is only supported on Linux".into()));
+            Err(EbpfError::ProgramLoad("eBPF is only supported on Linux".into()))
         }
 
         #[cfg(target_os = "linux")]
@@ -108,7 +111,7 @@ impl FileIoLoader {
     pub fn attach_kprobes(&mut self) -> Result<(), EbpfError> {
         #[cfg(not(target_os = "linux"))]
         {
-            return Err(EbpfError::ProbeAttach("eBPF is only supported on Linux".into()));
+            Err(EbpfError::ProbeAttach("eBPF is only supported on Linux".into()))
         }
 
         #[cfg(target_os = "linux")]
@@ -272,7 +275,7 @@ impl FileIoLoader {
         #[cfg(not(target_os = "linux"))]
         {
             let _ = patterns;
-            return Err(EbpfError::MapUpdate("eBPF is only supported on Linux".into()));
+            Err(EbpfError::MapUpdate("eBPF is only supported on Linux".into()))
         }
 
         #[cfg(target_os = "linux")]
@@ -392,7 +395,7 @@ impl ExecLoader {
     pub fn load(&mut self) -> Result<(), EbpfError> {
         #[cfg(not(target_os = "linux"))]
         {
-            return Err(EbpfError::ProgramLoad("eBPF is only supported on Linux".into()));
+            Err(EbpfError::ProgramLoad("eBPF is only supported on Linux".into()))
         }
 
         #[cfg(target_os = "linux")]
@@ -424,7 +427,7 @@ impl ExecLoader {
     pub fn attach_tracepoints(&mut self) -> Result<(), EbpfError> {
         #[cfg(not(target_os = "linux"))]
         {
-            return Err(EbpfError::ProbeAttach("eBPF is only supported on Linux".into()));
+            Err(EbpfError::ProbeAttach("eBPF is only supported on Linux".into()))
         }
 
         #[cfg(target_os = "linux")]

@@ -36,6 +36,74 @@ fn load_policy(policy_path: &Option<std::path::PathBuf>) -> std::sync::Arc<crate
     std::sync::Arc::new(rules)
 }
 
+/// Attempt to spawn the proxy subsystem as a subprocess on the given [`TaskTracker`].
+///
+/// Locates the `aa-proxy` binary via `which` and spawns it as a child process.
+/// If the binary is not found, the proxy layer is immediately degraded.
+/// If the subprocess exits unexpectedly at runtime, a
+/// [`PipelineEvent::LayerDegradation`] is emitted on the broadcast channel.
+fn spawn_proxy(
+    tracker: &TaskTracker,
+    broadcast_tx: &tokio::sync::broadcast::Sender<crate::pipeline::PipelineEvent>,
+    active_layers: crate::layer::LayerSet,
+    degraded_layers: &mut Vec<String>,
+) {
+    let proxy_bin = match which::which("aa-proxy") {
+        Ok(path) => path,
+        Err(e) => {
+            tracing::warn!(error = %e, "aa-proxy binary not found — degrading proxy layer");
+            emit_proxy_degradation(broadcast_tx, active_layers, format!("binary not found: {e}"));
+            degraded_layers.push("proxy".to_string());
+            return;
+        }
+    };
+
+    let proxy_broadcast_tx = broadcast_tx.clone();
+    let proxy_bin_display = proxy_bin.display().to_string();
+    tracker.spawn(async move {
+        let result = tokio::process::Command::new(&proxy_bin)
+            .kill_on_drop(true)
+            .status()
+            .await;
+        match result {
+            Ok(status) if status.success() => {
+                tracing::info!("proxy subsystem exited normally");
+            }
+            Ok(status) => {
+                let reason = format!("proxy exited with {status}");
+                tracing::warn!(%reason, "proxy subsystem failed");
+                emit_proxy_degradation(&proxy_broadcast_tx, active_layers, reason);
+            }
+            Err(e) => {
+                let reason = format!("failed to spawn proxy: {e}");
+                tracing::warn!(%reason, "proxy subsystem failed");
+                emit_proxy_degradation(&proxy_broadcast_tx, active_layers, reason);
+            }
+        }
+    });
+    tracing::info!(binary = %proxy_bin_display, "proxy subsystem task spawned");
+}
+
+/// Emit a [`PipelineEvent::LayerDegradation`] for the proxy layer.
+fn emit_proxy_degradation(
+    broadcast_tx: &tokio::sync::broadcast::Sender<crate::pipeline::PipelineEvent>,
+    active_layers: crate::layer::LayerSet,
+    reason: String,
+) {
+    let remaining = active_layers
+        .difference(crate::layer::LayerSet::PROXY)
+        .names()
+        .iter()
+        .map(|s| (*s).to_string())
+        .collect();
+    let info = crate::pipeline::LayerDegradationInfo {
+        layer: "proxy".to_string(),
+        reason,
+        remaining_layers: remaining,
+    };
+    let _ = broadcast_tx.send(crate::pipeline::PipelineEvent::LayerDegradation(info));
+}
+
 /// Start the runtime and block until graceful shutdown completes.
 ///
 /// This is the main async entry point called from `main()`. It creates the
@@ -96,6 +164,11 @@ pub async fn run(config: RuntimeConfig) {
     // Create the broadcast channel for fan-out to downstream subscribers.
     let (broadcast_tx, correlation_rx) =
         tokio::sync::broadcast::channel::<crate::pipeline::PipelineEvent>(pipeline_config.broadcast_capacity);
+
+    // Spawn the proxy subsystem if the PROXY layer is active.
+    if active_layers.contains(crate::layer::LayerSet::PROXY) {
+        spawn_proxy(&tracker, &broadcast_tx, active_layers, &mut degraded_layers);
+    }
 
     // Shared metrics — future health/metrics endpoints will receive an Arc clone.
     let pipeline_metrics = std::sync::Arc::new(crate::pipeline::PipelineMetrics::default());
@@ -434,6 +507,104 @@ mod tests {
         // Run correlation — should produce at least one outcome.
         let outcomes = engine.correlate();
         assert!(!outcomes.is_empty(), "expected at least one correlation outcome");
+    }
+
+    // ── spawn_proxy tests ────────────────────────────────────────────────
+
+    #[test]
+    fn emit_proxy_degradation_sends_event() {
+        let (tx, mut rx) = tokio::sync::broadcast::channel::<crate::pipeline::PipelineEvent>(16);
+        let active_layers = crate::layer::LayerSet::PROXY | crate::layer::LayerSet::SDK;
+
+        super::emit_proxy_degradation(&tx, active_layers, "test reason".to_string());
+
+        let event = rx.try_recv().unwrap();
+        match event {
+            crate::pipeline::PipelineEvent::LayerDegradation(info) => {
+                assert_eq!(info.layer, "proxy");
+                assert_eq!(info.reason, "test reason");
+                assert_eq!(info.remaining_layers, vec!["sdk"]);
+            }
+            _ => panic!("expected LayerDegradation event"),
+        }
+    }
+
+    #[test]
+    fn spawn_proxy_binary_not_found_emits_degradation() {
+        // Temporarily set PATH to empty so `which("aa-proxy")` fails.
+        let orig_path = std::env::var("PATH").unwrap_or_default();
+        std::env::set_var("PATH", "");
+
+        let tracker = TaskTracker::new();
+        let (tx, mut rx) = tokio::sync::broadcast::channel::<crate::pipeline::PipelineEvent>(16);
+        let active_layers = crate::layer::LayerSet::PROXY | crate::layer::LayerSet::SDK;
+        let mut degraded = Vec::new();
+
+        super::spawn_proxy(&tracker, &tx, active_layers, &mut degraded);
+
+        std::env::set_var("PATH", &orig_path);
+
+        // Binary not found should immediately degrade.
+        assert!(degraded.contains(&"proxy".to_string()));
+
+        let event = rx.try_recv().unwrap();
+        match event {
+            crate::pipeline::PipelineEvent::LayerDegradation(info) => {
+                assert_eq!(info.layer, "proxy");
+                assert!(info.reason.contains("not found"));
+                assert_eq!(info.remaining_layers, vec!["sdk"]);
+            }
+            _ => panic!("expected LayerDegradation event"),
+        }
+    }
+
+    #[tokio::test]
+    async fn spawn_proxy_failing_binary_emits_degradation() {
+        // Use `false` as the proxy binary — it always exits with status 1.
+        // We can test this by temporarily overriding PATH to a dir with
+        // a symlink named "aa-proxy" pointing to `false`.
+        let tmp = tempfile::tempdir().unwrap();
+        #[cfg(unix)]
+        {
+            let link_path = tmp.path().join("aa-proxy");
+            std::os::unix::fs::symlink("/usr/bin/false", &link_path).unwrap();
+        }
+        #[cfg(not(unix))]
+        {
+            // On non-unix, skip this test.
+            return;
+        }
+
+        let orig_path = std::env::var("PATH").unwrap_or_default();
+        std::env::set_var("PATH", format!("{}:{orig_path}", tmp.path().display()));
+
+        let tracker = TaskTracker::new();
+        let (tx, mut rx) = tokio::sync::broadcast::channel::<crate::pipeline::PipelineEvent>(16);
+        let active_layers = crate::layer::LayerSet::PROXY | crate::layer::LayerSet::SDK;
+        let mut degraded = Vec::new();
+
+        super::spawn_proxy(&tracker, &tx, active_layers, &mut degraded);
+
+        // Binary found, so no immediate degradation.
+        assert!(!degraded.contains(&"proxy".to_string()));
+
+        // Wait for the subprocess to exit with failure.
+        tracker.close();
+        tokio::time::timeout(Duration::from_secs(5), tracker.wait())
+            .await
+            .expect("proxy task did not exit within timeout");
+
+        std::env::set_var("PATH", &orig_path);
+
+        let event = rx.try_recv().unwrap();
+        match event {
+            crate::pipeline::PipelineEvent::LayerDegradation(info) => {
+                assert_eq!(info.layer, "proxy");
+                assert!(info.reason.contains("proxy exited"));
+                assert_eq!(info.remaining_layers, vec!["sdk"]);
+            }
+            _ => panic!("expected LayerDegradation event"),
+        }
     }
 
     /// Verify the broadcast channel integration: send a PipelineEvent through

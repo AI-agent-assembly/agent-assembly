@@ -129,6 +129,7 @@ name = "aa-proxy"
 version = "0.0.1"
 dependencies = [
  "aa-core",
+ "aa-proto",
  "aa-runtime",
  "anyhow",
  "bytes",
