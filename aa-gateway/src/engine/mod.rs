@@ -54,7 +54,10 @@ impl PolicyEngine {
                     .collect()
             })
             .unwrap_or_default();
-        let budget_tz = output.document.budget.as_ref()
+        let budget_tz = output
+            .document
+            .budget
+            .as_ref()
             .and_then(|bp| bp.timezone.as_deref())
             .and_then(|s| s.parse::<chrono_tz::Tz>().ok())
             .unwrap_or(chrono_tz::UTC);

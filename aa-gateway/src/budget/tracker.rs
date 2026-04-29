@@ -349,7 +349,7 @@ mod tests {
         let id = agent(10);
         // First call — establishes the agent entry
         t.record_usage(id, Provider::OpenAi, Model::Gpt4o, 100_000, 30_000); // $0.95
-        // Backdate the agent entry by 1 day in the Tokyo timezone
+                                                                             // Backdate the agent entry by 1 day in the Tokyo timezone
         let yesterday_tokyo = today_in_tz(tz) - chrono::Duration::days(1);
         t.per_agent.alter(&id, |_, mut s| {
             s.date = yesterday_tokyo;
@@ -357,6 +357,10 @@ mod tests {
         });
         // Next call should reset (yesterday < today in Tokyo)
         let s = t.record_usage(id, Provider::OpenAi, Model::Gpt4o, 100, 0);
-        assert!(matches!(s, BudgetStatus::WithinBudget { .. }), "Expected reset after Tokyo midnight, got: {:?}", s);
+        assert!(
+            matches!(s, BudgetStatus::WithinBudget { .. }),
+            "Expected reset after Tokyo midnight, got: {:?}",
+            s
+        );
     }
 }

@@ -22,7 +22,10 @@ pub(crate) struct BudgetTracker {
 impl BudgetTracker {
     /// Create a new empty spend tracker using the given IANA timezone for daily reset.
     pub(crate) fn new(timezone: chrono_tz::Tz) -> Self {
-        Self { state: DashMap::new(), timezone }
+        Self {
+            state: DashMap::new(),
+            timezone,
+        }
     }
 
     /// Returns true if agent has already met or exceeded their daily limit.

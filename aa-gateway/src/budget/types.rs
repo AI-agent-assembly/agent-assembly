@@ -171,8 +171,8 @@ mod tests {
 
     #[test]
     fn budget_state_maybe_reset_uses_injected_date() {
-        use rust_decimal::Decimal;
         use chrono::NaiveDate;
+        use rust_decimal::Decimal;
         let mut state = BudgetState {
             spent_usd: Decimal::new(500, 2), // 5.00
             date: NaiveDate::from_ymd_opt(2024, 1, 1).unwrap(),

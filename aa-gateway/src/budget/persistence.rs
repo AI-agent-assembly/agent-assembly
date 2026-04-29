@@ -242,7 +242,11 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("budget.json");
         // Write JSON without a `timezone` field (simulates old budget.json)
-        std::fs::write(&path, r#"{"per_agent":[],"global":{"spent_usd":"0","date":"2024-01-01"}}"#).unwrap();
+        std::fs::write(
+            &path,
+            r#"{"per_agent":[],"global":{"spent_usd":"0","date":"2024-01-01"}}"#,
+        )
+        .unwrap();
         let loaded = load_from_disk(&path).unwrap();
         assert_eq!(loaded.timezone, chrono_tz::UTC);
     }
