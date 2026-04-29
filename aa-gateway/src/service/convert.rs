@@ -229,9 +229,7 @@ pub fn approval_decision_to_response(
             let (proto_decision, reason) = match fallback {
                 PolicyResult::Allow => (Decision::Allow, String::new()),
                 PolicyResult::Deny { reason } => (Decision::Deny, reason.clone()),
-                PolicyResult::RequiresApproval { .. } => {
-                    (Decision::Deny, "approval timed out".to_string())
-                }
+                PolicyResult::RequiresApproval { .. } => (Decision::Deny, "approval timed out".to_string()),
             };
             CheckActionResponse {
                 decision: proto_decision as i32,
