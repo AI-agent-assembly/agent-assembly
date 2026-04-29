@@ -402,6 +402,14 @@ impl PolicyEngine {
         }
         true
     }
+
+    /// Returns a clone of the `Arc<BudgetTracker>` for shared ownership.
+    ///
+    /// Used by the persistence layer to spawn the background writer and
+    /// to perform the final save on graceful shutdown.
+    pub fn budget_tracker(&self) -> Arc<BudgetTracker> {
+        Arc::clone(&self.budget)
+    }
 }
 
 /// Implement the `aa_core::PolicyEvaluator` trait so `PolicyEngine` can be used
