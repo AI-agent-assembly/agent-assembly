@@ -193,6 +193,18 @@ fn unique_event_id() -> String {
 mod tests {
     use super::*;
 
+    /// Create a test handle backed by a real mpsc channel (no socket).
+    /// Returns `(handle, receiver)` so tests can inspect sent commands.
+    fn test_handle() -> (AssemblyHandle, tokio::sync::mpsc::Receiver<IpcCommand>) {
+        let (tx, rx) = tokio::sync::mpsc::channel(16);
+        let ipc = IpcHandle {
+            cmd_tx: tx,
+            thread: None,
+        };
+        let handle = AssemblyHandle::new(ipc, vec!["openai".to_string()]);
+        (handle, rx)
+    }
+
     #[test]
     fn unique_event_id_is_nonempty() {
         let id = unique_event_id();
@@ -205,5 +217,92 @@ mod tests {
         let b = unique_event_id();
         // Not strictly guaranteed but extremely likely with nanos.
         assert_ne!(a, b);
+    }
+
+    #[test]
+    fn report_llm_call_sends_event_with_llm_detail() {
+        use aa_proto::assembly::audit::v1::audit_event;
+
+        let (handle, mut rx) = test_handle();
+
+        handle
+            .report_llm_call(
+                "gpt-4o".to_string(),
+                100,
+                50,
+                1234,
+                "openai",
+            )
+            .unwrap();
+
+        let cmd = rx.try_recv().expect("should have received a command");
+        match cmd {
+            IpcCommand::SendEvent(event) => {
+                assert!(!event.event_id.is_empty());
+                assert_eq!(
+                    event.action_type,
+                    i32::from(aa_proto::assembly::common::v1::ActionType::LlmCall)
+                );
+                match event.detail {
+                    Some(audit_event::Detail::LlmCall(ref d)) => {
+                        assert_eq!(d.model, "gpt-4o");
+                        assert_eq!(d.prompt_tokens, 100);
+                        assert_eq!(d.completion_tokens, 50);
+                        assert_eq!(d.latency_ms, 1234);
+                        assert_eq!(d.provider, "openai");
+                    }
+                    other => panic!("expected LlmCall detail, got {:?}", other),
+                }
+            }
+            other => panic!("expected SendEvent, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn report_llm_call_on_shutdown_handle_returns_error() {
+        pyo3::prepare_freethreaded_python();
+        let (handle, _rx) = test_handle();
+
+        // Shut down the handle first.
+        Python::with_gil(|py| handle.shutdown(py).unwrap());
+
+        // Now report_llm_call should fail.
+        let result = handle.report_llm_call(
+            "gpt-4o".to_string(),
+            0,
+            0,
+            0,
+            "openai",
+        );
+        let err = result.err().expect("should error on shutdown handle");
+        assert!(err.to_string().contains("shut down"));
+    }
+
+    #[test]
+    fn report_llm_call_defaults_are_applied() {
+        use aa_proto::assembly::audit::v1::audit_event;
+
+        let (handle, mut rx) = test_handle();
+
+        // Call with only model — other args use defaults.
+        handle
+            .report_llm_call("claude-3".to_string(), 0, 0, 0, "unknown")
+            .unwrap();
+
+        let cmd = rx.try_recv().expect("should have received a command");
+        match cmd {
+            IpcCommand::SendEvent(event) => {
+                if let Some(audit_event::Detail::LlmCall(ref d)) = event.detail {
+                    assert_eq!(d.model, "claude-3");
+                    assert_eq!(d.prompt_tokens, 0);
+                    assert_eq!(d.completion_tokens, 0);
+                    assert_eq!(d.latency_ms, 0);
+                    assert_eq!(d.provider, "unknown");
+                } else {
+                    panic!("expected LlmCall detail");
+                }
+            }
+            other => panic!("expected SendEvent, got {:?}", other),
+        }
     }
 }
