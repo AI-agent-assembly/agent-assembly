@@ -111,6 +111,35 @@ impl AgentBaseline {
         (mean, stddev)
     }
 
+    /// Return the action count in the most recent time bucket.
+    ///
+    /// The window is divided into [`RATE_BUCKETS`] intervals; this returns
+    /// the count in the last one. Used by spike detection to compare the
+    /// current rate against the historical baseline.
+    pub fn latest_bucket_count(&self) -> f64 {
+        if self.action_timestamps.len() < 2 {
+            return self.action_timestamps.len() as f64;
+        }
+
+        let earliest = self.action_timestamps[0];
+        let latest = *self.action_timestamps.last().unwrap();
+        let span = latest.saturating_sub(earliest);
+        if span == 0 {
+            return self.action_timestamps.len() as f64;
+        }
+
+        let bucket_ms = span / RATE_BUCKETS;
+        if bucket_ms == 0 {
+            return self.action_timestamps.len() as f64;
+        }
+
+        let last_bucket_start = earliest + bucket_ms * (RATE_BUCKETS - 1);
+        self.action_timestamps
+            .iter()
+            .filter(|&&ts| ts >= last_bucket_start)
+            .count() as f64
+    }
+
     /// Evict all entries older than `now_ms - window_ms`.
     pub fn evict(&mut self, now_ms: u64) {
         let cutoff = now_ms.saturating_sub(self.window_ms);
