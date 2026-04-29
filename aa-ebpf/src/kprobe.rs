@@ -13,10 +13,14 @@ use crate::error::EbpfError;
 ///
 /// Create via [`KprobeManager::attach`]. The probes stay active until the
 /// `KprobeManager` is dropped.
-#[allow(dead_code)]
 pub struct KprobeManager {
     /// Target PID to filter inside the eBPF program.
     target_pid: Option<i32>,
+    /// Live kprobe link handles. Dropping them detaches the probes from the
+    /// kernel. Stored as type-erased `Box<dyn Any>` to avoid coupling to
+    /// aya's internal link-id type (matches `UprobeManager` convention).
+    #[cfg(target_os = "linux")]
+    _links: Vec<Box<dyn std::any::Any>>,
 }
 
 impl KprobeManager {
