@@ -135,6 +135,59 @@ fn probe_proxy() -> bool {
     supported_platform && which::which("aa-proxy").is_ok()
 }
 
+// ── Layer detector ───────────────────────────────────────────────────────────
+
+/// Probes system capabilities and returns the set of available interception layers.
+pub struct LayerDetector;
+
+impl LayerDetector {
+    /// Detect available interception layers.
+    ///
+    /// If the `AA_LAYERS` environment variable is set to a non-empty,
+    /// comma-separated list of layer names (e.g. `"ebpf,sdk"`), the detector
+    /// returns exactly those layers without running any probes. This is
+    /// intended for testing and CI environments.
+    ///
+    /// Otherwise, each layer is probed independently:
+    /// - **eBPF**: kernel ≥ 5.8, BTF present, CAP_BPF (root)
+    /// - **Proxy**: supported platform + `aa-proxy` in `$PATH`
+    /// - **SDK**: always available
+    pub fn detect() -> LayerSet {
+        if let Some(layers) = Self::from_env_override() {
+            return layers;
+        }
+
+        let mut set = LayerSet::SDK;
+
+        if probe_ebpf() {
+            set |= LayerSet::EBPF;
+        }
+        if probe_proxy() {
+            set |= LayerSet::PROXY;
+        }
+
+        set
+    }
+
+    /// Parse the `AA_LAYERS` env var if set and non-empty.
+    fn from_env_override() -> Option<LayerSet> {
+        let val = std::env::var("AA_LAYERS").ok()?;
+        if val.trim().is_empty() {
+            return None;
+        }
+        let mut set = LayerSet::empty();
+        for token in val.split(',') {
+            match token.trim().to_lowercase().as_str() {
+                "ebpf" => set |= LayerSet::EBPF,
+                "proxy" => set |= LayerSet::PROXY,
+                "sdk" => set |= LayerSet::SDK,
+                _ => {} // unknown tokens silently ignored
+            }
+        }
+        Some(set)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
