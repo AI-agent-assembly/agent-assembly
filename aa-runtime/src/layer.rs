@@ -240,4 +240,109 @@ mod tests {
     fn display_empty_shows_none() {
         assert_eq!(format!("{}", LayerSet::empty()), "none");
     }
+
+    // ── parse_kernel_version_ge tests ────────────────────────────────────────
+
+    #[test]
+    fn kernel_version_ge_accepts_exact_match() {
+        assert!(parse_kernel_version_ge("5.8.0-generic", 5, 8));
+    }
+
+    #[test]
+    fn kernel_version_ge_accepts_higher() {
+        assert!(parse_kernel_version_ge("6.1.0", 5, 8));
+        assert!(parse_kernel_version_ge("5.15.0-91-generic", 5, 8));
+    }
+
+    #[test]
+    fn kernel_version_ge_rejects_lower() {
+        assert!(!parse_kernel_version_ge("5.7.19", 5, 8));
+        assert!(!parse_kernel_version_ge("4.18.0", 5, 8));
+    }
+
+    #[test]
+    fn kernel_version_ge_handles_garbage() {
+        assert!(!parse_kernel_version_ge("not-a-version", 5, 8));
+    }
+
+    // ── LayerDetector tests (env-var-mutating, serialized) ───────────────────
+
+    use std::sync::Mutex;
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    #[test]
+    fn detect_always_includes_sdk() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        std::env::remove_var("AA_LAYERS");
+
+        let set = LayerDetector::detect();
+        assert!(set.contains(LayerSet::SDK));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn detect_ebpf_false_on_macos() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        std::env::remove_var("AA_LAYERS");
+
+        let set = LayerDetector::detect();
+        assert!(!set.contains(LayerSet::EBPF));
+    }
+
+    #[test]
+    fn aa_layers_override_ebpf_sdk() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        std::env::set_var("AA_LAYERS", "ebpf,sdk");
+
+        let set = LayerDetector::detect();
+        assert_eq!(set, LayerSet::EBPF | LayerSet::SDK);
+
+        std::env::remove_var("AA_LAYERS");
+    }
+
+    #[test]
+    fn aa_layers_override_all() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        std::env::set_var("AA_LAYERS", "ebpf,proxy,sdk");
+
+        let set = LayerDetector::detect();
+        assert_eq!(set, LayerSet::EBPF | LayerSet::PROXY | LayerSet::SDK);
+
+        std::env::remove_var("AA_LAYERS");
+    }
+
+    #[test]
+    fn aa_layers_override_empty_falls_back_to_detection() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        std::env::set_var("AA_LAYERS", "");
+
+        let set = LayerDetector::detect();
+        // Empty string means no override — SDK is always detected.
+        assert!(set.contains(LayerSet::SDK));
+
+        std::env::remove_var("AA_LAYERS");
+    }
+
+    #[test]
+    fn aa_layers_unknown_tokens_ignored() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        std::env::set_var("AA_LAYERS", "sdk,quantum,wasm");
+
+        let set = LayerDetector::detect();
+        assert_eq!(set, LayerSet::SDK);
+
+        std::env::remove_var("AA_LAYERS");
+    }
+
+    #[test]
+    fn aa_layers_case_insensitive() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        std::env::set_var("AA_LAYERS", "EBPF,Proxy,SDK");
+
+        let set = LayerDetector::detect();
+        assert_eq!(set, LayerSet::EBPF | LayerSet::PROXY | LayerSet::SDK);
+
+        std::env::remove_var("AA_LAYERS");
+    }
 }
