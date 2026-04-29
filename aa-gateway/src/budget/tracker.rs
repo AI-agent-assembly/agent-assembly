@@ -237,7 +237,12 @@ mod tests {
     }
 
     fn tracker_with_limit(s: &str) -> BudgetTracker {
-        BudgetTracker::new(PricingTable::default_table(), Some(s.parse().unwrap()), None, chrono_tz::UTC)
+        BudgetTracker::new(
+            PricingTable::default_table(),
+            Some(s.parse().unwrap()),
+            None,
+            chrono_tz::UTC,
+        )
     }
 
     #[test]
@@ -334,8 +339,8 @@ mod tests {
 
     #[test]
     fn with_state_restores_per_agent_entries() {
-        use chrono::Datelike;
         use crate::budget::persistence::{agent_id_to_hex, PersistedAgentEntry, PersistedBudget};
+        use chrono::Datelike;
         let id = AgentId::from_bytes([42u8; 16]);
         let today = chrono::Utc::now().date_naive();
         let state = BudgetState {
@@ -452,8 +457,8 @@ mod tests {
 
     #[test]
     fn monthly_resets_on_month_change() {
-        use chrono::Datelike;
         use crate::budget::types::{BudgetStatus, Model, Provider};
+        use chrono::Datelike;
         let t = tracker_with_monthly_limit("1.00");
         let id = agent(23);
         // Record $0.95

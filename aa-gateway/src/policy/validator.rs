@@ -198,7 +198,10 @@ impl PolicyValidator {
 
         if let Some(limit) = raw.monthly_limit_usd {
             if limit <= 0.0 {
-                errors.push(ValidationError::new("budget.monthly_limit_usd", "must be greater than 0"));
+                errors.push(ValidationError::new(
+                    "budget.monthly_limit_usd",
+                    "must be greater than 0",
+                ));
             }
             if let Some(daily) = raw.daily_limit_usd {
                 if limit < daily {
@@ -471,8 +474,9 @@ mod tests {
         let result = PolicyValidator::from_yaml(yaml);
         assert!(result.is_err());
         let errs = result.unwrap_err();
-        assert!(errs.iter().any(|e| e.field == "budget.monthly_limit_usd"
-            && e.message.contains(">= daily_limit_usd")));
+        assert!(errs
+            .iter()
+            .any(|e| e.field == "budget.monthly_limit_usd" && e.message.contains(">= daily_limit_usd")));
     }
 
     #[test]

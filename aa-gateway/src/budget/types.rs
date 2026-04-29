@@ -275,9 +275,18 @@ mod tests {
     #[test]
     fn month_tag_computes_correctly() {
         use chrono::NaiveDate;
-        assert_eq!(BudgetState::month_tag(NaiveDate::from_ymd_opt(2024, 1, 1).unwrap()), 202401);
-        assert_eq!(BudgetState::month_tag(NaiveDate::from_ymd_opt(2024, 12, 31).unwrap()), 202412);
-        assert_eq!(BudgetState::month_tag(NaiveDate::from_ymd_opt(2026, 4, 29).unwrap()), 202604);
+        assert_eq!(
+            BudgetState::month_tag(NaiveDate::from_ymd_opt(2024, 1, 1).unwrap()),
+            202401
+        );
+        assert_eq!(
+            BudgetState::month_tag(NaiveDate::from_ymd_opt(2024, 12, 31).unwrap()),
+            202412
+        );
+        assert_eq!(
+            BudgetState::month_tag(NaiveDate::from_ymd_opt(2026, 4, 29).unwrap()),
+            202604
+        );
     }
 
     #[test]
