@@ -68,6 +68,23 @@ pub async fn run(config: RuntimeConfig) {
     // Load policy rules from the mounted volume (or use empty rules if disabled/absent).
     let policy = load_policy(&config.policy_path);
 
+    // Detect available interception layers (eBPF, proxy, SDK).
+    let active_layers = crate::layer::LayerDetector::detect();
+    tracing::info!(layers = %active_layers, "active interception layers");
+
+    if !active_layers.contains(crate::layer::LayerSet::EBPF) {
+        tracing::warn!(
+            remaining = %active_layers,
+            "eBPF layer unavailable — requires Linux >= 5.8, BTF, and CAP_BPF"
+        );
+    }
+    if !active_layers.contains(crate::layer::LayerSet::PROXY) {
+        tracing::warn!(
+            remaining = %active_layers,
+            "proxy layer unavailable — aa-proxy binary not found in PATH"
+        );
+    }
+
     // Build pipeline config and create the inbound channel at the configured depth.
     let pipeline_config = crate::pipeline::PipelineConfig::from_runtime_config(&config);
     let (inbound_tx, inbound_rx) =
@@ -150,6 +167,7 @@ pub async fn run(config: RuntimeConfig) {
             prometheus_handle,
             active_connections: std::sync::Arc::clone(&active_connections),
             inbound_tx: inbound_tx_health,
+            active_layers,
         };
         let addr: std::net::SocketAddr = config
             .metrics_addr

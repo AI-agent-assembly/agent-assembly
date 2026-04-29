@@ -20,6 +20,7 @@ pub struct HealthState {
     pub prometheus_handle: PrometheusHandle,
     pub active_connections: Arc<AtomicI64>,
     pub inbound_tx: mpsc::Sender<(u64, IpcFrame)>,
+    pub active_layers: crate::layer::LayerSet,
 }
 
 /// Response body for GET /health.
@@ -116,6 +117,7 @@ mod tests {
             prometheus_handle: make_prometheus_handle(),
             active_connections: Arc::new(AtomicI64::new(0)),
             inbound_tx,
+            active_layers: crate::layer::LayerSet::SDK,
         };
 
         let app = router(state);
@@ -144,6 +146,7 @@ mod tests {
             prometheus_handle: make_prometheus_handle(),
             active_connections: Arc::new(AtomicI64::new(0)),
             inbound_tx,
+            active_layers: crate::layer::LayerSet::SDK,
         };
 
         let app = router(state);
@@ -166,6 +169,7 @@ mod tests {
             prometheus_handle: make_prometheus_handle(),
             active_connections: Arc::new(AtomicI64::new(0)),
             inbound_tx,
+            active_layers: crate::layer::LayerSet::SDK,
         };
 
         let app = router(state);
@@ -192,6 +196,7 @@ mod tests {
             prometheus_handle: handle,
             active_connections: Arc::new(AtomicI64::new(0)),
             inbound_tx,
+            active_layers: crate::layer::LayerSet::SDK,
         };
 
         let app = router(state);
@@ -229,6 +234,7 @@ mod tests {
             prometheus_handle: handle.clone(),
             active_connections: Arc::clone(&active_connections),
             inbound_tx,
+            active_layers: crate::layer::LayerSet::SDK,
         };
 
         // We call the handler manually using the recorder.
@@ -264,6 +270,7 @@ mod tests {
             prometheus_handle: make_prometheus_handle(),
             active_connections: Arc::new(AtomicI64::new(0)),
             inbound_tx,
+            active_layers: crate::layer::LayerSet::SDK,
         };
 
         // First request: not ready (503)
