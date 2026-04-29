@@ -109,4 +109,49 @@ mod tests {
             assert!(module_path.starts_with("aa_hooks."));
         }
     }
+
+    /// Helper: create a test handle for use in hook installation tests.
+    fn test_handle() -> AssemblyHandle {
+        let (tx, _rx) = tokio::sync::mpsc::channel(16);
+        let ipc = crate::ipc::IpcHandle { cmd_tx: tx, thread: None };
+        AssemblyHandle::new(ipc, vec!["openai".to_string()])
+    }
+
+    #[test]
+    fn install_hooks_no_frameworks_is_noop() {
+        pyo3::prepare_freethreaded_python();
+        Python::with_gil(|py| {
+            let handle = Py::new(py, test_handle()).unwrap();
+            let installed = install_hooks(py, handle.bind(py), &[]);
+            assert!(installed.is_empty());
+        });
+    }
+
+    #[test]
+    fn install_hooks_unknown_framework_skips() {
+        pyo3::prepare_freethreaded_python();
+        Python::with_gil(|py| {
+            let handle = Py::new(py, test_handle()).unwrap();
+            let detected = vec!["pytorch".to_string()];
+            let installed = install_hooks(py, handle.bind(py), &detected);
+            assert!(installed.is_empty());
+        });
+    }
+
+    #[test]
+    fn install_hooks_openai_without_openai_package_degrades() {
+        // When the openai Python package is not installed, the hook's
+        // install() will fail — but install_hooks should degrade gracefully.
+        pyo3::prepare_freethreaded_python();
+        Python::with_gil(|py| {
+            let handle = Py::new(py, test_handle()).unwrap();
+            let detected = vec!["openai".to_string()];
+            let installed = install_hooks(py, handle.bind(py), &detected);
+            // The hook module (aa_hooks.openai) will be found (it's in-tree),
+            // but install() will try to import the openai package which may
+            // not be installed in the test environment. Either way, no panic.
+            // We just verify it returns without error.
+            assert!(installed.len() <= 1);
+        });
+    }
 }
