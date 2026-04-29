@@ -62,7 +62,7 @@ pub struct PolicyEngine {
     // construction time and will not update when the watcher swaps in a new policy document.
     compiled_patterns: Vec<regex::Regex>,
     rate_state: DashMap<String, Mutex<crate::engine::rate_limit::TokenBucket>>,
-    budget: crate::engine::budget::BudgetTracker,
+    budget: crate::budget::BudgetTracker,
     _watcher: Option<notify::RecommendedWatcher>,
 }
 
