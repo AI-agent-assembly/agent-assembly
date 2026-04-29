@@ -67,3 +67,26 @@ async fn list_pending_returns_empty_initially() {
 
     assert!(resp.requests.is_empty());
 }
+
+#[tokio::test]
+async fn list_pending_returns_submitted_request() {
+    let (addr, queue) = start_server().await;
+    let mut client = ApprovalServiceClient::connect(format!("http://{addr}"))
+        .await
+        .unwrap();
+
+    let req = make_test_request();
+    let expected_id = req.request_id.to_string();
+    let (_rid, _fut) = queue.submit(req);
+
+    let resp = client
+        .list_pending(ListPendingRequest {})
+        .await
+        .unwrap()
+        .into_inner();
+
+    assert_eq!(resp.requests.len(), 1);
+    assert_eq!(resp.requests[0].request_id, expected_id);
+    assert_eq!(resp.requests[0].agent_id, "agent-test");
+    assert_eq!(resp.requests[0].action, "deploy to production");
+}
