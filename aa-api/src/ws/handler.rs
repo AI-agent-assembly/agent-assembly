@@ -2,15 +2,15 @@
 
 use std::time::Duration;
 
+use crate::models::{EventType, GovernanceEvent};
+use crate::state::AppState;
+use crate::ws::params::WsQueryParams;
 use axum::extract::ws::{Message, WebSocket};
 use axum::extract::{Query, WebSocketUpgrade};
 use axum::response::IntoResponse;
 use axum::Extension;
 use futures::stream::SplitSink;
 use futures::{SinkExt, StreamExt};
-use crate::models::{EventType, GovernanceEvent};
-use crate::state::AppState;
-use crate::ws::params::WsQueryParams;
 
 /// Interval between server-initiated ping frames.
 const PING_INTERVAL: Duration = Duration::from_secs(30);
@@ -64,21 +64,11 @@ async fn handle_socket(socket: WebSocket, params: WsQueryParams, state: AppState
             // Check that client responded to the previous ping.
             if !pong_flag.load(std::sync::atomic::Ordering::Relaxed) {
                 tracing::debug!("pong timeout — closing WebSocket");
-                let _ = ping_sender
-                    .lock()
-                    .await
-                    .close()
-                    .await;
+                let _ = ping_sender.lock().await.close().await;
                 return;
             }
             pong_flag.store(false, std::sync::atomic::Ordering::Relaxed);
-            if ping_sender
-                .lock()
-                .await
-                .send(Message::Ping(vec![]))
-                .await
-                .is_err()
-            {
+            if ping_sender.lock().await.send(Message::Ping(vec![])).await.is_err() {
                 return;
             }
         }
@@ -171,9 +161,7 @@ fn matches_filter(event: &GovernanceEvent, types: &[EventType], agent_id: Option
 /// Extract the agent id from a pipeline event.
 fn extract_pipeline_agent_id(ev: &aa_runtime::pipeline::event::PipelineEvent) -> String {
     match ev {
-        aa_runtime::pipeline::event::PipelineEvent::Audit(enriched) => {
-            enriched.agent_id.clone()
-        }
+        aa_runtime::pipeline::event::PipelineEvent::Audit(enriched) => enriched.agent_id.clone(),
         aa_runtime::pipeline::event::PipelineEvent::LayerDegradation(info) => {
             format!("system:{}", info.layer)
         }
@@ -186,10 +174,5 @@ async fn send_event(
     event: &GovernanceEvent,
 ) -> Result<(), ()> {
     let json = serde_json::to_string(event).map_err(|_| ())?;
-    sender
-        .lock()
-        .await
-        .send(Message::Text(json))
-        .await
-        .map_err(|_| ())
+    sender.lock().await.send(Message::Text(json)).await.map_err(|_| ())
 }

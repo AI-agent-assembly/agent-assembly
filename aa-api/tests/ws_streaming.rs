@@ -23,13 +23,7 @@ async fn start_server() -> (String, TestHandle) {
         axum::serve(listener, app).await.unwrap();
     });
     let url = format!("ws://127.0.0.1:{}", addr.port());
-    (
-        url,
-        TestHandle {
-            state,
-            _server: handle,
-        },
-    )
+    (url, TestHandle { state, _server: handle })
 }
 
 #[tokio::test]

@@ -41,10 +41,7 @@ impl ReplayBuffer {
     /// or the buffer is empty.
     pub fn events_since(&self, since_id: EventId) -> Vec<GovernanceEvent> {
         let buf = self.inner.lock().expect("replay buffer lock poisoned");
-        buf.iter()
-            .filter(|e| e.id > since_id)
-            .cloned()
-            .collect()
+        buf.iter().filter(|e| e.id > since_id).cloned().collect()
     }
 }
 
