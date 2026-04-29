@@ -93,7 +93,7 @@ impl TracepointManager {
     ///
     /// Returns an error immediately since eBPF is not supported on this platform.
     #[cfg(not(target_os = "linux"))]
-    pub fn attach_stub() -> Result<Self, EbpfError> {
+    pub fn attach(_bpf: &mut ()) -> Result<Self, EbpfError> {
         Err(EbpfError::ProgramLoad(
             "eBPF tracepoints are only supported on Linux".into(),
         ))
