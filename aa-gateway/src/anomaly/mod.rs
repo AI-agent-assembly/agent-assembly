@@ -4,11 +4,14 @@
 //! established baselines. The engine covers seven anomaly types defined
 //! in the Governance Gateway epic (AAASM-8 AC #5).
 //!
-//! Entry point (future): `detector::AnomalyDetector::detect`.
-
-pub mod types;
-pub use types::{AnomalyEvent, AnomalyResponse, AnomalyType};
+//! Entry point: [`AnomalyDetector::detect`](detector::AnomalyDetector::detect).
 
 pub mod baseline;
 pub mod detector;
 pub mod responder;
+pub mod types;
+
+pub use baseline::AgentBaseline;
+pub use detector::AnomalyDetector;
+pub use responder::AnomalyResponder;
+pub use types::{AnomalyConfig, AnomalyEvent, AnomalyResponse, AnomalyType};
