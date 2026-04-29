@@ -42,10 +42,7 @@ impl Interceptor {
     ///
     /// Pass `None` to disable credential scanning entirely, or `Some(scanner)`
     /// to use a custom-configured [`CredentialScanner`].
-    pub fn with_scanner(
-        event_tx: broadcast::Sender<PipelineEvent>,
-        scanner: Option<CredentialScanner>,
-    ) -> Self {
+    pub fn with_scanner(event_tx: broadcast::Sender<PipelineEvent>, scanner: Option<CredentialScanner>) -> Self {
         Self { event_tx, scanner }
     }
 

@@ -281,7 +281,10 @@ impl CredentialScanner {
         all_patterns.extend_from_slice(&custom_refs);
 
         let mut kinds: Vec<CredentialKind> = AC_KINDS.to_vec();
-        kinds.extend(std::iter::repeat_n(CredentialKind::Custom, config.custom_patterns.len()));
+        kinds.extend(std::iter::repeat_n(
+            CredentialKind::Custom,
+            config.custom_patterns.len(),
+        ));
 
         let ac = AhoCorasick::builder()
             .match_kind(aho_corasick::MatchKind::LeftmostFirst)
@@ -305,9 +308,7 @@ impl CredentialScanner {
     /// 4. High-entropy token scan (Shannon entropy > 4.5 bits/char, length 20–64).
     pub fn scan(&self, text: &str) -> ScanResult {
         if self.disabled {
-            return ScanResult {
-                findings: Vec::new(),
-            };
+            return ScanResult { findings: Vec::new() };
         }
 
         let mut findings = Vec::new();
