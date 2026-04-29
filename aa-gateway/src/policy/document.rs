@@ -79,6 +79,8 @@ pub struct PolicyDocument {
     pub budget: Option<BudgetPolicy>,
     /// Data / PII policy.
     pub data: Option<DataPolicy>,
+    /// Seconds before an approval request times out. Default: 300.
+    pub approval_timeout_secs: u32,
     /// Per-tool policies keyed by tool name.
     pub tools: std::collections::HashMap<String, ToolPolicy>,
 }
@@ -95,6 +97,7 @@ mod tests {
             schedule: None,
             budget: None,
             data: None,
+            approval_timeout_secs: 300,
             tools: std::collections::HashMap::new(),
         };
         assert!(doc.tools.is_empty());

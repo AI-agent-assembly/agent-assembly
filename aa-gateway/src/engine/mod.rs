@@ -416,6 +416,7 @@ mod tests {
             schedule: None,
             budget: None,
             data: None,
+            approval_timeout_secs: 300,
             tools: HashMap::new(),
         }
     }
