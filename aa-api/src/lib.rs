@@ -4,3 +4,18 @@
 //! OpenAPI documentation is generated at build time from route annotations
 //! via `utoipa`. CI validates that `openapi/v1.yaml` stays in sync with
 //! the generated spec — a drift failure blocks merge.
+
+pub mod config;
+pub mod error;
+pub mod events;
+pub mod middleware;
+pub mod routes;
+pub mod server;
+pub mod shutdown;
+pub mod state;
+
+pub use config::ApiConfig;
+pub use error::ProblemDetail;
+pub use events::EventBroadcast;
+pub use server::{build_app, run_server};
+pub use state::AppState;
