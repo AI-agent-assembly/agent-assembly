@@ -55,6 +55,7 @@ spec:
 }
 
 /// Build the full app for testing (router + middleware + state).
+#[allow(dead_code)]
 pub fn test_app() -> Router {
     build_app(test_state())
 }
