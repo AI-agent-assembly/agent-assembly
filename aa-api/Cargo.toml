@@ -10,7 +10,7 @@ description = "HTTP presentation layer with OpenAPI spec generation for Agent As
 aa-core = { path = "../aa-core" }
 aa-gateway = { path = "../aa-gateway" }
 aa-runtime = { path = "../aa-runtime" }
-axum = "0.7"
+axum = { version = "0.7", features = ["ws"] }
 http = "1"
 hyper = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
@@ -24,12 +24,17 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 utoipa = { version = "4", features = ["axum_extras"] }
 utoipa-swagger-ui = { version = "7", features = ["axum"] }
+chrono = { version = "0.4", features = ["serde"] }
+futures = "0.3"
+tokio-stream = "0.1"
 uuid = { version = "1", features = ["v4"] }
 
 [dev-dependencies]
 axum-test = "16"
 chrono-tz = "0.9"
+futures = "0.3"
 serde_json = "1"
+tokio-tungstenite = "0.26"
 tower = { version = "0.5", features = ["util"] }
 
 [lints]

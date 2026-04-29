@@ -1,8 +1,10 @@
 //! Shared test utilities for aa-api integration tests.
 
+use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 
 use aa_api::events::EventBroadcast;
+use aa_api::replay::ReplayBuffer;
 use aa_api::server::build_app;
 use aa_api::state::AppState;
 use aa_gateway::budget::pricing::PricingTable;
@@ -47,10 +49,13 @@ spec:
         budget_tracker,
         approval_queue,
         events,
+        replay_buffer: ReplayBuffer::new(),
+        next_event_id: Arc::new(AtomicU64::new(0)),
     }
 }
 
 /// Build the full app for testing (router + middleware + state).
+#[allow(dead_code)]
 pub fn test_app() -> Router {
     build_app(test_state())
 }
