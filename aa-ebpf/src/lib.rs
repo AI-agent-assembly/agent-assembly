@@ -52,8 +52,7 @@ pub mod maps;
 pub mod shell_detect;
 pub mod syscall;
 
-// aya-dependent modules — Linux only.
-#[cfg(target_os = "linux")]
+// aya-dependent modules — Linux only (except kprobe which has a non-Linux stub).
 pub mod kprobe;
 #[cfg(target_os = "linux")]
 pub mod ringbuf;
