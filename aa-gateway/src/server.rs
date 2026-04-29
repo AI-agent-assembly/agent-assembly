@@ -19,7 +19,7 @@ use tokio::sync::broadcast;
 
 use aa_runtime::approval::ApprovalQueue;
 
-use crate::budget::persistence::{default_budget_path, load_from_disk, start_background_writer};
+use crate::budget::persistence::{default_budget_path, load_from_disk, save_to_disk_atomic, start_background_writer};
 use crate::budget::{BudgetAlert, BudgetTracker};
 
 /// Default audit directory relative to the system data directory (`~/.aa/audit`).
@@ -111,6 +111,35 @@ fn setup_budget(
     (tracker, budget_path)
 }
 
+/// Wait for SIGINT or SIGTERM, then return so the server can shut down gracefully.
+async fn shutdown_signal() {
+    let ctrl_c = tokio::signal::ctrl_c();
+    #[cfg(unix)]
+    {
+        let mut sigterm =
+            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+                .expect("failed to register SIGTERM handler");
+        tokio::select! {
+            _ = ctrl_c => tracing::info!("received SIGINT, shutting down"),
+            _ = sigterm.recv() => tracing::info!("received SIGTERM, shutting down"),
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        ctrl_c.await.ok();
+        tracing::info!("received SIGINT, shutting down");
+    }
+}
+
+/// Persist the current budget snapshot to disk. Best-effort — logs on failure.
+fn final_budget_save(tracker: &BudgetTracker, budget_path: &Path) {
+    let snapshot = tracker.snapshot();
+    match save_to_disk_atomic(budget_path, &snapshot) {
+        Ok(()) => tracing::info!(path = %budget_path.display(), "budget state saved on shutdown"),
+        Err(e) => tracing::error!(error = %e, "failed to save budget state on shutdown"),
+    }
+}
+
 /// Start the gRPC server on a TCP address.
 ///
 /// Loads the policy from `policy_path`, wraps it in a `PolicyServiceImpl`, and
@@ -124,7 +153,7 @@ pub async fn serve_tcp(
     budget_alert_tx: broadcast::Sender<BudgetAlert>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let (tracker, budget_path) = setup_budget(policy_path, budget_alert_tx);
-    let _budget_writer = start_background_writer(Arc::clone(&tracker), budget_path);
+    let _budget_writer = start_background_writer(Arc::clone(&tracker), budget_path.clone());
     let engine = PolicyEngine::load_from_file_with_budget(policy_path, Arc::clone(&tracker))
         .map_err(|e| format!("failed to load policy: {e:?}"))?;
     let (audit_tx, audit_drops, initial_hash) = setup_audit("gateway", "default").await?;
@@ -148,8 +177,11 @@ pub async fn serve_tcp(
         .add_service(AuditServiceServer::new(audit_svc))
         .add_service(AgentLifecycleServiceServer::new(lifecycle_svc))
         .add_service(ApprovalServiceServer::new(approval_svc))
-        .serve(addr)
+        .serve_with_shutdown(addr, shutdown_signal())
         .await?;
+
+    // Final flush so the last ≤60 s of spend is not lost.
+    final_budget_save(&tracker, &budget_path);
 
     Ok(())
 }
@@ -167,7 +199,7 @@ pub async fn serve_uds(
     budget_alert_tx: broadcast::Sender<BudgetAlert>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let (tracker, budget_path) = setup_budget(policy_path, budget_alert_tx);
-    let _budget_writer = start_background_writer(Arc::clone(&tracker), budget_path);
+    let _budget_writer = start_background_writer(Arc::clone(&tracker), budget_path.clone());
     let engine = PolicyEngine::load_from_file_with_budget(policy_path, Arc::clone(&tracker))
         .map_err(|e| format!("failed to load policy: {e:?}"))?;
     let (audit_tx, audit_drops, initial_hash) = setup_audit("gateway", "default").await?;
@@ -197,8 +229,11 @@ pub async fn serve_uds(
         .add_service(AuditServiceServer::new(audit_svc))
         .add_service(AgentLifecycleServiceServer::new(lifecycle_svc))
         .add_service(ApprovalServiceServer::new(approval_svc))
-        .serve_with_incoming(incoming)
+        .serve_with_incoming_shutdown(incoming, shutdown_signal())
         .await?;
+
+    // Final flush so the last ≤60 s of spend is not lost.
+    final_budget_save(&tracker, &budget_path);
 
     Ok(())
 }
