@@ -28,18 +28,18 @@ pub fn v1_router() -> Router {
         .route("/auth/token", post(auth::issue_token))
         // Agents
         .route("/agents", get(agents::list_agents))
-        .route("/agents/{id}", get(agents::get_agent).delete(agents::delete_agent))
+        .route("/agents/:id", get(agents::get_agent).delete(agents::delete_agent))
         // Logs
         .route("/logs", get(logs::list_logs))
         // Traces
-        .route("/traces/{session_id}", get(traces::get_trace))
+        .route("/traces/:session_id", get(traces::get_trace))
         // Policies
         .route("/policies", get(policies::list_policies).post(policies::create_policy))
         .route("/policies/active", get(policies::get_active_policy))
         // Approvals
         .route("/approvals", get(approvals::list_approvals))
-        .route("/approvals/{id}/approve", post(approvals::approve_action))
-        .route("/approvals/{id}/reject", post(approvals::reject_action))
+        .route("/approvals/:id/approve", post(approvals::approve_action))
+        .route("/approvals/:id/reject", post(approvals::reject_action))
         // Costs
         .route("/costs", get(costs::get_cost_summary))
         // Alerts
