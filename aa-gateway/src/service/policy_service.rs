@@ -13,7 +13,7 @@ use aa_core::{AuditEntry, AuditEventType};
 use aa_proto::assembly::policy::v1::policy_service_server::PolicyService;
 use aa_proto::assembly::policy::v1::{BatchCheckRequest, BatchCheckResponse, CheckActionRequest, CheckActionResponse};
 
-use aa_runtime::approval::ApprovalQueue;
+use aa_runtime::approval::{ApprovalQueue, ApprovalRequest};
 
 use crate::engine::{DenyAction, EvaluationResult, PolicyEngine};
 use crate::registry::convert::proto_agent_id_to_key;
@@ -153,6 +153,31 @@ impl PolicyServiceImpl {
             tracing::warn!(error = %e, "failed to suspend agent on budget exceeded");
         } else {
             tracing::info!(agent_id = ?proto_agent.agent_id, "agent suspended: {reason_text}");
+        }
+    }
+
+    /// Build an [`ApprovalRequest`] from a gRPC request and the policy timeout.
+    fn build_approval_request(req: &CheckActionRequest, timeout_secs: u32) -> ApprovalRequest {
+        let agent_id = req
+            .agent_id
+            .as_ref()
+            .map(|a| a.agent_id.clone())
+            .unwrap_or_default();
+        let now = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        ApprovalRequest {
+            request_id: uuid::Uuid::new_v4(),
+            agent_id,
+            action: format!("action_type={}", req.action_type),
+            condition_triggered: "requires_approval".to_string(),
+            submitted_at: now,
+            timeout_secs: u64::from(timeout_secs),
+            fallback: aa_core::PolicyResult::Deny {
+                reason: "approval timed out".to_string(),
+            },
         }
     }
 
