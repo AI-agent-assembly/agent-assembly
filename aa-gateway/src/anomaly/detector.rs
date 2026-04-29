@@ -211,6 +211,32 @@ impl AnomalyDetector {
         }
     }
 
+    /// Detect cross-agent identity spoofing: the claimed agent ID does not
+    /// match the credential owner's agent ID.
+    ///
+    /// Returns `Some(AnomalyEvent)` with [`AnomalyResponse::Alert`] when
+    /// an agent presents credentials belonging to a different agent.
+    pub fn check_identity_spoofing(
+        &self,
+        claimed_agent_id: AgentId,
+        credential_owner_id: AgentId,
+    ) -> Option<AnomalyEvent> {
+        if claimed_agent_id == credential_owner_id {
+            return None;
+        }
+        Some(AnomalyEvent {
+            anomaly_type: AnomalyType::CrossAgentIdentitySpoofing,
+            response: AnomalyResponse::default_for(AnomalyType::CrossAgentIdentitySpoofing),
+            agent_id: claimed_agent_id,
+            description: format!(
+                "Agent {:?} presented credentials belonging to agent {:?}",
+                claimed_agent_id.as_bytes(),
+                credential_owner_id.as_bytes()
+            ),
+            detected_at: chrono::Utc::now(),
+        })
+    }
+
     /// Compute a stable hash for a (tool_name, args) pair.
     fn hash_tool_call(tool_name: &str, args: &str) -> u64 {
         let mut hasher = Sha256::new();
