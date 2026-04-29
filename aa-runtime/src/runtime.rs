@@ -180,6 +180,76 @@ fn spawn_ebpf_tls(
     degraded_layers.push("ebpf/tls".to_string());
 }
 
+/// Spawn the eBPF file I/O kprobe sub-layer.
+///
+/// Loads the file I/O BPF program, attaches kprobes, and starts the perf
+/// event reader. Each `FileIoEvent` is mapped to an `AuditEvent` via
+/// [`crate::ebpf_bridge::file_io_to_audit`] and enriched before being
+/// broadcast on the pipeline channel.
+#[cfg(target_os = "linux")]
+fn spawn_ebpf_file_io(
+    tracker: &tokio_util::task::TaskTracker,
+    broadcast_tx: &tokio::sync::broadcast::Sender<crate::pipeline::PipelineEvent>,
+    seq: &std::sync::Arc<std::sync::atomic::AtomicU64>,
+    agent_id: &str,
+    degraded_layers: &mut Vec<String>,
+) {
+    let pid = std::process::id();
+    let mut loader = aa_ebpf::FileIoLoader::new(pid);
+
+    if let Err(e) = loader.load() {
+        let reason = format!("file I/O BPF load failed: {e}");
+        tracing::warn!(%reason, "degrading ebpf/file_io sub-layer");
+        emit_ebpf_degradation(broadcast_tx, "ebpf/file_io", reason);
+        degraded_layers.push("ebpf/file_io".to_string());
+        return;
+    }
+
+    if let Err(e) = loader.attach_kprobes() {
+        let reason = format!("file I/O kprobe attach failed: {e}");
+        tracing::warn!(%reason, "degrading ebpf/file_io sub-layer");
+        emit_ebpf_degradation(broadcast_tx, "ebpf/file_io", reason);
+        degraded_layers.push("ebpf/file_io".to_string());
+        return;
+    }
+
+    let mut rx = match loader.start_event_reader() {
+        Ok(r) => r,
+        Err(e) => {
+            let reason = format!("file I/O event reader failed: {e}");
+            tracing::warn!(%reason, "degrading ebpf/file_io sub-layer");
+            emit_ebpf_degradation(broadcast_tx, "ebpf/file_io", reason);
+            degraded_layers.push("ebpf/file_io".to_string());
+            return;
+        }
+    };
+
+    let fio_broadcast_tx = broadcast_tx.clone();
+    let fio_seq = std::sync::Arc::clone(seq);
+    let fio_agent_id = agent_id.to_string();
+    tracker.spawn(async move {
+        while let Some(event) = rx.recv().await {
+            let audit = crate::ebpf_bridge::file_io_to_audit(&event);
+            let enriched = crate::ebpf_bridge::enrich_ebpf(audit, &fio_agent_id, &fio_seq);
+            let _ = fio_broadcast_tx.send(crate::pipeline::PipelineEvent::Audit(Box::new(enriched)));
+        }
+        tracing::info!("ebpf/file_io event reader closed");
+    });
+    tracing::info!("ebpf/file_io sub-layer task spawned");
+}
+
+#[cfg(not(target_os = "linux"))]
+fn spawn_ebpf_file_io(
+    _tracker: &tokio_util::task::TaskTracker,
+    broadcast_tx: &tokio::sync::broadcast::Sender<crate::pipeline::PipelineEvent>,
+    _seq: &std::sync::Arc<std::sync::atomic::AtomicU64>,
+    _agent_id: &str,
+    degraded_layers: &mut Vec<String>,
+) {
+    emit_ebpf_degradation(broadcast_tx, "ebpf/file_io", "eBPF not supported on this platform".to_string());
+    degraded_layers.push("ebpf/file_io".to_string());
+}
+
 /// Emit a [`PipelineEvent::LayerDegradation`] for the proxy layer.
 fn emit_proxy_degradation(
     broadcast_tx: &tokio::sync::broadcast::Sender<crate::pipeline::PipelineEvent>,
