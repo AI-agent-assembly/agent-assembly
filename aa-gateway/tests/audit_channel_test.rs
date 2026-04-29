@@ -32,7 +32,7 @@ async fn start_server_with_tiny_channel() -> (SocketAddr, Arc<AtomicU64>, tokio:
     // Channel capacity of 1 — will fill up quickly.
     let (audit_tx, audit_rx) = tokio::sync::mpsc::channel::<AuditEntry>(1);
     let audit_drops = Arc::new(AtomicU64::new(0));
-    let service = PolicyServiceImpl::new(Arc::new(engine), audit_tx, Arc::clone(&audit_drops));
+    let service = PolicyServiceImpl::new(Arc::new(engine), audit_tx, Arc::clone(&audit_drops), [0u8; 32]);
 
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();

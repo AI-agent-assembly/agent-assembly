@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Instant, SystemTime};
 
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, Mutex};
 use tonic::{Request, Response, Status};
 
 use aa_core::identity::{AgentId, SessionId};
@@ -21,15 +21,28 @@ pub struct PolicyServiceImpl {
     engine: Arc<PolicyEngine>,
     audit_tx: mpsc::Sender<AuditEntry>,
     audit_drops: Arc<AtomicU64>,
+    seq: AtomicU64,
+    last_hash: Mutex<[u8; 32]>,
 }
 
 impl PolicyServiceImpl {
     /// Create a new service backed by the given policy engine and audit channel.
-    pub fn new(engine: Arc<PolicyEngine>, audit_tx: mpsc::Sender<AuditEntry>, audit_drops: Arc<AtomicU64>) -> Self {
+    ///
+    /// `initial_hash` should be the `entry_hash` of the last persisted audit entry
+    /// (obtained via [`AuditWriter::read_last_hash`]) so the hash chain is maintained
+    /// across process restarts. Pass `[0u8; 32]` for a fresh chain.
+    pub fn new(
+        engine: Arc<PolicyEngine>,
+        audit_tx: mpsc::Sender<AuditEntry>,
+        audit_drops: Arc<AtomicU64>,
+        initial_hash: [u8; 32],
+    ) -> Self {
         Self {
             engine,
             audit_tx,
             audit_drops,
+            seq: AtomicU64::new(0),
+            last_hash: Mutex::new(initial_hash),
         }
     }
 
@@ -56,14 +69,9 @@ impl PolicyServiceImpl {
     }
 
     /// Build an `AuditEntry` from a request and evaluation result, then fire-and-forget
-    /// via `try_send`. Never blocks the caller.
-    fn record_audit(
-        &self,
-        req: &CheckActionRequest,
-        response: &CheckActionResponse,
-        seq: u64,
-        previous_hash: [u8; 32],
-    ) {
+    /// via `try_send`. Maintains the hash chain by reading and updating `last_hash`.
+    /// Never blocks the caller beyond the brief mutex acquisition.
+    async fn record_audit(&self, req: &CheckActionRequest, response: &CheckActionResponse) {
         let proto_agent = match req.agent_id.as_ref() {
             Some(a) => a,
             None => return, // No agent identity — cannot construct entry.
@@ -72,6 +80,7 @@ impl PolicyServiceImpl {
         let session_id = SessionId::from_bytes(convert::hash_to_16(&req.trace_id));
         let event_type = Self::decision_to_event_type_from_response(response.decision);
         let timestamp_ns = Timestamp::from(SystemTime::now()).as_nanos();
+        let seq = self.seq.fetch_add(1, Ordering::Relaxed);
 
         let payload = serde_json::json!({
             "action_type": req.action_type,
@@ -82,15 +91,15 @@ impl PolicyServiceImpl {
         })
         .to_string();
 
-        let entry = AuditEntry::new(
-            seq,
-            timestamp_ns,
-            event_type,
-            agent_id,
-            session_id,
-            payload,
-            previous_hash,
-        );
+        let mut last_hash = self.last_hash.lock().await;
+
+        let entry = AuditEntry::new(seq, timestamp_ns, event_type, agent_id, session_id, payload, *last_hash);
+
+        // Update the chain head before sending — even if try_send fails (the entry
+        // is dropped), we advance the chain so subsequent entries don't duplicate
+        // the previous_hash and produce a misleading "valid" chain with a gap.
+        *last_hash = *entry.entry_hash();
+        drop(last_hash);
 
         if let Err(e) = self.audit_tx.try_send(entry) {
             match e {
@@ -151,7 +160,7 @@ impl PolicyService for PolicyServiceImpl {
         }
 
         // Fire-and-forget audit entry — never blocks the response.
-        self.record_audit(&req, &response, 0, [0u8; 32]);
+        self.record_audit(&req, &response).await;
 
         Ok(Response::new(response))
     }
@@ -160,9 +169,9 @@ impl PolicyService for PolicyServiceImpl {
         let batch = request.into_inner();
         let mut responses = Vec::with_capacity(batch.requests.len());
 
-        for (i, req) in batch.requests.iter().enumerate() {
+        for req in &batch.requests {
             let resp = self.evaluate_one(req)?;
-            self.record_audit(req, &resp, i as u64, [0u8; 32]);
+            self.record_audit(req, &resp).await;
             responses.push(resp);
         }
 

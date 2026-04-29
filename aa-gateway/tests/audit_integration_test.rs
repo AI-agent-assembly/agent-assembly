@@ -40,8 +40,8 @@ async fn start_server_with_audit_rx() -> (SocketAddr, mpsc::Receiver<AuditEntry>
     let engine = PolicyEngine::load_from_file(tmp.path()).unwrap();
     let (audit_tx, audit_rx) = mpsc::channel::<AuditEntry>(4096);
     let audit_drops = Arc::new(AtomicU64::new(0));
-    let policy_svc = PolicyServiceImpl::new(Arc::new(engine), audit_tx.clone(), Arc::clone(&audit_drops));
-    let audit_svc = AuditServiceImpl::new(audit_tx, Arc::clone(&audit_drops));
+    let policy_svc = PolicyServiceImpl::new(Arc::new(engine), audit_tx.clone(), Arc::clone(&audit_drops), [0u8; 32]);
+    let audit_svc = AuditServiceImpl::new(audit_tx, Arc::clone(&audit_drops), [0u8; 32]);
 
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();

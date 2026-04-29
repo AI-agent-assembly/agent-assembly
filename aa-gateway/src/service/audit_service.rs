@@ -5,7 +5,7 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, Mutex};
 use tonic::{Request, Response, Status};
 
 use aa_core::identity::{AgentId, SessionId};
@@ -22,22 +22,28 @@ pub struct AuditServiceImpl {
     audit_tx: mpsc::Sender<AuditEntry>,
     audit_drops: Arc<AtomicU64>,
     seq: AtomicU64,
+    last_hash: Mutex<[u8; 32]>,
 }
 
 impl AuditServiceImpl {
     /// Create a new service backed by the given audit channel.
-    pub fn new(audit_tx: mpsc::Sender<AuditEntry>, audit_drops: Arc<AtomicU64>) -> Self {
+    ///
+    /// `initial_hash` seeds the hash chain — pass `[0u8; 32]` for a fresh chain,
+    /// or the last persisted hash to continue an existing chain.
+    pub fn new(audit_tx: mpsc::Sender<AuditEntry>, audit_drops: Arc<AtomicU64>, initial_hash: [u8; 32]) -> Self {
         Self {
             audit_tx,
             audit_drops,
             seq: AtomicU64::new(0),
+            last_hash: Mutex::new(initial_hash),
         }
     }
 
     /// Convert a proto `AuditEvent` into a core `AuditEntry` and send via try_send.
     ///
-    /// Returns the event_id on success, or an empty string if the entry was dropped.
-    fn ingest_event(&self, event: &AuditEvent, previous_hash: [u8; 32]) -> String {
+    /// Maintains the hash chain by reading and updating `last_hash`.
+    /// Returns the event_id on success, or the event_id even if the entry was dropped.
+    async fn ingest_event(&self, event: &AuditEvent) -> String {
         let event_id = event.event_id.clone();
         let seq = self.seq.fetch_add(1, Ordering::Relaxed);
 
@@ -69,15 +75,12 @@ impl AuditServiceImpl {
         })
         .to_string();
 
-        let entry = AuditEntry::new(
-            seq,
-            timestamp_ns,
-            event_type,
-            agent_id,
-            session_id,
-            payload,
-            previous_hash,
-        );
+        let mut last_hash = self.last_hash.lock().await;
+
+        let entry = AuditEntry::new(seq, timestamp_ns, event_type, agent_id, session_id, payload, *last_hash);
+
+        *last_hash = *entry.entry_hash();
+        drop(last_hash);
 
         if let Err(e) = self.audit_tx.try_send(entry) {
             match e {
@@ -116,7 +119,7 @@ impl AuditService for AuditServiceImpl {
         let mut event_ids = Vec::with_capacity(batch.events.len());
 
         for event in &batch.events {
-            let id = self.ingest_event(event, [0u8; 32]);
+            let id = self.ingest_event(event).await;
             event_ids.push(id);
         }
 
@@ -134,7 +137,7 @@ impl AuditService for AuditServiceImpl {
             tracing::error!(error = %e, "stream_events receive error");
             Status::internal(format!("stream receive error: {e}"))
         })? {
-            self.ingest_event(&event, [0u8; 32]);
+            self.ingest_event(&event).await;
             events_received += 1;
         }
 

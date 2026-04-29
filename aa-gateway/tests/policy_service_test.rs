@@ -30,7 +30,7 @@ async fn start_server(policy_yaml: &str) -> SocketAddr {
     let engine = PolicyEngine::load_from_file(tmp.path()).unwrap();
     let (audit_tx, _audit_rx) = tokio::sync::mpsc::channel(4096);
     let audit_drops = Arc::new(AtomicU64::new(0));
-    let service = PolicyServiceImpl::new(Arc::new(engine), audit_tx, audit_drops);
+    let service = PolicyServiceImpl::new(Arc::new(engine), audit_tx, audit_drops, [0u8; 32]);
 
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
