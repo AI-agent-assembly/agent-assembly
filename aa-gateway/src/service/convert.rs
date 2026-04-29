@@ -198,6 +198,55 @@ pub fn result_to_response(result: &PolicyResult, latency_us: i64, policy_rule: &
     eval_result_to_response(&eval, latency_us, policy_rule)
 }
 
+/// Convert an [`ApprovalDecision`] into a [`CheckActionResponse`].
+///
+/// Maps `Approved` → `Decision::Allow`, `Rejected` → `Decision::Deny`,
+/// `TimedOut` → decision derived from the fallback `PolicyResult`.
+/// The real `approval_id` from the queue is included in all cases.
+pub fn approval_decision_to_response(
+    decision: &ApprovalDecision,
+    approval_id: &ApprovalRequestId,
+    latency_us: i64,
+    policy_rule: &str,
+) -> CheckActionResponse {
+    let id_str = approval_id.to_string();
+    match decision {
+        ApprovalDecision::Approved { .. } => CheckActionResponse {
+            decision: Decision::Allow as i32,
+            reason: String::new(),
+            policy_rule: policy_rule.to_string(),
+            approval_id: id_str,
+            redact: None,
+            decision_latency_us: latency_us,
+        },
+        ApprovalDecision::Rejected { reason, .. } => CheckActionResponse {
+            decision: Decision::Deny as i32,
+            reason: reason.clone(),
+            policy_rule: policy_rule.to_string(),
+            approval_id: id_str,
+            redact: None,
+            decision_latency_us: latency_us,
+        },
+        ApprovalDecision::TimedOut { fallback } => {
+            let (proto_decision, reason) = match fallback {
+                PolicyResult::Allow => (Decision::Allow, String::new()),
+                PolicyResult::Deny { reason } => (Decision::Deny, reason.clone()),
+                PolicyResult::RequiresApproval { .. } => {
+                    (Decision::Deny, "approval timed out".to_string())
+                }
+            };
+            CheckActionResponse {
+                decision: proto_decision as i32,
+                reason,
+                policy_rule: policy_rule.to_string(),
+                approval_id: id_str,
+                redact: None,
+                decision_latency_us: latency_us,
+            }
+        }
+    }
+}
+
 /// Convert a [`PendingApprovalRequest`] (from `ApprovalQueue::list()`) into its
 /// proto representation.
 pub fn pending_to_proto(p: &PendingApprovalRequest) -> PendingApproval {
