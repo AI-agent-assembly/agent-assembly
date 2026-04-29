@@ -72,17 +72,20 @@ pub async fn run(config: RuntimeConfig) {
     let active_layers = crate::layer::LayerDetector::detect();
     tracing::info!(layers = %active_layers, "active interception layers");
 
+    let mut degraded_layers: Vec<String> = Vec::new();
     if !active_layers.contains(crate::layer::LayerSet::EBPF) {
         tracing::warn!(
             remaining = %active_layers,
             "eBPF layer unavailable — requires Linux >= 5.8, BTF, and CAP_BPF"
         );
+        degraded_layers.push("ebpf".to_string());
     }
     if !active_layers.contains(crate::layer::LayerSet::PROXY) {
         tracing::warn!(
             remaining = %active_layers,
             "proxy layer unavailable — aa-proxy binary not found in PATH"
         );
+        degraded_layers.push("proxy".to_string());
     }
 
     // Build pipeline config and create the inbound channel at the configured depth.
@@ -168,6 +171,7 @@ pub async fn run(config: RuntimeConfig) {
             active_connections: std::sync::Arc::clone(&active_connections),
             inbound_tx: inbound_tx_health,
             active_layers,
+            degraded_layers,
         };
         let addr: std::net::SocketAddr = config
             .metrics_addr

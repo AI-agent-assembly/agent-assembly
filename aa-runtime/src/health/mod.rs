@@ -21,6 +21,7 @@ pub struct HealthState {
     pub active_connections: Arc<AtomicI64>,
     pub inbound_tx: mpsc::Sender<(u64, IpcFrame)>,
     pub active_layers: crate::layer::LayerSet,
+    pub degraded_layers: Vec<String>,
 }
 
 /// Response body for GET /health.
@@ -30,6 +31,7 @@ pub struct HealthResponse {
     pub uptime_secs: u64,
     pub events_processed: u64,
     pub active_layers: Vec<&'static str>,
+    pub degraded_layers: Vec<String>,
 }
 
 /// Build the axum router with all three routes.
@@ -49,6 +51,7 @@ async fn health_handler(axum::extract::State(state): axum::extract::State<Health
         uptime_secs: state.start_time.elapsed().as_secs(),
         events_processed: state.pipeline_metrics.processed(),
         active_layers: state.active_layers.names(),
+        degraded_layers: state.degraded_layers.clone(),
     })
 }
 
@@ -100,12 +103,14 @@ mod tests {
             uptime_secs: 42,
             events_processed: 100,
             active_layers: vec!["sdk"],
+            degraded_layers: vec![],
         };
         let json = serde_json::to_string(&resp).expect("serialization failed");
         assert!(json.contains("\"status\":\"healthy\""));
         assert!(json.contains("\"uptime_secs\":42"));
         assert!(json.contains("\"events_processed\":100"));
         assert!(json.contains("\"active_layers\":[\"sdk\"]"));
+        assert!(json.contains("\"degraded_layers\":[]"));
     }
 
     #[tokio::test]
@@ -122,6 +127,7 @@ mod tests {
             active_connections: Arc::new(AtomicI64::new(0)),
             inbound_tx,
             active_layers: crate::layer::LayerSet::SDK,
+            degraded_layers: vec![],
         };
 
         let app = router(state);
@@ -151,6 +157,7 @@ mod tests {
             active_connections: Arc::new(AtomicI64::new(0)),
             inbound_tx,
             active_layers: crate::layer::LayerSet::SDK,
+            degraded_layers: vec![],
         };
 
         let app = router(state);
@@ -174,6 +181,7 @@ mod tests {
             active_connections: Arc::new(AtomicI64::new(0)),
             inbound_tx,
             active_layers: crate::layer::LayerSet::SDK,
+            degraded_layers: vec![],
         };
 
         let app = router(state);
@@ -201,6 +209,7 @@ mod tests {
             active_connections: Arc::new(AtomicI64::new(0)),
             inbound_tx,
             active_layers: crate::layer::LayerSet::SDK,
+            degraded_layers: vec![],
         };
 
         let app = router(state);
@@ -239,6 +248,7 @@ mod tests {
             active_connections: Arc::clone(&active_connections),
             inbound_tx,
             active_layers: crate::layer::LayerSet::SDK,
+            degraded_layers: vec![],
         };
 
         // We call the handler manually using the recorder.
@@ -275,6 +285,7 @@ mod tests {
             active_connections: Arc::new(AtomicI64::new(0)),
             inbound_tx,
             active_layers: crate::layer::LayerSet::SDK,
+            degraded_layers: vec![],
         };
 
         // First request: not ready (503)
@@ -307,6 +318,7 @@ mod tests {
             active_connections: Arc::new(AtomicI64::new(0)),
             inbound_tx,
             active_layers: crate::layer::LayerSet::SDK,
+            degraded_layers: vec![],
         };
 
         let app = router(state);
@@ -339,6 +351,7 @@ mod tests {
             active_connections: Arc::new(AtomicI64::new(0)),
             inbound_tx,
             active_layers: all_layers,
+            degraded_layers: vec![],
         };
 
         let app = router(state);
