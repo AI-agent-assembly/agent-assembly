@@ -19,6 +19,7 @@ mod codec;
 mod config;
 mod detect;
 mod handle;
+mod hooks;
 mod ipc;
 
 use pyo3::prelude::*;
@@ -54,7 +55,7 @@ fn init_assembly(
     agent_id: String,
     socket_path: Option<String>,
     mode: &str,
-) -> PyResult<AssemblyHandle> {
+) -> PyResult<Py<AssemblyHandle>> {
     // Validate agent_id.
     if agent_id.is_empty() {
         return Err(pyo3::exceptions::PyValueError::new_err("agent_id must not be empty"));
@@ -84,7 +85,13 @@ fn init_assembly(
     let ipc_handle = ipc::spawn_ipc_thread(resolved_path)
         .map_err(|e| pyo3::exceptions::PyOSError::new_err(format!("failed to spawn IPC thread: {e}")))?;
 
-    Ok(AssemblyHandle::new(ipc_handle, detected_frameworks))
+    // Create the Python handle object so we can pass it to hook installers.
+    let handle = Py::new(py, AssemblyHandle::new(ipc_handle, detected_frameworks.clone()))?;
+
+    // Install framework-specific hooks for each detected framework.
+    let _installed = hooks::install_hooks(py, handle.bind(py), &detected_frameworks);
+
+    Ok(handle)
 }
 
 /// Python module definition for `agent_assembly`.
@@ -104,7 +111,7 @@ mod tests {
         pyo3::prepare_freethreaded_python();
         Python::with_gil(|py| {
             let result = init_assembly(py, String::new(), None, "auto");
-            let err = result.err().expect("should reject empty agent_id");
+            let err = result.expect_err("should reject empty agent_id");
             assert!(err.to_string().contains("agent_id must not be empty"));
         });
     }
@@ -114,7 +121,7 @@ mod tests {
         pyo3::prepare_freethreaded_python();
         Python::with_gil(|py| {
             let result = init_assembly(py, "test-agent".to_string(), None, "embedded");
-            let err = result.err().expect("should reject embedded mode");
+            let err = result.expect_err("should reject embedded mode");
             assert!(err.to_string().contains("embedded mode is not yet supported"));
         });
     }
@@ -124,7 +131,7 @@ mod tests {
         pyo3::prepare_freethreaded_python();
         Python::with_gil(|py| {
             let result = init_assembly(py, "test-agent".to_string(), None, "bogus");
-            let err = result.err().expect("should reject unknown mode");
+            let err = result.expect_err("should reject unknown mode");
             assert!(err.to_string().contains("unknown mode"));
         });
     }
@@ -145,7 +152,7 @@ mod tests {
             assert!(result.is_ok());
             let handle = result.unwrap();
             // Clean up the background thread.
-            handle.shutdown(py).unwrap();
+            handle.bind(py).borrow().shutdown(py).unwrap();
         });
     }
 }
