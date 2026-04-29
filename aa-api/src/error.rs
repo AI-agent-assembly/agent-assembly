@@ -5,7 +5,14 @@ use axum::response::{IntoResponse, Response};
 use serde::Serialize;
 
 /// RFC 7807 Problem Details JSON body.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
+#[schema(example = json!({
+    "type": "about:blank",
+    "title": "Not Found",
+    "status": 404,
+    "detail": "No route matched: /unknown",
+    "instance": "/unknown"
+}))]
 pub struct ProblemDetail {
     /// URI reference identifying the problem type.
     #[serde(rename = "type")]

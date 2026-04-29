@@ -6,8 +6,9 @@ use axum::Json;
 use serde::Serialize;
 
 /// Response body for the health endpoint.
-#[derive(Serialize)]
+#[derive(Serialize, utoipa::ToSchema)]
 pub struct HealthResponse {
+    /// Liveness status string, always `"ok"` when the service is running.
     pub status: String,
 }
 
