@@ -117,6 +117,28 @@ pub fn enrich_ebpf(event: AuditEvent, agent_id: &str, seq: &Arc<AtomicU64>) -> E
 mod tests {
     use super::*;
 
+    #[test]
+    fn enrich_ebpf_sets_source_and_connection_id() {
+        let audit = AuditEvent::default();
+        let seq = Arc::new(AtomicU64::new(0));
+        let enriched = enrich_ebpf(audit, "test-agent", &seq);
+
+        assert_eq!(enriched.source, EventSource::EBpf);
+        assert_eq!(enriched.connection_id, 0);
+        assert_eq!(enriched.agent_id, "test-agent");
+        assert!(enriched.received_at_ms > 0);
+    }
+
+    #[test]
+    fn enrich_ebpf_increments_sequence() {
+        let seq = Arc::new(AtomicU64::new(0));
+        let e1 = enrich_ebpf(AuditEvent::default(), "a", &seq);
+        let e2 = enrich_ebpf(AuditEvent::default(), "a", &seq);
+
+        assert_eq!(e1.sequence_number, 0);
+        assert_eq!(e2.sequence_number, 1);
+    }
+
     fn make_file_io(syscall: SyscallKind, path: &str) -> FileIoEvent {
         FileIoEvent {
             pid: 100,
