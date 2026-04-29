@@ -20,12 +20,14 @@ tokio      = { version = "1", features = ["full"] }
 hyper      = { version = "1", features = ["server", "http1"] }
 hyper-util   = { version = "0.1", features = ["tokio", "server"] }
 rustls       = { version = "0.23", features = ["ring"] }
-tokio-rustls = "0.26"
+tokio-rustls       = "0.26"
+rustls-native-certs = "0.8"
 rcgen        = { version = "0.13", features = ["x509-parser"] }
 time         = "0.3"
 lru          = "0.16"
 anyhow       = "1"
 thiserror    = "2"
+dirs                = "6"
 bytes               = "1"
 tracing             = "0.1"
 tracing-subscriber  = { version = "0.3", features = ["env-filter"] }
