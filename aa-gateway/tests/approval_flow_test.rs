@@ -42,7 +42,8 @@ async fn start_server_with_approval(policy_yaml: &str) -> (SocketAddr, Arc<Appro
     write!(tmp, "{}", policy_yaml).unwrap();
     tmp.flush().unwrap();
 
-    let engine = Arc::new(PolicyEngine::load_from_file(tmp.path()).unwrap());
+    let (alert_tx, _) = tokio::sync::broadcast::channel::<aa_gateway::budget::BudgetAlert>(64);
+    let engine = Arc::new(PolicyEngine::load_from_file(tmp.path(), alert_tx).unwrap());
     let registry = Arc::new(aa_gateway::registry::AgentRegistry::new());
     let approval_queue = ApprovalQueue::new();
     let (audit_tx, _audit_rx) = tokio::sync::mpsc::channel(4096);
@@ -222,7 +223,8 @@ tools:
     write!(tmp, "{}", yaml).unwrap();
     tmp.flush().unwrap();
 
-    let engine = PolicyEngine::load_from_file(tmp.path()).unwrap();
+    let (alert_tx, _) = tokio::sync::broadcast::channel::<aa_gateway::budget::BudgetAlert>(64);
+    let engine = PolicyEngine::load_from_file(tmp.path(), alert_tx).unwrap();
     let (audit_tx, _audit_rx) = tokio::sync::mpsc::channel(4096);
     let audit_drops = Arc::new(AtomicU64::new(0));
     // new() has no approval queue — should degrade gracefully.

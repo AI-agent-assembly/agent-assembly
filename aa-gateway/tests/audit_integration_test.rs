@@ -37,7 +37,8 @@ async fn start_server_with_audit_rx() -> (SocketAddr, mpsc::Receiver<AuditEntry>
     write!(tmp, "{}", POLICY_YAML).unwrap();
     tmp.flush().unwrap();
 
-    let engine = PolicyEngine::load_from_file(tmp.path()).unwrap();
+    let (alert_tx, _) = tokio::sync::broadcast::channel::<aa_gateway::budget::BudgetAlert>(64);
+    let engine = PolicyEngine::load_from_file(tmp.path(), alert_tx).unwrap();
     let (audit_tx, audit_rx) = mpsc::channel::<AuditEntry>(4096);
     let audit_drops = Arc::new(AtomicU64::new(0));
     let policy_svc = PolicyServiceImpl::new(Arc::new(engine), audit_tx.clone(), Arc::clone(&audit_drops), [0u8; 32]);

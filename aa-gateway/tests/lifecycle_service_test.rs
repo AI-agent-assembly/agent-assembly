@@ -66,7 +66,8 @@ async fn start_server_with_engine(
     // Write the policy YAML to a temp file and load it.
     let mut tmp = tempfile::NamedTempFile::new().unwrap();
     std::io::Write::write_all(&mut tmp, policy_yaml.as_bytes()).unwrap();
-    let engine = Arc::new(PolicyEngine::load_from_file(tmp.path()).unwrap());
+    let (alert_tx, _) = tokio::sync::broadcast::channel::<aa_gateway::budget::BudgetAlert>(64);
+    let engine = Arc::new(PolicyEngine::load_from_file(tmp.path(), alert_tx).unwrap());
 
     let service = AgentLifecycleServiceImpl::with_policy_engine(Arc::clone(&registry), Arc::clone(&engine));
 

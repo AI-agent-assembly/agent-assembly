@@ -15,7 +15,11 @@ use aa_proto::assembly::agent::v1::agent_lifecycle_service_server::AgentLifecycl
 use aa_proto::assembly::approval::v1::approval_service_server::ApprovalServiceServer;
 use aa_proto::assembly::audit::v1::audit_service_server::AuditServiceServer;
 use aa_proto::assembly::policy::v1::policy_service_server::PolicyServiceServer;
+use tokio::sync::broadcast;
+
 use aa_runtime::approval::ApprovalQueue;
+
+use crate::budget::BudgetAlert;
 
 /// Default audit directory relative to the system data directory (`~/.aa/audit`).
 fn default_audit_dir() -> PathBuf {
@@ -62,8 +66,10 @@ pub async fn serve_tcp(
     listen_addr: &str,
     registry: Arc<AgentRegistry>,
     approval_queue: Arc<ApprovalQueue>,
+    budget_alert_tx: broadcast::Sender<BudgetAlert>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let engine = PolicyEngine::load_from_file(policy_path).map_err(|e| format!("failed to load policy: {e:?}"))?;
+    let engine = PolicyEngine::load_from_file(policy_path, budget_alert_tx)
+        .map_err(|e| format!("failed to load policy: {e:?}"))?;
     let (audit_tx, audit_drops, initial_hash) = setup_audit("gateway", "default").await?;
     let policy_svc = PolicyServiceImpl::with_registry_and_approval(
         Arc::new(engine),
@@ -101,8 +107,10 @@ pub async fn serve_uds(
     socket_path: &Path,
     registry: Arc<AgentRegistry>,
     approval_queue: Arc<ApprovalQueue>,
+    budget_alert_tx: broadcast::Sender<BudgetAlert>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let engine = PolicyEngine::load_from_file(policy_path).map_err(|e| format!("failed to load policy: {e:?}"))?;
+    let engine = PolicyEngine::load_from_file(policy_path, budget_alert_tx)
+        .map_err(|e| format!("failed to load policy: {e:?}"))?;
     let (audit_tx, audit_drops, initial_hash) = setup_audit("gateway", "default").await?;
     let policy_svc = PolicyServiceImpl::with_registry_and_approval(
         Arc::new(engine),

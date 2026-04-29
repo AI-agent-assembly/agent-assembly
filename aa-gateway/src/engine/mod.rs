@@ -2,7 +2,6 @@
 //!
 //! Core rate limiting and enforcement mechanisms for the Agent Assembly policy engine.
 
-pub(crate) mod budget;
 pub(crate) mod rate_limit;
 pub(crate) mod watcher;
 
@@ -62,7 +61,7 @@ pub struct PolicyEngine {
     // construction time and will not update when the watcher swaps in a new policy document.
     compiled_patterns: Vec<regex::Regex>,
     rate_state: DashMap<String, Mutex<crate::engine::rate_limit::TokenBucket>>,
-    budget: crate::engine::budget::BudgetTracker,
+    budget: crate::budget::BudgetTracker,
     _watcher: Option<notify::RecommendedWatcher>,
 }
 
@@ -79,7 +78,14 @@ pub enum PolicyLoadError {
 
 impl PolicyEngine {
     /// Load a policy from a YAML file, parse it, validate it, and start the filesystem watcher.
-    pub fn load_from_file(path: &Path) -> Result<Self, PolicyLoadError> {
+    ///
+    /// `budget_alert_tx` is the broadcast sender for budget threshold alerts.
+    /// Pass the sender half of the channel created in `main.rs` so alerts
+    /// reach the webhook delivery loop.
+    pub fn load_from_file(
+        path: &Path,
+        budget_alert_tx: tokio::sync::broadcast::Sender<crate::budget::BudgetAlert>,
+    ) -> Result<Self, PolicyLoadError> {
         let yaml = std::fs::read_to_string(path).map_err(PolicyLoadError::Io)?;
         let output = PolicyValidator::from_yaml(&yaml).map_err(PolicyLoadError::Validation)?;
         let compiled_patterns = output
@@ -100,6 +106,25 @@ impl PolicyEngine {
             .and_then(|bp| bp.timezone.as_deref())
             .and_then(|s| s.parse::<chrono_tz::Tz>().ok())
             .unwrap_or(chrono_tz::UTC);
+        let daily_limit = output
+            .document
+            .budget
+            .as_ref()
+            .and_then(|bp| bp.daily_limit_usd)
+            .and_then(|v| rust_decimal::Decimal::try_from(v).ok());
+        let monthly_limit = output
+            .document
+            .budget
+            .as_ref()
+            .and_then(|bp| bp.monthly_limit_usd)
+            .and_then(|v| rust_decimal::Decimal::try_from(v).ok());
+        let budget = crate::budget::BudgetTracker::new_with_alert_sender(
+            crate::budget::PricingTable::default_table(),
+            daily_limit,
+            monthly_limit,
+            budget_tz,
+            budget_alert_tx,
+        );
         let policy_arc = Arc::new(ArcSwap::new(Arc::new(output.document)));
         let watcher = crate::engine::watcher::start_watcher(path, policy_arc.clone()).ok();
         Ok(PolicyEngine {
@@ -107,7 +132,7 @@ impl PolicyEngine {
             scanner: aa_core::CredentialScanner::new(),
             compiled_patterns,
             rate_state: DashMap::new(),
-            budget: crate::engine::budget::BudgetTracker::new(budget_tz),
+            budget,
             _watcher: watcher,
         })
     }
@@ -300,27 +325,31 @@ impl PolicyEngine {
                 ActionOnExceed::Deny => None,
             };
             if let Some(limit) = bp.monthly_limit_usd {
-                if self.budget.is_monthly_exceeded(ctx.agent_id.as_bytes(), limit) {
-                    return EvaluationResult {
-                        decision: aa_core::PolicyResult::Deny {
-                            reason: "monthly budget exceeded".into(),
-                        },
-                        redacted_payload,
-                        credential_findings,
-                        deny_action,
-                    };
+                if let Ok(limit_dec) = rust_decimal::Decimal::try_from(limit) {
+                    if self.budget.check_monthly(&ctx.agent_id, limit_dec) {
+                        return EvaluationResult {
+                            decision: aa_core::PolicyResult::Deny {
+                                reason: "monthly budget exceeded".into(),
+                            },
+                            redacted_payload,
+                            credential_findings,
+                            deny_action,
+                        };
+                    }
                 }
             }
             if let Some(limit) = bp.daily_limit_usd {
-                if self.budget.is_exceeded(ctx.agent_id.as_bytes(), limit) {
-                    return EvaluationResult {
-                        decision: aa_core::PolicyResult::Deny {
-                            reason: "daily budget exceeded".into(),
-                        },
-                        redacted_payload,
-                        credential_findings,
-                        deny_action,
-                    };
+                if let Ok(limit_dec) = rust_decimal::Decimal::try_from(limit) {
+                    if self.budget.check_daily(&ctx.agent_id, limit_dec) {
+                        return EvaluationResult {
+                            decision: aa_core::PolicyResult::Deny {
+                                reason: "daily budget exceeded".into(),
+                            },
+                            redacted_payload,
+                            credential_findings,
+                            deny_action,
+                        };
+                    }
                 }
             }
         }
@@ -334,9 +363,13 @@ impl PolicyEngine {
     }
 
     /// Record a spend amount for an agent after an action completes.
+    ///
+    /// Converts the `f64` amount to `Decimal` and delegates to the advanced
+    /// tracker's `record_raw_spend`, which fires 80%/95% threshold alerts.
     pub fn record_spend(&self, ctx: &aa_core::AgentContext, amount_usd: f64) {
-        self.budget.record(ctx.agent_id.as_bytes(), amount_usd);
-        self.budget.record_monthly(ctx.agent_id.as_bytes(), amount_usd);
+        if let Ok(amount) = rust_decimal::Decimal::try_from(amount_usd) {
+            self.budget.record_raw_spend(ctx.agent_id, amount);
+        }
     }
 
     /// Check whether an agent is within both daily and monthly budget limits.
@@ -345,19 +378,24 @@ impl PolicyEngine {
     /// (or if no budget limits are configured). Used by the heartbeat handler to
     /// determine whether a budget-suspended agent can be auto-resumed.
     pub fn is_within_budget(&self, agent_id_bytes: &[u8; 16]) -> bool {
+        let agent_id = aa_core::identity::AgentId::from_bytes(*agent_id_bytes);
         let policy = self.policy.load();
         let bp = match &policy.budget {
             Some(bp) => bp,
             None => return true,
         };
         if let Some(limit) = bp.daily_limit_usd {
-            if self.budget.is_exceeded(agent_id_bytes, limit) {
-                return false;
+            if let Ok(limit_dec) = rust_decimal::Decimal::try_from(limit) {
+                if self.budget.check_daily(&agent_id, limit_dec) {
+                    return false;
+                }
             }
         }
         if let Some(limit) = bp.monthly_limit_usd {
-            if self.budget.is_monthly_exceeded(agent_id_bytes, limit) {
-                return false;
+            if let Ok(limit_dec) = rust_decimal::Decimal::try_from(limit) {
+                if self.budget.check_monthly(&agent_id, limit_dec) {
+                    return false;
+                }
             }
         }
         true
@@ -434,12 +472,27 @@ mod tests {
                     .collect()
             })
             .unwrap_or_default();
+        let daily_limit = doc
+            .budget
+            .as_ref()
+            .and_then(|bp| bp.daily_limit_usd)
+            .and_then(|v| rust_decimal::Decimal::try_from(v).ok());
+        let monthly_limit = doc
+            .budget
+            .as_ref()
+            .and_then(|bp| bp.monthly_limit_usd)
+            .and_then(|v| rust_decimal::Decimal::try_from(v).ok());
         PolicyEngine {
             policy: Arc::new(ArcSwap::new(Arc::new(doc))),
             scanner: aa_core::CredentialScanner::new(),
             compiled_patterns,
             rate_state: DashMap::new(),
-            budget: budget::BudgetTracker::new(chrono_tz::UTC),
+            budget: crate::budget::BudgetTracker::new(
+                crate::budget::PricingTable::default_table(),
+                daily_limit,
+                monthly_limit,
+                chrono_tz::UTC,
+            ),
             _watcher: None,
         }
     }
@@ -875,7 +928,8 @@ mod tests {
         let mut tmp = tempfile::NamedTempFile::new().unwrap();
         write!(tmp, "version: \"1\"\ntools:\n  search:\n    allow: true\n").unwrap();
         tmp.flush().unwrap();
-        let result = PolicyEngine::load_from_file(tmp.path());
+        let (alert_tx, _) = tokio::sync::broadcast::channel::<crate::budget::BudgetAlert>(64);
+        let result = PolicyEngine::load_from_file(tmp.path(), alert_tx);
         assert!(result.is_ok(), "expected Ok, got: {:?}", result.err());
     }
 
@@ -1069,5 +1123,92 @@ mod tests {
         let engine = make_engine(empty_doc());
         let result = engine.apply_yaml(":\n  [[[bad", None, &store).await;
         assert!(result.is_err());
+    }
+
+    // ── Budget alert integration ────────────────────────────────────────
+
+    fn make_engine_with_alert_sender(
+        doc: PolicyDocument,
+        alert_tx: tokio::sync::broadcast::Sender<crate::budget::BudgetAlert>,
+    ) -> PolicyEngine {
+        let compiled_patterns = doc
+            .data
+            .as_ref()
+            .map(|dp| {
+                dp.sensitive_patterns
+                    .iter()
+                    .filter_map(|p| regex::Regex::new(p).ok())
+                    .collect()
+            })
+            .unwrap_or_default();
+        let daily_limit = doc
+            .budget
+            .as_ref()
+            .and_then(|bp| bp.daily_limit_usd)
+            .and_then(|v| rust_decimal::Decimal::try_from(v).ok());
+        let monthly_limit = doc
+            .budget
+            .as_ref()
+            .and_then(|bp| bp.monthly_limit_usd)
+            .and_then(|v| rust_decimal::Decimal::try_from(v).ok());
+        PolicyEngine {
+            policy: Arc::new(ArcSwap::new(Arc::new(doc))),
+            scanner: aa_core::CredentialScanner::new(),
+            compiled_patterns,
+            rate_state: DashMap::new(),
+            budget: crate::budget::BudgetTracker::new_with_alert_sender(
+                crate::budget::PricingTable::default_table(),
+                daily_limit,
+                monthly_limit,
+                chrono_tz::UTC,
+                alert_tx,
+            ),
+            _watcher: None,
+        }
+    }
+
+    #[test]
+    fn record_spend_fires_alert_on_external_channel() {
+        let (alert_tx, mut alert_rx) = tokio::sync::broadcast::channel::<crate::budget::BudgetAlert>(64);
+        let mut doc = empty_doc();
+        doc.budget = Some(BudgetPolicy {
+            daily_limit_usd: Some(10.0),
+            monthly_limit_usd: None,
+            timezone: None,
+            action_on_exceed: ActionOnExceed::default(),
+        });
+        let engine = make_engine_with_alert_sender(doc, alert_tx);
+        let ctx = make_ctx();
+
+        // Record spend at exactly 80% of daily limit
+        engine.record_spend(&ctx, 8.0);
+
+        let alert = alert_rx.try_recv().expect("expected 80% threshold alert");
+        assert_eq!(alert.threshold_pct, 80);
+        assert!((alert.spent_usd - 8.0).abs() < 0.01);
+        assert!((alert.limit_usd - 10.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn budget_deny_still_works_after_migration() {
+        let mut doc = empty_doc();
+        doc.budget = Some(BudgetPolicy {
+            daily_limit_usd: Some(1.0),
+            monthly_limit_usd: None,
+            timezone: None,
+            action_on_exceed: ActionOnExceed::default(),
+        });
+        let engine = make_engine(doc);
+        let ctx = make_ctx();
+
+        engine.record_spend(&ctx, 1.0);
+
+        let action = tool_call("any", "");
+        assert_eq!(
+            engine.evaluate(&ctx, &action).decision,
+            PolicyResult::Deny {
+                reason: "daily budget exceeded".into()
+            }
+        );
     }
 }

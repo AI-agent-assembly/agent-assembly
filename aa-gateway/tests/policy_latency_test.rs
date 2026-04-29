@@ -45,7 +45,8 @@ async fn start_server() -> SocketAddr {
     write!(tmp, "{}", POLICY_YAML).unwrap();
     tmp.flush().unwrap();
 
-    let engine = PolicyEngine::load_from_file(tmp.path()).unwrap();
+    let (alert_tx, _) = tokio::sync::broadcast::channel::<aa_gateway::budget::BudgetAlert>(64);
+    let engine = PolicyEngine::load_from_file(tmp.path(), alert_tx).unwrap();
     let (audit_tx, _audit_rx) = tokio::sync::mpsc::channel(4096);
     let audit_drops = Arc::new(AtomicU64::new(0));
     let service = PolicyServiceImpl::new(Arc::new(engine), audit_tx, audit_drops, [0u8; 32]);

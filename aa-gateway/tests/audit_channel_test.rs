@@ -28,7 +28,8 @@ async fn start_server_with_tiny_channel() -> (SocketAddr, Arc<AtomicU64>, tokio:
     write!(tmp, "{}", POLICY_YAML).unwrap();
     tmp.flush().unwrap();
 
-    let engine = PolicyEngine::load_from_file(tmp.path()).unwrap();
+    let (alert_tx, _) = tokio::sync::broadcast::channel::<aa_gateway::budget::BudgetAlert>(64);
+    let engine = PolicyEngine::load_from_file(tmp.path(), alert_tx).unwrap();
     // Channel capacity of 1 — will fill up quickly.
     let (audit_tx, audit_rx) = tokio::sync::mpsc::channel::<AuditEntry>(1);
     let audit_drops = Arc::new(AtomicU64::new(0));

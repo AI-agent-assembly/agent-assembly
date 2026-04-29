@@ -77,6 +77,28 @@ impl BudgetTracker {
         }
     }
 
+    /// Create a new tracker that sends alerts on an externally-owned channel.
+    ///
+    /// Use this when the broadcast channel is created upstream (e.g. `main.rs`)
+    /// and shared with other consumers like the webhook delivery loop.
+    pub fn new_with_alert_sender(
+        pricing: PricingTable,
+        daily_limit_usd: Option<Decimal>,
+        monthly_limit_usd: Option<Decimal>,
+        timezone: chrono_tz::Tz,
+        alert_tx: broadcast::Sender<BudgetAlert>,
+    ) -> Self {
+        Self {
+            per_agent: DashMap::new(),
+            global: Mutex::new(BudgetState::new_for_date(today_in_tz(timezone))),
+            pricing,
+            daily_limit_usd,
+            monthly_limit_usd,
+            alert_tx,
+            timezone,
+        }
+    }
+
     /// Create a tracker pre-loaded with persisted state (call after `load_from_disk`).
     pub fn with_state(
         pricing: PricingTable,
@@ -116,6 +138,46 @@ impl BudgetTracker {
         self.timezone
     }
 
+    /// Returns `true` if the agent has met or exceeded the given daily limit.
+    ///
+    /// Automatically resets spend to zero when the stored date is before today
+    /// in the configured timezone. Used by `PolicyEngine` Stage 7 where the
+    /// per-action cost is not yet known and only a limit check is needed.
+    pub fn check_daily(&self, agent_id: &AgentId, limit: Decimal) -> bool {
+        if let Some(mut entry) = self.per_agent.get_mut(agent_id) {
+            entry.maybe_reset(today_in_tz(self.timezone));
+            entry.spent_usd >= limit
+        } else {
+            false
+        }
+    }
+
+    /// Returns `true` if the agent has met or exceeded the given monthly limit.
+    ///
+    /// Automatically resets monthly spend when the stored month differs from the
+    /// current month in the configured timezone.
+    pub fn check_monthly(&self, agent_id: &AgentId, limit: Decimal) -> bool {
+        if let Some(mut entry) = self.per_agent.get_mut(agent_id) {
+            entry.maybe_reset(today_in_tz(self.timezone));
+            entry.monthly_spent_usd.map(|m| m >= limit).unwrap_or(false)
+        } else {
+            false
+        }
+    }
+
+    /// Record a pre-computed USD spend amount for an agent.
+    ///
+    /// Unlike [`record_usage`](Self::record_usage), this method bypasses the
+    /// `PricingTable` and accepts a raw USD amount directly. Used by
+    /// `PolicyEngine::record_spend()` which receives cost estimates from callers
+    /// rather than raw token counts.
+    ///
+    /// Fires 80%/95% threshold alerts on the broadcast channel and updates the
+    /// global spend accumulator.
+    pub fn record_raw_spend(&self, agent_id: AgentId, amount_usd: Decimal) {
+        self.record_cost(agent_id, amount_usd);
+    }
+
     /// Record token usage and return the resulting [`BudgetStatus`].
     pub fn record_usage(
         &self,
@@ -126,7 +188,12 @@ impl BudgetTracker {
         output_tokens: u64,
     ) -> BudgetStatus {
         let cost = self.pricing.cost_usd(provider, model, input_tokens, output_tokens);
+        self.record_cost(agent_id, cost)
+    }
 
+    /// Shared cost-recording logic used by both [`record_usage`](Self::record_usage)
+    /// and [`record_raw_spend`](Self::record_raw_spend).
+    fn record_cost(&self, agent_id: AgentId, cost: Decimal) -> BudgetStatus {
         let has_monthly = self.monthly_limit_usd.is_some();
 
         self.per_agent
@@ -477,5 +544,140 @@ mod tests {
             "Expected within budget after monthly reset, got: {:?}",
             s
         );
+    }
+
+    // ── check_daily / check_monthly / record_raw_spend ──────────────────
+
+    #[test]
+    fn check_daily_returns_false_for_new_agent() {
+        let t = tracker_with_limit("10.00");
+        assert!(!t.check_daily(&agent(30), "10.00".parse().unwrap()));
+    }
+
+    #[test]
+    fn check_daily_returns_true_when_exceeded() {
+        let t = tracker_with_limit("1.00");
+        let id = agent(31);
+        t.record_raw_spend(id, "1.00".parse().unwrap());
+        assert!(t.check_daily(&id, "1.00".parse().unwrap()));
+    }
+
+    #[test]
+    fn check_monthly_returns_false_for_new_agent() {
+        let t = tracker_with_monthly_limit("100.00");
+        assert!(!t.check_monthly(&agent(32), "100.00".parse().unwrap()));
+    }
+
+    #[test]
+    fn check_monthly_returns_true_when_exceeded() {
+        let t = tracker_with_monthly_limit("5.00");
+        let id = agent(33);
+        t.record_raw_spend(id, "5.00".parse().unwrap());
+        assert!(t.check_monthly(&id, "5.00".parse().unwrap()));
+    }
+
+    #[test]
+    fn record_raw_spend_accumulates() {
+        let t = tracker_with_limit("10.00");
+        let id = agent(34);
+        t.record_raw_spend(id, "3.00".parse().unwrap());
+        t.record_raw_spend(id, "4.00".parse().unwrap());
+        // 7.00 >= 7.00
+        assert!(t.check_daily(&id, "7.00".parse().unwrap()));
+        // 7.00 < 8.00
+        assert!(!t.check_daily(&id, "8.00".parse().unwrap()));
+    }
+
+    #[test]
+    fn record_raw_spend_fires_80_pct_alert() {
+        let t = tracker_with_limit("10.00");
+        let mut rx = t.subscribe_alerts();
+        let id = agent(35);
+        // 8.00 / 10.00 = 80%
+        t.record_raw_spend(id, "8.00".parse().unwrap());
+        let alert = rx.try_recv().expect("expected 80% alert");
+        assert_eq!(alert.threshold_pct, 80);
+        assert_eq!(alert.agent_id, id);
+    }
+
+    #[test]
+    fn record_raw_spend_fires_95_pct_alert() {
+        let t = tracker_with_limit("10.00");
+        let mut rx = t.subscribe_alerts();
+        let id = agent(36);
+        // 9.50 / 10.00 = 95%
+        t.record_raw_spend(id, "9.50".parse().unwrap());
+        let alert = rx.try_recv().expect("expected 95% alert");
+        assert_eq!(alert.threshold_pct, 95);
+    }
+
+    #[test]
+    fn new_with_alert_sender_uses_external_channel() {
+        let (tx, mut rx) = broadcast::channel::<BudgetAlert>(64);
+        let t = BudgetTracker::new_with_alert_sender(
+            PricingTable::default_table(),
+            Some("10.00".parse().unwrap()),
+            None,
+            chrono_tz::UTC,
+            tx,
+        );
+        let id = agent(37);
+        t.record_raw_spend(id, "8.00".parse().unwrap());
+        let alert = rx.try_recv().expect("alert should arrive on external channel");
+        assert_eq!(alert.threshold_pct, 80);
+    }
+
+    // ── Ported from engine::budget (simple tracker) ─────────────────────
+
+    #[test]
+    fn check_daily_exact_limit_is_exceeded() {
+        let t = tracker_with_limit("1.00");
+        let id = agent(40);
+        t.record_raw_spend(id, "1.00".parse().unwrap());
+        // 1.00 >= 1.00 is true (not strictly greater)
+        assert!(t.check_daily(&id, "1.00".parse().unwrap()));
+    }
+
+    #[test]
+    fn check_daily_resets_on_new_date() {
+        let t = tracker_with_limit("1.00");
+        let id = agent(41);
+        t.record_raw_spend(id, "0.90".parse().unwrap());
+        // Backdate the entry to yesterday
+        t.per_agent.alter(&id, |_, mut s| {
+            s.date = chrono::Utc::now().date_naive() - chrono::Duration::days(1);
+            s
+        });
+        // After date reset, spend should be 0 — not exceeded
+        assert!(!t.check_daily(&id, "1.00".parse().unwrap()));
+    }
+
+    #[test]
+    fn check_monthly_accumulates_raw_spend() {
+        let t = tracker_with_monthly_limit("7.00");
+        let id = agent(42);
+        t.record_raw_spend(id, "3.00".parse().unwrap());
+        t.record_raw_spend(id, "4.00".parse().unwrap());
+        // 7.00 >= 7.00
+        assert!(t.check_monthly(&id, "7.00".parse().unwrap()));
+        // 7.00 < 8.00
+        assert!(!t.check_monthly(&id, "8.00".parse().unwrap()));
+    }
+
+    #[test]
+    fn check_monthly_resets_on_month_change() {
+        use chrono::Datelike;
+        let t = tracker_with_monthly_limit("5.00");
+        let id = agent(43);
+        t.record_raw_spend(id, "5.00".parse().unwrap());
+        // Backdate to last month
+        let last_month = chrono::Utc::now().date_naive() - chrono::Duration::days(32);
+        t.per_agent.alter(&id, |_, mut s| {
+            s.date = last_month;
+            s.month = last_month.year() as u32 * 100 + last_month.month();
+            s
+        });
+        // After month change, monthly spend resets — not exceeded
+        assert!(!t.check_monthly(&id, "5.00".parse().unwrap()));
     }
 }
