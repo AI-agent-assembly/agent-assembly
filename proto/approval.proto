@@ -25,3 +25,12 @@ message ListPendingRequest {}
 message ListPendingResponse {
   repeated PendingApproval requests = 1;
 }
+
+// ── Decide ───────────────────────────────────────────────────────────────────
+
+// ApprovalDecisionType is the human operator's verdict.
+enum ApprovalDecisionType {
+  DECISION_UNSPECIFIED = 0;
+  APPROVED             = 1;
+  REJECTED             = 2;
+}
