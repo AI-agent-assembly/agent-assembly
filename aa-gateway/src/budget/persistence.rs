@@ -251,4 +251,44 @@ mod tests {
         let loaded = load_from_disk(&path).unwrap();
         assert_eq!(loaded.timezone, chrono_tz::UTC);
     }
+
+    #[test]
+    fn save_then_load_round_trips_monthly_fields() {
+        use rust_decimal::Decimal;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("budget.json");
+        let mut state = crate::budget::types::BudgetState::new_for_date(chrono::Utc::now().date_naive());
+        state.spent_usd = "5.00".parse().unwrap();
+        state.monthly_spent_usd = Some("42.50".parse().unwrap());
+        let budget = PersistedBudget {
+            per_agent: vec![PersistedAgentEntry {
+                agent_id_hex: "0102030405060708090a0b0c0d0e0f10".to_string(),
+                state,
+            }],
+            global: crate::budget::types::BudgetState::new_today(),
+            timezone: chrono_tz::UTC,
+        };
+        save_to_disk_atomic(&path, &budget).unwrap();
+        let loaded = load_from_disk(&path).unwrap();
+        let loaded_state = &loaded.per_agent[0].state;
+        assert_eq!(loaded_state.monthly_spent_usd, Some(Decimal::new(4250, 2)));
+        assert!(loaded_state.month > 0);
+    }
+
+    #[test]
+    fn load_from_disk_backward_compat_missing_monthly_fields() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("budget.json");
+        // Simulate old format without month/monthly_spent_usd fields
+        std::fs::write(
+            &path,
+            r#"{"per_agent":[{"agent_id_hex":"01020304050607080910111213141516","state":{"spent_usd":"10.00","date":"2024-06-15"}}],"global":{"spent_usd":"10.00","date":"2024-06-15"}}"#,
+        )
+        .unwrap();
+        let loaded = load_from_disk(&path).unwrap();
+        let state = &loaded.per_agent[0].state;
+        assert_eq!(state.month, 0); // default from serde(default)
+        assert!(state.monthly_spent_usd.is_none());
+        assert_eq!(state.spent_usd, rust_decimal::Decimal::new(1000, 2));
+    }
 }
