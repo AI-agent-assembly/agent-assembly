@@ -116,6 +116,36 @@ impl BudgetTracker {
         self.timezone
     }
 
+    /// Returns `true` if the agent has met or exceeded the given daily limit.
+    ///
+    /// Automatically resets spend to zero when the stored date is before today
+    /// in the configured timezone. Used by `PolicyEngine` Stage 7 where the
+    /// per-action cost is not yet known and only a limit check is needed.
+    pub fn check_daily(&self, agent_id: &AgentId, limit: Decimal) -> bool {
+        if let Some(mut entry) = self.per_agent.get_mut(agent_id) {
+            entry.maybe_reset(today_in_tz(self.timezone));
+            entry.spent_usd >= limit
+        } else {
+            false
+        }
+    }
+
+    /// Returns `true` if the agent has met or exceeded the given monthly limit.
+    ///
+    /// Automatically resets monthly spend when the stored month differs from the
+    /// current month in the configured timezone.
+    pub fn check_monthly(&self, agent_id: &AgentId, limit: Decimal) -> bool {
+        if let Some(mut entry) = self.per_agent.get_mut(agent_id) {
+            entry.maybe_reset(today_in_tz(self.timezone));
+            entry
+                .monthly_spent_usd
+                .map(|m| m >= limit)
+                .unwrap_or(false)
+        } else {
+            false
+        }
+    }
+
     /// Record token usage and return the resulting [`BudgetStatus`].
     pub fn record_usage(
         &self,
