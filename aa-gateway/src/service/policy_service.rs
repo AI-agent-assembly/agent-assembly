@@ -1,10 +1,13 @@
 //! `PolicyService` tonic trait implementation wiring gRPC RPCs to `PolicyEngine`.
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 
+use tokio::sync::mpsc;
 use tonic::{Request, Response, Status};
 
+use aa_core::AuditEntry;
 use aa_proto::assembly::policy::v1::policy_service_server::PolicyService;
 use aa_proto::assembly::policy::v1::{BatchCheckRequest, BatchCheckResponse, CheckActionRequest, CheckActionResponse};
 
@@ -14,12 +17,18 @@ use crate::service::convert;
 /// gRPC service implementation wiring `CheckAction` / `BatchCheck` to [`PolicyEngine`].
 pub struct PolicyServiceImpl {
     engine: Arc<PolicyEngine>,
+    audit_tx: mpsc::Sender<AuditEntry>,
+    audit_drops: Arc<AtomicU64>,
 }
 
 impl PolicyServiceImpl {
-    /// Create a new service backed by the given policy engine.
-    pub fn new(engine: Arc<PolicyEngine>) -> Self {
-        Self { engine }
+    /// Create a new service backed by the given policy engine and audit channel.
+    pub fn new(
+        engine: Arc<PolicyEngine>,
+        audit_tx: mpsc::Sender<AuditEntry>,
+        audit_drops: Arc<AtomicU64>,
+    ) -> Self {
+        Self { engine, audit_tx, audit_drops }
     }
 
     /// Evaluate a single request against the engine, returning the gRPC response.

@@ -8,6 +8,7 @@
 
 use std::io::Write;
 use std::net::SocketAddr;
+use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
@@ -123,7 +124,9 @@ async fn start_server() -> SocketAddr {
     tmp.flush().unwrap();
 
     let engine = PolicyEngine::load_from_file(tmp.path()).unwrap();
-    let service = PolicyServiceImpl::new(Arc::new(engine));
+    let (audit_tx, _audit_rx) = tokio::sync::mpsc::channel(4096);
+    let audit_drops = Arc::new(AtomicU64::new(0));
+    let service = PolicyServiceImpl::new(Arc::new(engine), audit_tx, audit_drops);
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();

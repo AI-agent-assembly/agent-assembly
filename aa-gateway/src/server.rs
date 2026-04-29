@@ -1,10 +1,12 @@
 //! gRPC server startup — loads policy, builds service, serves over TCP or UDS.
 
 use std::path::Path;
+use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 
 use tonic::transport::Server;
 
+use aa_core::AuditEntry;
 use crate::engine::PolicyEngine;
 use crate::registry::AgentRegistry;
 use crate::service::{AgentLifecycleServiceImpl, PolicyServiceImpl};
@@ -22,7 +24,9 @@ pub async fn serve_tcp(
     registry: Arc<AgentRegistry>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let engine = PolicyEngine::load_from_file(policy_path).map_err(|e| format!("failed to load policy: {e:?}"))?;
-    let policy_svc = PolicyServiceImpl::new(Arc::new(engine));
+    let (audit_tx, _audit_rx) = tokio::sync::mpsc::channel::<AuditEntry>(4096);
+    let audit_drops = Arc::new(AtomicU64::new(0));
+    let policy_svc = PolicyServiceImpl::new(Arc::new(engine), audit_tx, audit_drops);
     let lifecycle_svc = AgentLifecycleServiceImpl::new(registry);
 
     let addr = listen_addr.parse()?;
@@ -48,7 +52,9 @@ pub async fn serve_uds(
     registry: Arc<AgentRegistry>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let engine = PolicyEngine::load_from_file(policy_path).map_err(|e| format!("failed to load policy: {e:?}"))?;
-    let policy_svc = PolicyServiceImpl::new(Arc::new(engine));
+    let (audit_tx, _audit_rx) = tokio::sync::mpsc::channel::<AuditEntry>(4096);
+    let audit_drops = Arc::new(AtomicU64::new(0));
+    let policy_svc = PolicyServiceImpl::new(Arc::new(engine), audit_tx, audit_drops);
     let lifecycle_svc = AgentLifecycleServiceImpl::new(registry);
 
     tracing::info!(socket = %socket_path.display(), "starting gRPC server on UDS");
