@@ -24,8 +24,6 @@ use crate::tls::{CaStore, CertCache};
 /// Create via [`ProxyServer::new`], then drive the accept loop with
 /// [`ProxyServer::run`]. Internally wrapped in [`Arc`] so connection
 /// tasks can share the TLS context and interceptor.
-// Fields are read by `run()` once implemented; silence dead_code until then.
-#[allow(dead_code)]
 pub struct ProxyServer {
     config: ProxyConfig,
     ca: CaStore,
