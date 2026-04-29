@@ -209,6 +209,18 @@ fn unique_event_id() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ipc::{IpcCommand, IpcHandle};
+    use tokio::sync::mpsc;
+
+    /// Create an `AssemblyHandle` backed by a test mpsc channel (no real socket).
+    fn make_test_handle() -> (AssemblyHandle, mpsc::Receiver<IpcCommand>) {
+        let (tx, rx) = mpsc::channel(16);
+        let ipc = IpcHandle {
+            cmd_tx: tx,
+            thread: None,
+        };
+        (AssemblyHandle::new(ipc, vec![]), rx)
+    }
 
     /// Create a test handle backed by a real mpsc channel (no socket).
     /// Returns `(handle, receiver)` so tests can inspect sent commands.
@@ -308,6 +320,48 @@ mod tests {
                 }
             }
             other => panic!("expected SendEvent, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn report_event_redacts_credentials_in_details() {
+        let (handle, mut rx) = make_test_handle();
+        let secret = "sk-proj-aBcDeFgHiJkLmNoPqRsT1234567890abcdef1234567890ab";
+        let details = format!("called openai with key {secret}");
+
+        handle.report_event("llm_call".into(), details).unwrap();
+
+        let cmd = rx.try_recv().expect("should receive command");
+        match cmd {
+            IpcCommand::SendEvent(event) => {
+                let labels_str = format!("{:?}", event.labels);
+                assert!(
+                    !labels_str.contains("sk-proj-"),
+                    "details label must not contain raw credential, got: {labels_str}"
+                );
+                assert!(
+                    labels_str.contains("[REDACTED:"),
+                    "details label should contain redaction marker"
+                );
+            }
+            other => panic!("expected SendEvent, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn report_event_passes_clean_details_unchanged() {
+        let (handle, mut rx) = make_test_handle();
+
+        handle
+            .report_event("tool_call".into(), "searched for cats".into())
+            .unwrap();
+
+        let cmd = rx.try_recv().expect("should receive command");
+        match cmd {
+            IpcCommand::SendEvent(event) => {
+                assert_eq!(event.labels.get("details").unwrap(), "searched for cats");
+            }
+            other => panic!("expected SendEvent, got {other:?}"),
         }
     }
 }
