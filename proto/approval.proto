@@ -52,3 +52,17 @@ message DecideResponse {
   // Non-empty when success is false; describes why the decision was not applied.
   string error_message = 2;
 }
+
+// ── WatchApprovals ───────────────────────────────────────────────────────────
+
+message WatchApprovalsRequest {}
+
+// ApprovalEvent is streamed to WatchApprovals subscribers when a new request arrives.
+message ApprovalEvent {
+  string request_id          = 1;
+  string agent_id            = 2;
+  string action              = 3;
+  string condition_triggered = 4;
+  uint64 submitted_at        = 5;
+  uint64 timeout_secs        = 6;
+}
