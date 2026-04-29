@@ -77,3 +77,21 @@ pub async fn create_policy(
     Err(ProblemDetail::from_status(StatusCode::NOT_IMPLEMENTED)
         .with_detail("Policy creation not yet wired"))
 }
+
+/// `GET /api/v1/policies/active` — get the currently active policy.
+#[utoipa::path(
+    get,
+    path = "/api/v1/policies/active",
+    responses(
+        (status = 200, description = "Currently active policy", body = PolicyResponse),
+        (status = 404, description = "No active policy loaded")
+    ),
+    tag = "policies"
+)]
+pub async fn get_active_policy(
+    Extension(_state): Extension<AppState>,
+) -> Result<(StatusCode, Json<PolicyResponse>), ProblemDetail> {
+    // TODO: read active policy from engine
+    Err(ProblemDetail::from_status(StatusCode::NOT_FOUND)
+        .with_detail("No active policy loaded"))
+}
