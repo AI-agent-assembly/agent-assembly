@@ -223,3 +223,36 @@ async fn reject_without_reason_returns_error() {
     let status = result.unwrap_err();
     assert_eq!(status.code(), tonic::Code::InvalidArgument);
 }
+
+#[tokio::test]
+async fn watch_approvals_streams_new_request() {
+    let (addr, queue) = start_server().await;
+    let mut client = ApprovalServiceClient::connect(format!("http://{addr}"))
+        .await
+        .unwrap();
+
+    let mut stream = client
+        .watch_approvals(WatchApprovalsRequest {})
+        .await
+        .unwrap()
+        .into_inner();
+
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+    let req = make_test_request();
+    let expected_id = req.request_id.to_string();
+    let (_rid, _fut) = queue.submit(req);
+
+    let event = tokio::time::timeout(
+        std::time::Duration::from_secs(3),
+        stream.message(),
+    )
+    .await
+    .expect("should receive event within 3 seconds")
+    .expect("stream should not error")
+    .expect("stream should not end");
+
+    assert_eq!(event.request_id, expected_id);
+    assert_eq!(event.agent_id, "agent-test");
+    assert_eq!(event.action, "deploy to production");
+}
