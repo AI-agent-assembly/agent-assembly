@@ -37,3 +37,47 @@ impl AnomalyType {
         }
     }
 }
+
+/// Automated response action triggered when an anomaly is detected.
+///
+/// Each response maps to an enforcement action that the gateway executes
+/// without human intervention. The mapping from [`AnomalyType`] to default
+/// response follows the Governance Gateway epic anomaly table.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AnomalyResponse {
+    /// Temporarily suspend the agent; it can be resumed after review.
+    Pause,
+    /// Immediately block the current action and deny further actions.
+    Block,
+    /// Emit an alert notification without interrupting the agent.
+    Alert,
+    /// Isolate the agent: block all actions and flag for security review.
+    Quarantine,
+}
+
+impl AnomalyResponse {
+    /// Returns the default response for a given anomaly type, per the epic
+    /// anomaly table (AAASM-8).
+    ///
+    /// | Anomaly | Default Response |
+    /// |---------|-----------------|
+    /// | BehaviorSpike | Pause |
+    /// | UnknownExternalConnection | Block |
+    /// | CredentialLeakAttempt | Alert |
+    /// | ChildProcessExecution | Block |
+    /// | DataExfiltrationAttempt | Block |
+    /// | LoopRunaway | Pause |
+    /// | CrossAgentIdentitySpoofing | Alert |
+    pub fn default_for(anomaly_type: AnomalyType) -> Self {
+        match anomaly_type {
+            AnomalyType::BehaviorSpike => Self::Pause,
+            AnomalyType::UnknownExternalConnection => Self::Block,
+            AnomalyType::CredentialLeakAttempt => Self::Alert,
+            AnomalyType::ChildProcessExecution => Self::Block,
+            AnomalyType::DataExfiltrationAttempt => Self::Block,
+            AnomalyType::LoopRunaway => Self::Pause,
+            AnomalyType::CrossAgentIdentitySpoofing => Self::Alert,
+        }
+    }
+}
