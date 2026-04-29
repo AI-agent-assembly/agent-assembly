@@ -1,0 +1,83 @@
+//! Authentication routes: JWT token issuance.
+
+use std::sync::Arc;
+
+use axum::Extension;
+use axum::Json;
+use serde::{Deserialize, Serialize};
+
+use crate::auth::jwt::JwtSigner;
+use crate::auth::scope::Scope;
+use crate::auth::AuthenticatedCaller;
+use crate::error::ProblemDetail;
+
+/// JWT token lifetime in seconds (must match [`crate::auth::jwt::TOKEN_EXPIRY_SECS`]).
+const TOKEN_EXPIRY_SECS: u64 = 24 * 60 * 60;
+
+/// Request body for `POST /auth/token`.
+#[derive(Debug, Deserialize)]
+pub struct TokenRequest {
+    /// Requested scopes for the issued JWT.
+    /// If omitted, the caller's full scopes are used.
+    #[serde(default)]
+    pub scopes: Option<Vec<Scope>>,
+}
+
+/// Response body for `POST /auth/token`.
+#[derive(Debug, Serialize)]
+pub struct TokenResponse {
+    /// The issued JWT token string.
+    pub token: String,
+    /// Unix timestamp when the token expires.
+    pub expires_at: u64,
+    /// Scopes granted in the token.
+    pub scopes: Vec<Scope>,
+}
+
+/// Issue a short-lived JWT token from an authenticated API key.
+///
+/// The caller must already be authenticated (via API key or existing JWT).
+/// If `scopes` is provided in the request body, it must be a subset of
+/// the caller's granted scopes.
+pub async fn issue_token(
+    caller: AuthenticatedCaller,
+    Extension(jwt_signer): Extension<Arc<JwtSigner>>,
+    Json(body): Json<TokenRequest>,
+) -> Result<Json<TokenResponse>, ProblemDetail> {
+    let token_scopes = match body.scopes {
+        Some(requested) => {
+            // Validate that each requested scope is satisfied by the caller's scopes.
+            for scope in &requested {
+                if !scope.is_satisfied_by(&caller.scopes) {
+                    return Err(
+                        ProblemDetail::from_status(axum::http::StatusCode::FORBIDDEN).with_detail(
+                            format!(
+                                "Requested scope '{scope}' exceeds caller's granted scopes"
+                            ),
+                        ),
+                    );
+                }
+            }
+            requested
+        }
+        None => caller.scopes.clone(),
+    };
+
+    let token = jwt_signer
+        .sign(&caller.key_id, &token_scopes)
+        .map_err(|e| {
+            ProblemDetail::from_status(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
+                .with_detail(format!("Failed to sign token: {e}"))
+        })?;
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("system clock before Unix epoch")
+        .as_secs();
+
+    Ok(Json(TokenResponse {
+        token,
+        expires_at: now + TOKEN_EXPIRY_SECS,
+        scopes: token_scopes,
+    }))
+}
