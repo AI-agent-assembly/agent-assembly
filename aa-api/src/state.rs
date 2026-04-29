@@ -7,6 +7,10 @@ use aa_gateway::budget::tracker::BudgetTracker;
 use aa_gateway::engine::PolicyEngine;
 use aa_runtime::approval::ApprovalQueue;
 
+use crate::auth::api_key::ApiKeyStore;
+use crate::auth::config::AuthConfig;
+use crate::auth::jwt::{JwtSigner, JwtVerifier};
+use crate::auth::rate_limit::RateLimiter;
 use crate::events::EventBroadcast;
 use crate::replay::ReplayBuffer;
 
@@ -25,4 +29,14 @@ pub struct AppState {
     pub replay_buffer: ReplayBuffer,
     /// Monotonic counter for assigning GovernanceEvent ids.
     pub next_event_id: Arc<AtomicU64>,
+    /// Authentication configuration.
+    pub auth_config: Arc<AuthConfig>,
+    /// Loaded API key entries for validation.
+    pub key_store: Arc<ApiKeyStore>,
+    /// Per-key rate limiter.
+    pub rate_limiter: Arc<RateLimiter>,
+    /// JWT token signer.
+    pub jwt_signer: Arc<JwtSigner>,
+    /// JWT token verifier.
+    pub jwt_verifier: Arc<JwtVerifier>,
 }
