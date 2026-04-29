@@ -4,9 +4,7 @@
 //! constructs a [`serde_json::Value`] representation of each
 //! [`EnvelopedEvent`](aa_proto::assembly::event::v1::EnvelopedEvent) payload.
 
-use aa_proto::assembly::common::v1 as common;
-use aa_proto::assembly::event::v1::ApprovalRequested;
-use aa_runtime::pipeline::event::EnrichedEvent;
+use aa_runtime::approval::ApprovalRequest;
 use serde_json::{json, Value};
 use uuid::Uuid;
 
@@ -16,11 +14,8 @@ use crate::budget::BudgetAlert;
 pub const EVENT_TYPE_APPROVAL_REQUESTED: &str = "approval.requested";
 pub const EVENT_TYPE_BUDGET_THRESHOLD: &str = "budget.threshold_hit";
 
-/// Convert an [`EnrichedEvent`] whose inner `AuditEvent` triggered an
-/// approval-hold into a JSON envelope for webhook delivery.
-///
-/// Returns `None` if the event does not contain an approval request.
-pub fn approval_to_envelope(event: &EnrichedEvent, approval: &ApprovalRequested) -> Value {
+/// Convert a runtime [`ApprovalRequest`] into a JSON envelope for webhook delivery.
+pub fn approval_to_envelope(request: &ApprovalRequest) -> Value {
     let event_id = Uuid::now_v7().to_string();
     let now_ms = chrono::Utc::now().timestamp_millis();
 
@@ -31,18 +26,13 @@ pub fn approval_to_envelope(event: &EnrichedEvent, approval: &ApprovalRequested)
         "source": "aa-gateway",
         "payload": {
             "approval_request": {
-                "approval_id": approval.approval_id,
-                "agent_id": agent_id_to_json(approval.agent_id.as_ref()),
-                "action_summary": approval.action_summary,
-                "action_context_json": String::from_utf8_lossy(&approval.action_context_json).to_string(),
-                "expires_at_unix_ms": approval.expires_at_unix_ms,
-                "notify_user_ids": approval.notify_user_ids,
+                "approval_id": request.request_id.to_string(),
+                "agent_id": request.agent_id,
+                "action_summary": request.action,
+                "condition_triggered": request.condition_triggered,
+                "submitted_at": request.submitted_at,
+                "timeout_secs": request.timeout_secs,
             }
-        },
-        "enrichment": {
-            "received_at_ms": event.received_at_ms,
-            "agent_id": event.agent_id,
-            "sequence_number": event.sequence_number,
         }
     })
 }
@@ -70,79 +60,67 @@ pub fn budget_alert_to_envelope(alert: &BudgetAlert) -> Value {
     })
 }
 
-/// Serialize a proto [`AgentId`](common::AgentId) to JSON, handling `None`.
-fn agent_id_to_json(agent_id: Option<&common::AgentId>) -> Value {
-    match agent_id {
-        Some(id) => json!({
-            "org_id": id.org_id,
-            "team_id": id.team_id,
-            "agent_id": id.agent_id,
-        }),
-        None => Value::Null,
-    }
-}
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use aa_core::AgentId;
-    use aa_proto::assembly::audit::v1::AuditEvent;
-    use aa_runtime::pipeline::event::{EnrichedEvent, EventSource};
 
-    fn sample_enriched_event() -> EnrichedEvent {
-        EnrichedEvent {
-            inner: AuditEvent::default(),
-            received_at_ms: 1700000000000,
-            source: EventSource::Sdk,
-            agent_id: "test-agent".to_string(),
-            connection_id: 1,
-            sequence_number: 42,
+    fn sample_approval_request() -> ApprovalRequest {
+        ApprovalRequest {
+            request_id: uuid::Uuid::new_v4(),
+            agent_id: "agent-1".to_string(),
+            action: "delete production database".to_string(),
+            condition_triggered: "destructive-action".to_string(),
+            submitted_at: 1_700_000_000,
+            timeout_secs: 60,
+            fallback: aa_core::PolicyResult::Deny {
+                reason: "timed out".to_string(),
+            },
         }
     }
 
     #[test]
     fn approval_envelope_has_correct_event_type() {
-        let event = sample_enriched_event();
-        let approval = ApprovalRequested {
-            approval_id: "apr-001".to_string(),
-            agent_id: Some(common::AgentId {
-                org_id: "org".to_string(),
-                team_id: "team".to_string(),
-                agent_id: "agent".to_string(),
-            }),
-            action_summary: "delete production database".to_string(),
-            action_context_json: b"{}".to_vec(),
-            expires_at_unix_ms: 1700000060000,
-            notify_user_ids: vec!["user-1".to_string()],
-        };
+        let request = sample_approval_request();
+        let envelope = approval_to_envelope(&request);
 
-        let envelope = approval_to_envelope(&event, &approval);
         assert_eq!(envelope["event_type"], "approval.requested");
         assert_eq!(envelope["source"], "aa-gateway");
         assert_eq!(
-            envelope["payload"]["approval_request"]["approval_id"],
-            "apr-001"
+            envelope["payload"]["approval_request"]["agent_id"],
+            "agent-1"
         );
         assert_eq!(
             envelope["payload"]["approval_request"]["action_summary"],
             "delete production database"
         );
-        assert_eq!(envelope["enrichment"]["sequence_number"], 42);
+        assert_eq!(
+            envelope["payload"]["approval_request"]["condition_triggered"],
+            "destructive-action"
+        );
     }
 
     #[test]
     fn approval_envelope_has_uuid_v7_event_id() {
-        let event = sample_enriched_event();
-        let approval = ApprovalRequested {
-            approval_id: "apr-002".to_string(),
-            ..Default::default()
-        };
+        let request = sample_approval_request();
+        let envelope = approval_to_envelope(&request);
 
-        let envelope = approval_to_envelope(&event, &approval);
         let id_str = envelope["event_id"].as_str().unwrap();
-        // UUID v7 parses successfully and has version 7
         let parsed = Uuid::parse_str(id_str).expect("valid UUID");
         assert_eq!(parsed.get_version_num(), 7);
+    }
+
+    #[test]
+    fn approval_envelope_contains_approval_id() {
+        let request = sample_approval_request();
+        let expected_id = request.request_id.to_string();
+        let envelope = approval_to_envelope(&request);
+
+        assert_eq!(
+            envelope["payload"]["approval_request"]["approval_id"],
+            expected_id
+        );
     }
 
     #[test]
@@ -175,24 +153,5 @@ mod tests {
         let id_str = envelope["event_id"].as_str().unwrap();
         let parsed = Uuid::parse_str(id_str).expect("valid UUID");
         assert_eq!(parsed.get_version_num(), 7);
-    }
-
-    #[test]
-    fn agent_id_to_json_handles_none() {
-        let result = agent_id_to_json(None);
-        assert_eq!(result, Value::Null);
-    }
-
-    #[test]
-    fn agent_id_to_json_handles_some() {
-        let id = common::AgentId {
-            org_id: "o".to_string(),
-            team_id: "t".to_string(),
-            agent_id: "a".to_string(),
-        };
-        let result = agent_id_to_json(Some(&id));
-        assert_eq!(result["org_id"], "o");
-        assert_eq!(result["team_id"], "t");
-        assert_eq!(result["agent_id"], "a");
     }
 }
