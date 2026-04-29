@@ -46,10 +46,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _budget_alert_tx = budget_alert_tx;
 
     // Optionally spawn the webhook delivery loop (reads AA_WEBHOOK_URL).
-    let _webhook_handle = aa_gateway::events::startup::maybe_spawn_webhook(
-        &approval_queue,
-        budget_alert_rx,
-    );
+    let _webhook_handle = aa_gateway::events::startup::maybe_spawn_webhook(&approval_queue, budget_alert_rx);
 
     if let Some(socket_path) = &cli.socket {
         aa_gateway::server::serve_uds(&cli.policy, socket_path, registry).await

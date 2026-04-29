@@ -30,12 +30,7 @@ impl WebhookTarget {
     ///
     /// Returns `Ok(())` on 2xx, logs and returns `Err` otherwise.
     pub async fn deliver(&self, envelope: &Value) -> Result<(), PublishError> {
-        let response = self
-            .client
-            .post(&self.url)
-            .json(envelope)
-            .send()
-            .await?;
+        let response = self.client.post(&self.url).json(envelope).send().await?;
 
         let status = response.status();
         if !status.is_success() {
@@ -46,9 +41,7 @@ impl WebhookTarget {
                 body = %body,
                 "webhook delivery received non-2xx response"
             );
-            return Err(PublishError::Serialization(format!(
-                "webhook returned {status}"
-            )));
+            return Err(PublishError::Serialization(format!("webhook returned {status}")));
         }
 
         tracing::debug!(url = %self.url, "webhook delivery succeeded");

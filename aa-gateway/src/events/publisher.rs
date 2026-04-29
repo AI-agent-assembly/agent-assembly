@@ -60,7 +60,6 @@ pub fn budget_alert_to_envelope(alert: &BudgetAlert) -> Value {
     })
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -87,10 +86,7 @@ mod tests {
 
         assert_eq!(envelope["event_type"], "approval.requested");
         assert_eq!(envelope["source"], "aa-gateway");
-        assert_eq!(
-            envelope["payload"]["approval_request"]["agent_id"],
-            "agent-1"
-        );
+        assert_eq!(envelope["payload"]["approval_request"]["agent_id"], "agent-1");
         assert_eq!(
             envelope["payload"]["approval_request"]["action_summary"],
             "delete production database"
@@ -117,10 +113,7 @@ mod tests {
         let expected_id = request.request_id.to_string();
         let envelope = approval_to_envelope(&request);
 
-        assert_eq!(
-            envelope["payload"]["approval_request"]["approval_id"],
-            expected_id
-        );
+        assert_eq!(envelope["payload"]["approval_request"]["approval_id"], expected_id);
     }
 
     #[test]

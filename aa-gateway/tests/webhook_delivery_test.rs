@@ -72,10 +72,7 @@ async fn approval_event_is_delivered_as_webhook_post() {
     let envelope: serde_json::Value = serde_json::from_str(&body).expect("valid JSON body");
     assert_eq!(envelope["event_type"], "approval.requested");
     assert_eq!(envelope["source"], "aa-gateway");
-    assert_eq!(
-        envelope["payload"]["approval_request"]["agent_id"],
-        expected_agent
-    );
+    assert_eq!(envelope["payload"]["approval_request"]["agent_id"], expected_agent);
     assert_eq!(
         envelope["payload"]["approval_request"]["action_summary"],
         "delete /etc/shadow"
