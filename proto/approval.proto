@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package assembly.approval.v1;
+
+// PendingApproval is the outward-facing snapshot of one pending request.
+message PendingApproval {
+  // UUID v4 string identifying the request.
+  string request_id          = 1;
+  // Agent that triggered the approval requirement.
+  string agent_id            = 2;
+  // Human-readable description of the action awaiting approval.
+  string action              = 3;
+  // Policy condition name that triggered this request.
+  string condition_triggered = 4;
+  // Unix epoch seconds when the request was submitted.
+  uint64 submitted_at        = 5;
+  // Seconds before the request auto-resolves as timed out.
+  uint64 timeout_secs        = 6;
+}
