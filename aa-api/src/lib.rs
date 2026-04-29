@@ -21,6 +21,7 @@ pub mod ws;
 pub use config::ApiConfig;
 pub use error::ProblemDetail;
 pub use events::EventBroadcast;
+pub use models::{EventType, GovernanceEvent};
 pub use openapi::ApiDoc;
 pub use replay::ReplayBuffer;
 pub use server::{build_app, run_server};
