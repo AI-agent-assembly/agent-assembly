@@ -102,6 +102,37 @@ pub struct AnomalyEvent {
     pub detected_at: chrono::DateTime<chrono::Utc>,
 }
 
+/// Configuration for anomaly detection thresholds.
+///
+/// All thresholds are configurable to allow tuning per deployment environment.
+#[derive(Debug, Clone)]
+pub struct AnomalyConfig {
+    /// Sliding window duration for baseline computation (default: 3600s = 1 hour).
+    pub baseline_window_secs: u64,
+    /// Standard deviation multiplier for behavior spike detection (default: 3.0).
+    pub spike_stddev_multiplier: f64,
+    /// Number of identical tool+args calls within `loop_window_secs` before
+    /// triggering a loop runaway anomaly (default: 50).
+    pub loop_threshold: u32,
+    /// Window duration for loop runaway detection (default: 300s = 5 minutes).
+    pub loop_window_secs: u64,
+    /// Number of credential findings within the baseline window before
+    /// triggering a credential leak anomaly (default: 3).
+    pub credential_leak_threshold: u32,
+}
+
+impl Default for AnomalyConfig {
+    fn default() -> Self {
+        Self {
+            baseline_window_secs: 3600,
+            spike_stddev_multiplier: 3.0,
+            loop_threshold: 50,
+            loop_window_secs: 300,
+            credential_leak_threshold: 3,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
