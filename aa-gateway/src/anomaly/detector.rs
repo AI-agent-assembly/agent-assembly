@@ -158,6 +158,29 @@ impl AnomalyDetector {
         })
     }
 
+    /// Detect data exfiltration attempt: PII/credential findings present in a
+    /// payload that is being sent to an external host via `NetworkRequest`.
+    ///
+    /// Returns `Some(AnomalyEvent)` with [`AnomalyResponse::Block`] when
+    /// sensitive data is detected in outbound network traffic.
+    pub fn check_data_exfiltration(
+        &self,
+        agent_id: AgentId,
+        has_pii: bool,
+        url: &str,
+    ) -> Option<AnomalyEvent> {
+        if !has_pii {
+            return None;
+        }
+        Some(AnomalyEvent {
+            anomaly_type: AnomalyType::DataExfiltrationAttempt,
+            response: AnomalyResponse::default_for(AnomalyType::DataExfiltrationAttempt),
+            agent_id,
+            description: format!("PII detected in payload destined for external host: {url}"),
+            detected_at: chrono::Utc::now(),
+        })
+    }
+
     /// Compute a stable hash for a (tool_name, args) pair.
     fn hash_tool_call(tool_name: &str, args: &str) -> u64 {
         let mut hasher = Sha256::new();
