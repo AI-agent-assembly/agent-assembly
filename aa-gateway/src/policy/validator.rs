@@ -3,7 +3,10 @@
 use std::collections::HashMap;
 
 use crate::policy::{
-    document::{ActiveHours, BudgetPolicy, DataPolicy, NetworkPolicy, PolicyDocument, SchedulePolicy, ToolPolicy},
+    document::{
+        ActionOnExceed, ActiveHours, BudgetPolicy, DataPolicy, NetworkPolicy, PolicyDocument, SchedulePolicy,
+        ToolPolicy,
+    },
     error::{ValidationError, ValidationWarning},
     raw::RawPolicyDocument,
 };
@@ -227,6 +230,7 @@ impl PolicyValidator {
             daily_limit_usd: raw.daily_limit_usd,
             monthly_limit_usd: raw.monthly_limit_usd,
             timezone: raw.timezone,
+            action_on_exceed: ActionOnExceed::default(),
         })
     }
 

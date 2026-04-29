@@ -25,6 +25,16 @@ pub struct SchedulePolicy {
     pub active_hours: Option<ActiveHours>,
 }
 
+/// Action to take when budget limit is exceeded.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ActionOnExceed {
+    /// Deny individual requests but keep the agent active (default).
+    #[default]
+    Deny,
+    /// Suspend the agent entirely until budget resets.
+    Suspend,
+}
+
 /// Validated spend budget policy.
 #[derive(Debug, Clone, PartialEq)]
 pub struct BudgetPolicy {
@@ -34,6 +44,8 @@ pub struct BudgetPolicy {
     pub monthly_limit_usd: Option<f64>,
     /// IANA timezone for daily/monthly reset boundary. `None` means UTC.
     pub timezone: Option<String>,
+    /// Action when budget is exceeded: deny individual requests or suspend agent.
+    pub action_on_exceed: ActionOnExceed,
 }
 
 /// Validated data / PII policy.

@@ -338,7 +338,8 @@ impl aa_core::PolicyEvaluator for PolicyEngine {
 mod tests {
     use super::*;
     use crate::policy::document::{
-        ActiveHours, BudgetPolicy, DataPolicy, NetworkPolicy, PolicyDocument, SchedulePolicy, ToolPolicy,
+        ActionOnExceed, ActiveHours, BudgetPolicy, DataPolicy, NetworkPolicy, PolicyDocument, SchedulePolicy,
+        ToolPolicy,
     };
     use aa_core::{
         identity::{AgentId, SessionId},
@@ -601,6 +602,7 @@ mod tests {
             daily_limit_usd: Some(1.0),
             monthly_limit_usd: None,
             timezone: None,
+            action_on_exceed: ActionOnExceed::default(),
         });
         let engine = make_engine(doc);
         let ctx = make_ctx();
@@ -623,6 +625,7 @@ mod tests {
             daily_limit_usd: None,
             monthly_limit_usd: Some(5.0),
             timezone: None,
+            action_on_exceed: ActionOnExceed::default(),
         });
         let engine = make_engine(doc);
         let ctx = make_ctx();
@@ -645,6 +648,7 @@ mod tests {
             daily_limit_usd: None,
             monthly_limit_usd: Some(10.0),
             timezone: None,
+            action_on_exceed: ActionOnExceed::default(),
         });
         let engine = make_engine(doc);
         let ctx = make_ctx();
@@ -662,6 +666,7 @@ mod tests {
             daily_limit_usd: Some(2.0),
             monthly_limit_usd: Some(5.0),
             timezone: None,
+            action_on_exceed: ActionOnExceed::default(),
         });
         let engine = make_engine(doc);
         let ctx = make_ctx();
