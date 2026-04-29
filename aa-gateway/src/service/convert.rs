@@ -7,9 +7,12 @@
 use aa_core::identity::{AgentId, SessionId};
 use aa_core::time::Timestamp;
 use aa_core::{AgentContext, FileMode, GovernanceAction, PolicyResult};
+use aa_proto::assembly::approval::v1::{ApprovalDecisionType, ApprovalEvent, DecideRequest, PendingApproval};
 use aa_proto::assembly::common::v1::Decision;
 use aa_proto::assembly::policy::v1::action_context::Action;
 use aa_proto::assembly::policy::v1::{CheckActionRequest, CheckActionResponse, RedactInstructions, RedactRule};
+use aa_runtime::approval::PendingApprovalRequest;
+use aa_runtime::approval::{ApprovalDecision, ApprovalRequest, ApprovalRequestId};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 
@@ -193,4 +196,80 @@ pub fn result_to_response(result: &PolicyResult, latency_us: i64, policy_rule: &
         deny_action: None,
     };
     eval_result_to_response(&eval, latency_us, policy_rule)
+}
+
+/// Convert a [`PendingApprovalRequest`] (from `ApprovalQueue::list()`) into its
+/// proto representation.
+pub fn pending_to_proto(p: &PendingApprovalRequest) -> PendingApproval {
+    PendingApproval {
+        request_id: p.request_id.to_string(),
+        agent_id: p.agent_id.clone(),
+        action: p.action.clone(),
+        condition_triggered: p.condition_triggered.clone(),
+        submitted_at: p.submitted_at,
+        timeout_secs: p.timeout_secs,
+    }
+}
+
+/// Convert an [`ApprovalRequest`] (from the broadcast channel) into a proto
+/// [`ApprovalEvent`] for streaming to WatchApprovals subscribers.
+pub fn approval_event_to_proto(req: &ApprovalRequest) -> ApprovalEvent {
+    ApprovalEvent {
+        request_id: req.request_id.to_string(),
+        agent_id: req.agent_id.clone(),
+        action: req.action.clone(),
+        condition_triggered: req.condition_triggered.clone(),
+        submitted_at: req.submitted_at,
+        timeout_secs: req.timeout_secs,
+    }
+}
+
+/// Errors specific to approval decision conversion.
+#[derive(Debug, thiserror::Error)]
+pub enum ApprovalConvertError {
+    /// The `request_id` field is not a valid UUID.
+    #[error("invalid request_id UUID: {0}")]
+    InvalidRequestId(#[from] uuid::Error),
+    /// The `decision` field is unspecified or unknown.
+    #[error("decision type is unspecified")]
+    UnspecifiedDecision,
+    /// REJECTED decision requires a non-empty reason.
+    #[error("rejection reason is required")]
+    MissingRejectionReason,
+}
+
+/// Convert a proto [`DecideRequest`] into the core types needed to call
+/// [`ApprovalQueue::decide`].
+pub fn decide_request_to_core(
+    req: &DecideRequest,
+) -> Result<(ApprovalRequestId, ApprovalDecision), ApprovalConvertError> {
+    let id: ApprovalRequestId = req.request_id.parse()?;
+
+    let decision_type =
+        ApprovalDecisionType::try_from(req.decision).unwrap_or(ApprovalDecisionType::DecisionUnspecified);
+
+    let decision = match decision_type {
+        ApprovalDecisionType::Approved => ApprovalDecision::Approved {
+            by: req.decided_by.clone(),
+            reason: if req.reason.is_empty() {
+                None
+            } else {
+                Some(req.reason.clone())
+            },
+        },
+        ApprovalDecisionType::Rejected => {
+            if req.reason.is_empty() {
+                return Err(ApprovalConvertError::MissingRejectionReason);
+            }
+            ApprovalDecision::Rejected {
+                by: req.decided_by.clone(),
+                reason: req.reason.clone(),
+            }
+        }
+        ApprovalDecisionType::DecisionUnspecified => {
+            return Err(ApprovalConvertError::UnspecifiedDecision);
+        }
+    };
+
+    Ok((id, decision))
 }

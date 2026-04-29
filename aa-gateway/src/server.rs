@@ -9,11 +9,13 @@ use tonic::transport::Server;
 use crate::audit::AuditWriter;
 use crate::engine::PolicyEngine;
 use crate::registry::AgentRegistry;
-use crate::service::{AgentLifecycleServiceImpl, AuditServiceImpl, PolicyServiceImpl};
+use crate::service::{AgentLifecycleServiceImpl, ApprovalServiceImpl, AuditServiceImpl, PolicyServiceImpl};
 use aa_core::AuditEntry;
 use aa_proto::assembly::agent::v1::agent_lifecycle_service_server::AgentLifecycleServiceServer;
+use aa_proto::assembly::approval::v1::approval_service_server::ApprovalServiceServer;
 use aa_proto::assembly::audit::v1::audit_service_server::AuditServiceServer;
 use aa_proto::assembly::policy::v1::policy_service_server::PolicyServiceServer;
+use aa_runtime::approval::ApprovalQueue;
 
 /// Default audit directory relative to the system data directory (`~/.aa/audit`).
 fn default_audit_dir() -> PathBuf {
@@ -59,6 +61,7 @@ pub async fn serve_tcp(
     policy_path: &Path,
     listen_addr: &str,
     registry: Arc<AgentRegistry>,
+    approval_queue: Arc<ApprovalQueue>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let engine = PolicyEngine::load_from_file(policy_path).map_err(|e| format!("failed to load policy: {e:?}"))?;
     let (audit_tx, audit_drops, initial_hash) = setup_audit("gateway", "default").await?;
@@ -70,6 +73,7 @@ pub async fn serve_tcp(
     );
     let audit_svc = AuditServiceImpl::new(audit_tx, audit_drops, initial_hash);
     let lifecycle_svc = AgentLifecycleServiceImpl::new(registry);
+    let approval_svc = ApprovalServiceImpl::new(approval_queue);
 
     let addr = listen_addr.parse()?;
     tracing::info!(%addr, "starting gRPC server on TCP");
@@ -78,6 +82,7 @@ pub async fn serve_tcp(
         .add_service(PolicyServiceServer::new(policy_svc))
         .add_service(AuditServiceServer::new(audit_svc))
         .add_service(AgentLifecycleServiceServer::new(lifecycle_svc))
+        .add_service(ApprovalServiceServer::new(approval_svc))
         .serve(addr)
         .await?;
 
@@ -93,6 +98,7 @@ pub async fn serve_uds(
     policy_path: &Path,
     socket_path: &Path,
     registry: Arc<AgentRegistry>,
+    approval_queue: Arc<ApprovalQueue>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let engine = PolicyEngine::load_from_file(policy_path).map_err(|e| format!("failed to load policy: {e:?}"))?;
     let (audit_tx, audit_drops, initial_hash) = setup_audit("gateway", "default").await?;
@@ -104,6 +110,7 @@ pub async fn serve_uds(
     );
     let audit_svc = AuditServiceImpl::new(audit_tx, audit_drops, initial_hash);
     let lifecycle_svc = AgentLifecycleServiceImpl::new(registry);
+    let approval_svc = ApprovalServiceImpl::new(approval_queue);
 
     tracing::info!(socket = %socket_path.display(), "starting gRPC server on UDS");
 
@@ -118,6 +125,7 @@ pub async fn serve_uds(
         .add_service(PolicyServiceServer::new(policy_svc))
         .add_service(AuditServiceServer::new(audit_svc))
         .add_service(AgentLifecycleServiceServer::new(lifecycle_svc))
+        .add_service(ApprovalServiceServer::new(approval_svc))
         .serve_with_incoming(incoming)
         .await?;
 

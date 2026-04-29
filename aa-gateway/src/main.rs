@@ -49,8 +49,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _webhook_handle = aa_gateway::events::startup::maybe_spawn_webhook(&approval_queue, budget_alert_rx);
 
     if let Some(socket_path) = &cli.socket {
-        aa_gateway::server::serve_uds(&cli.policy, socket_path, registry).await
+        aa_gateway::server::serve_uds(&cli.policy, socket_path, registry, approval_queue).await
     } else {
-        aa_gateway::server::serve_tcp(&cli.policy, &cli.listen, registry).await
+        aa_gateway::server::serve_tcp(&cli.policy, &cli.listen, registry, approval_queue).await
     }
 }

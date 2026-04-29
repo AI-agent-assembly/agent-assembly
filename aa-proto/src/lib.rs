@@ -14,6 +14,7 @@
 //! assembly::policy::v1   — policy check hot path (path ②)
 //! assembly::audit::v1    — async audit trail (path ③)
 //! assembly::event::v1    — internal event bus envelope (paths ⑤ ⑥)
+//! assembly::approval::v1 — human-in-the-loop approval queue
 //! ```
 
 pub mod assembly {
@@ -44,6 +45,12 @@ pub mod assembly {
     pub mod event {
         pub mod v1 {
             tonic::include_proto!("assembly.event.v1");
+        }
+    }
+
+    pub mod approval {
+        pub mod v1 {
+            tonic::include_proto!("assembly.approval.v1");
         }
     }
 }

@@ -1,0 +1,83 @@
+syntax = "proto3";
+
+package assembly.approval.v1;
+
+// ApprovalService exposes the human-in-the-loop approval queue over gRPC.
+//
+// Consumed by: CLI (future), dashboard WebSocket handler (future), grpcurl (testing)
+// Backed by:   aa-runtime/src/approval.rs (ApprovalQueue)
+service ApprovalService {
+  // ListPending returns a snapshot of all currently pending approval requests.
+  rpc ListPending(ListPendingRequest) returns (ListPendingResponse);
+
+  // Decide settles a pending approval request (approve or reject).
+  rpc Decide(DecideRequest) returns (DecideResponse);
+
+  // WatchApprovals streams new approval requests as they arrive in real-time.
+  rpc WatchApprovals(WatchApprovalsRequest) returns (stream ApprovalEvent);
+}
+
+// PendingApproval is the outward-facing snapshot of one pending request.
+message PendingApproval {
+  // UUID v4 string identifying the request.
+  string request_id          = 1;
+  // Agent that triggered the approval requirement.
+  string agent_id            = 2;
+  // Human-readable description of the action awaiting approval.
+  string action              = 3;
+  // Policy condition name that triggered this request.
+  string condition_triggered = 4;
+  // Unix epoch seconds when the request was submitted.
+  uint64 submitted_at        = 5;
+  // Seconds before the request auto-resolves as timed out.
+  uint64 timeout_secs        = 6;
+}
+
+// ── ListPending ──────────────────────────────────────────────────────────────
+
+message ListPendingRequest {}
+
+message ListPendingResponse {
+  repeated PendingApproval requests = 1;
+}
+
+// ── Decide ───────────────────────────────────────────────────────────────────
+
+// ApprovalDecisionType is the human operator's verdict.
+enum ApprovalDecisionType {
+  DECISION_UNSPECIFIED = 0;
+  APPROVED             = 1;
+  REJECTED             = 2;
+}
+
+message DecideRequest {
+  // UUID of the pending request to settle.
+  string               request_id = 1;
+  // The decision: approve or reject.
+  ApprovalDecisionType decision   = 2;
+  // Identifier of the operator making the decision.
+  string               decided_by = 3;
+  // Free-text reason. Required for REJECTED; optional for APPROVED.
+  string               reason     = 4;
+}
+
+message DecideResponse {
+  // True if the decision was applied; false if the request was already settled.
+  bool   success       = 1;
+  // Non-empty when success is false; describes why the decision was not applied.
+  string error_message = 2;
+}
+
+// ── WatchApprovals ───────────────────────────────────────────────────────────
+
+message WatchApprovalsRequest {}
+
+// ApprovalEvent is streamed to WatchApprovals subscribers when a new request arrives.
+message ApprovalEvent {
+  string request_id          = 1;
+  string agent_id            = 2;
+  string action              = 3;
+  string condition_triggered = 4;
+  uint64 submitted_at        = 5;
+  uint64 timeout_secs        = 6;
+}
