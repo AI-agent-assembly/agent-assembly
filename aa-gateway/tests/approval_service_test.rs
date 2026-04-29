@@ -90,3 +90,36 @@ async fn list_pending_returns_submitted_request() {
     assert_eq!(resp.requests[0].agent_id, "agent-test");
     assert_eq!(resp.requests[0].action, "deploy to production");
 }
+
+#[tokio::test]
+async fn decide_approve_resolves_request() {
+    let (addr, queue) = start_server().await;
+    let mut client = ApprovalServiceClient::connect(format!("http://{addr}"))
+        .await
+        .unwrap();
+
+    let req = make_test_request();
+    let request_id = req.request_id.to_string();
+    let (_rid, _fut) = queue.submit(req);
+
+    let resp = client
+        .decide(DecideRequest {
+            request_id: request_id.clone(),
+            decision: ApprovalDecisionType::Approved as i32,
+            decided_by: "alice".to_string(),
+            reason: "looks safe".to_string(),
+        })
+        .await
+        .unwrap()
+        .into_inner();
+
+    assert!(resp.success);
+    assert!(resp.error_message.is_empty());
+
+    let list_resp = client
+        .list_pending(ListPendingRequest {})
+        .await
+        .unwrap()
+        .into_inner();
+    assert!(list_resp.requests.is_empty());
+}
