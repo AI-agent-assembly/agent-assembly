@@ -71,6 +71,24 @@ impl TracepointManager {
         Ok(Self { _links: links })
     }
 
+    /// Explicitly detach all tracepoints.
+    ///
+    /// Dropping the link handles causes aya to detach the probes from the
+    /// kernel. After this call the `TracepointManager` is inert — calling
+    /// `detach` again is a no-op.
+    #[cfg(target_os = "linux")]
+    pub fn detach(&mut self) {
+        let count = self._links.len();
+        self._links.clear();
+        if count > 0 {
+            tracing::info!(count, "tracepoints explicitly detached");
+        }
+    }
+
+    /// Explicit detach — non-Linux stub (no-op).
+    #[cfg(not(target_os = "linux"))]
+    pub fn detach(&mut self) {}
+
     /// Attach tracepoints — non-Linux stub.
     ///
     /// Returns an error immediately since eBPF is not supported on this platform.
