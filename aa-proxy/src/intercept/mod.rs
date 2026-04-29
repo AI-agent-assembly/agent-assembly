@@ -13,6 +13,8 @@ use aa_proto::assembly::common::v1::ActionType;
 use aa_runtime::pipeline::event::{EnrichedEvent, EventSource};
 use aa_runtime::pipeline::PipelineEvent;
 
+use aa_core::CredentialScanner;
+
 use crate::error::ProxyError;
 use crate::intercept::detect::LlmApiPattern;
 use crate::intercept::extract::{extract_anthropic, extract_cohere, extract_openai, ExtractionError, LlmFields};
@@ -24,12 +26,16 @@ use crate::intercept::extract::{extract_anthropic, extract_cohere, extract_opena
 /// LLM calls into the runtime event pipeline.
 pub struct Interceptor {
     event_tx: broadcast::Sender<PipelineEvent>,
+    scanner: CredentialScanner,
 }
 
 impl Interceptor {
     /// Create a new `Interceptor` that emits events on the given broadcast channel.
     pub fn new(event_tx: broadcast::Sender<PipelineEvent>) -> Self {
-        Self { event_tx }
+        Self {
+            event_tx,
+            scanner: CredentialScanner::new(),
+        }
     }
 
     /// Inspect an intercepted exchange, extract LLM fields from the body,
