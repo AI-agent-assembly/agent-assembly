@@ -101,9 +101,24 @@ impl UprobeManager {
     /// Stub for non-Linux platforms — uprobe attachment requires Linux.
     #[cfg(not(target_os = "linux"))]
     pub fn attach(_bpf: &mut (), _target_pid: Option<i32>) -> Result<Self, EbpfError> {
-        Err(EbpfError::MapNotFound {
+        Err(EbpfError::ProgramNotFound {
             name: "uprobe attachment requires Linux".into(),
         })
+    }
+}
+
+impl Drop for UprobeManager {
+    fn drop(&mut self) {
+        #[cfg(target_os = "linux")]
+        let count = self._links.len();
+        #[cfg(not(target_os = "linux"))]
+        let count = 0_usize;
+
+        tracing::debug!(
+            target_pid = ?self.target_pid,
+            probe_count = count,
+            "detaching uprobe links",
+        );
     }
 }
 
