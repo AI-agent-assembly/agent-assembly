@@ -579,6 +579,7 @@ mod tests {
             crate::ipc::new_response_router(),
             crate::approval::ApprovalQueue::new(),
             None,
+            Arc::new(AtomicU64::new(0)),
         ));
 
         // Send 3 events — batch threshold reached, should flush before interval
@@ -615,6 +616,7 @@ mod tests {
             crate::ipc::new_response_router(),
             crate::approval::ApprovalQueue::new(),
             None,
+            Arc::new(AtomicU64::new(0)),
         ));
 
         // Send 5 events (less than batch_size=100) — should arrive after interval flush
@@ -651,6 +653,7 @@ mod tests {
             crate::ipc::new_response_router(),
             crate::approval::ApprovalQueue::new(),
             None,
+            Arc::new(AtomicU64::new(0)),
         ));
 
         // Send a violation — should arrive immediately, bypassing batch
@@ -686,6 +689,7 @@ mod tests {
             crate::ipc::new_response_router(),
             crate::approval::ApprovalQueue::new(),
             None,
+            Arc::new(AtomicU64::new(0)),
         ));
 
         // Send 5 events (batch won't flush yet)
@@ -740,6 +744,7 @@ mod tests {
             crate::ipc::new_response_router(),
             crate::approval::ApprovalQueue::new(),
             None,
+            Arc::new(AtomicU64::new(0)),
         ));
 
         // Send non-event frames
@@ -784,6 +789,7 @@ mod tests {
             crate::ipc::new_response_router(),
             crate::approval::ApprovalQueue::new(),
             None,
+            Arc::new(AtomicU64::new(0)),
         ));
 
         // Build an AuditEvent with action_type = FILE_OPERATION
@@ -837,6 +843,7 @@ mod tests {
             crate::ipc::new_response_router(),
             crate::approval::ApprovalQueue::new(),
             None,
+            Arc::new(AtomicU64::new(0)),
         ));
 
         // Yield briefly so the pipeline's interval fires its immediate first tick
@@ -879,6 +886,7 @@ mod tests {
             crate::ipc::new_response_router(),
             crate::approval::ApprovalQueue::new(),
             None,
+            Arc::new(AtomicU64::new(0)),
         ));
 
         for _ in 0..3 {
@@ -924,6 +932,7 @@ mod tests {
             crate::ipc::new_response_router(),
             crate::approval::ApprovalQueue::new(),
             None,
+            Arc::new(AtomicU64::new(0)),
         ));
 
         // First batch of 2
@@ -993,6 +1002,7 @@ mod tests {
             crate::ipc::new_response_router(),
             crate::approval::ApprovalQueue::new(),
             None,
+            Arc::new(AtomicU64::new(0)),
         ));
 
         // Spawn a receiver that drains the broadcast channel
@@ -1073,6 +1083,7 @@ mod tests {
             router,
             approval_queue,
             None,
+            Arc::new(AtomicU64::new(0)),
         ));
 
         tx.send((0, policy_query_frame(ActionType::ToolCall))).await.unwrap();
@@ -1121,6 +1132,7 @@ mod tests {
             router,
             approval_queue,
             None,
+            Arc::new(AtomicU64::new(0)),
         ));
 
         tx.send((0, policy_query_frame(ActionType::ToolCall))).await.unwrap();
@@ -1171,6 +1183,7 @@ mod tests {
             router,
             approval_queue,
             None,
+            Arc::new(AtomicU64::new(0)),
         ));
 
         tx.send((0, policy_query_frame(ActionType::ToolCall))).await.unwrap();
@@ -1228,6 +1241,7 @@ mod tests {
             router,
             approval_queue,
             None,
+            Arc::new(AtomicU64::new(0)),
         ));
 
         // Send the query — get back PENDING with approval_id.

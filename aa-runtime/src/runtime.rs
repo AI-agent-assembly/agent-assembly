@@ -208,6 +208,10 @@ pub async fn run(config: RuntimeConfig) {
         }
     }
 
+    // Shared monotonic sequence counter — used by the pipeline and (later) the
+    // eBPF bridge so all events share a single ordering.
+    let seq = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+
     // Spawn the event aggregation pipeline task.
     {
         let pipeline_token = token.clone();
@@ -215,6 +219,7 @@ pub async fn run(config: RuntimeConfig) {
         let pipeline_policy = std::sync::Arc::clone(&policy);
         let pipeline_router = std::sync::Arc::clone(&response_router);
         let pipeline_approval_queue = std::sync::Arc::clone(&approval_queue);
+        let pipeline_seq = std::sync::Arc::clone(&seq);
         tracker.spawn(async move {
             crate::pipeline::run(
                 inbound_rx,
@@ -226,6 +231,7 @@ pub async fn run(config: RuntimeConfig) {
                 pipeline_router,
                 pipeline_approval_queue,
                 None,
+                pipeline_seq,
             )
             .await;
         });
