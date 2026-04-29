@@ -10,8 +10,9 @@ use aa_core::AuditEntry;
 use crate::audit::AuditWriter;
 use crate::engine::PolicyEngine;
 use crate::registry::AgentRegistry;
-use crate::service::{AgentLifecycleServiceImpl, PolicyServiceImpl};
+use crate::service::{AgentLifecycleServiceImpl, AuditServiceImpl, PolicyServiceImpl};
 use aa_proto::assembly::agent::v1::agent_lifecycle_service_server::AgentLifecycleServiceServer;
+use aa_proto::assembly::audit::v1::audit_service_server::AuditServiceServer;
 use aa_proto::assembly::policy::v1::policy_service_server::PolicyServiceServer;
 
 /// Default audit directory relative to the system data directory (`~/.aa/audit`).
@@ -50,7 +51,8 @@ pub async fn serve_tcp(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let engine = PolicyEngine::load_from_file(policy_path).map_err(|e| format!("failed to load policy: {e:?}"))?;
     let (audit_tx, audit_drops) = setup_audit("gateway", "default").await?;
-    let policy_svc = PolicyServiceImpl::new(Arc::new(engine), audit_tx, audit_drops);
+    let policy_svc = PolicyServiceImpl::new(Arc::new(engine), audit_tx.clone(), Arc::clone(&audit_drops));
+    let audit_svc = AuditServiceImpl::new(audit_tx, audit_drops);
     let lifecycle_svc = AgentLifecycleServiceImpl::new(registry);
 
     let addr = listen_addr.parse()?;
@@ -58,6 +60,7 @@ pub async fn serve_tcp(
 
     Server::builder()
         .add_service(PolicyServiceServer::new(policy_svc))
+        .add_service(AuditServiceServer::new(audit_svc))
         .add_service(AgentLifecycleServiceServer::new(lifecycle_svc))
         .serve(addr)
         .await?;
@@ -77,7 +80,8 @@ pub async fn serve_uds(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let engine = PolicyEngine::load_from_file(policy_path).map_err(|e| format!("failed to load policy: {e:?}"))?;
     let (audit_tx, audit_drops) = setup_audit("gateway", "default").await?;
-    let policy_svc = PolicyServiceImpl::new(Arc::new(engine), audit_tx, audit_drops);
+    let policy_svc = PolicyServiceImpl::new(Arc::new(engine), audit_tx.clone(), Arc::clone(&audit_drops));
+    let audit_svc = AuditServiceImpl::new(audit_tx, audit_drops);
     let lifecycle_svc = AgentLifecycleServiceImpl::new(registry);
 
     tracing::info!(socket = %socket_path.display(), "starting gRPC server on UDS");
@@ -91,6 +95,7 @@ pub async fn serve_uds(
 
     Server::builder()
         .add_service(PolicyServiceServer::new(policy_svc))
+        .add_service(AuditServiceServer::new(audit_svc))
         .add_service(AgentLifecycleServiceServer::new(lifecycle_svc))
         .serve_with_incoming(incoming)
         .await?;
