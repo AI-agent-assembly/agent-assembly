@@ -15,7 +15,7 @@ use aa_proto::assembly::policy::v1::{BatchCheckRequest, BatchCheckResponse, Chec
 
 use aa_runtime::approval::ApprovalQueue;
 
-use crate::engine::{DenyAction, PolicyEngine};
+use crate::engine::{DenyAction, EvaluationResult, PolicyEngine};
 use crate::registry::convert::proto_agent_id_to_key;
 use crate::registry::{AgentRegistry, SuspendReason};
 use crate::service::convert;
@@ -100,10 +100,14 @@ impl PolicyServiceImpl {
         }
     }
 
-    /// Evaluate a single request against the engine, returning the gRPC response
-    /// and the optional deny-action side-effect.
+    /// Evaluate a single request against the engine, returning the raw
+    /// evaluation result, measured latency, and the policy rule label.
+    ///
+    /// Callers are responsible for converting the [`EvaluationResult`] into a
+    /// proto response — this allows `RequiresApproval` to be intercepted before
+    /// the conversion.
     #[allow(clippy::result_large_err)] // tonic::Status is the standard gRPC error type
-    fn evaluate_one(&self, req: &CheckActionRequest) -> Result<(CheckActionResponse, Option<DenyAction>), Status> {
+    fn evaluate_one(&self, req: &CheckActionRequest) -> Result<(EvaluationResult, i64, String), Status> {
         let (ctx, action) = convert::request_to_core(req).map_err(|e| {
             tracing::error!(error = %e, "failed to convert CheckActionRequest");
             Status::invalid_argument(e.to_string())
@@ -115,16 +119,12 @@ impl PolicyServiceImpl {
 
         // Derive a policy_rule label from the deny/approval reason.
         let policy_rule = match &eval.decision {
-            aa_core::PolicyResult::Allow => "",
-            aa_core::PolicyResult::Deny { reason } => reason.as_str(),
-            aa_core::PolicyResult::RequiresApproval { .. } => "requires_approval",
+            aa_core::PolicyResult::Allow => String::new(),
+            aa_core::PolicyResult::Deny { reason } => reason.clone(),
+            aa_core::PolicyResult::RequiresApproval { .. } => "requires_approval".to_string(),
         };
 
-        let deny_action = eval.deny_action;
-        Ok((
-            convert::eval_result_to_response(&eval, latency_us, policy_rule),
-            deny_action,
-        ))
+        Ok((eval, latency_us, policy_rule))
     }
 
     /// Execute the suspension side-effect when the engine signals `SuspendAgent`.
@@ -230,7 +230,9 @@ impl PolicyService for PolicyServiceImpl {
             "check_action request"
         );
 
-        let (response, deny_action) = self.evaluate_one(&req)?;
+        let (eval, latency_us, policy_rule) = self.evaluate_one(&req)?;
+        let deny_action = eval.deny_action;
+        let response = convert::eval_result_to_response(&eval, latency_us, &policy_rule);
 
         tracing::debug!(
             decision = response.decision,
@@ -261,7 +263,9 @@ impl PolicyService for PolicyServiceImpl {
         let mut responses = Vec::with_capacity(batch.requests.len());
 
         for req in &batch.requests {
-            let (resp, deny_action) = self.evaluate_one(req)?;
+            let (eval, latency_us, policy_rule) = self.evaluate_one(req)?;
+            let deny_action = eval.deny_action;
+            let resp = convert::eval_result_to_response(&eval, latency_us, &policy_rule);
             self.maybe_suspend_agent(req, deny_action).await;
             self.record_audit(req, &resp).await;
             responses.push(resp);
