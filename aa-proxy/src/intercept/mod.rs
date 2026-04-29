@@ -357,4 +357,43 @@ mod tests {
             other => panic!("expected Audit event, got {other:?}"),
         }
     }
+
+    #[tokio::test]
+    async fn intercept_redacts_credentials_from_body() {
+        let interceptor = make_interceptor();
+        let mut event = make_event(LlmApiPattern::OpenAi);
+        // Embed a well-known OpenAI API key pattern in a message content field.
+        event.request_body = Some(Bytes::from(
+            r#"{"model":"gpt-4","messages":[{"role":"user","content":"my key is sk-proj-aBcDeFgHiJkLmNoPqRsT1234567890abcdef1234567890ab"}]}"#,
+        ));
+        event.response_body = None;
+
+        let fields = interceptor.intercept(&event).await.unwrap().unwrap();
+        // Extraction still succeeds — model and message count are preserved.
+        assert_eq!(fields.model, "gpt-4");
+        assert_eq!(fields.messages_count, 1);
+    }
+
+    #[tokio::test]
+    async fn intercept_credential_body_emits_redacted_event() {
+        let (tx, mut rx) = broadcast::channel(16);
+        let interceptor = Interceptor::new(tx);
+        let mut event = make_event(LlmApiPattern::OpenAi);
+        // Response body with a credential embedded in a field.
+        event.response_body = Some(Bytes::from(
+            r#"{"model":"gpt-4","usage":{"prompt_tokens":5,"completion_tokens":8},"debug":"sk-proj-aBcDeFgHiJkLmNoPqRsT1234567890abcdef1234567890ab"}"#,
+        ));
+
+        let fields = interceptor.intercept(&event).await.unwrap().unwrap();
+        assert_eq!(fields.model, "gpt-4");
+        assert_eq!(fields.prompt_tokens, Some(5));
+
+        // The pipeline event should not contain the raw credential.
+        let pipeline_event = rx.try_recv().expect("should receive pipeline event");
+        let event_str = format!("{pipeline_event:?}");
+        assert!(
+            !event_str.contains("sk-proj-"),
+            "pipeline event must not contain raw credential"
+        );
+    }
 }
