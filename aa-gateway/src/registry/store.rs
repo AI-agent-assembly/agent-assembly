@@ -3,6 +3,7 @@
 use std::collections::BTreeMap;
 
 use chrono::{DateTime, Utc};
+use dashmap::DashMap;
 
 use super::AgentStatus;
 
@@ -33,4 +34,27 @@ pub struct AgentRecord {
     pub last_heartbeat: DateTime<Utc>,
     /// Current runtime status of the agent.
     pub status: AgentStatus,
+}
+
+/// Thread-safe in-memory agent registry backed by [`DashMap`].
+///
+/// Keyed by the raw 16-byte `agent_id` UUID. Concurrent reads and writes
+/// are safe without external locking.
+pub struct AgentRegistry {
+    agents: DashMap<[u8; 16], AgentRecord>,
+}
+
+impl AgentRegistry {
+    /// Create an empty registry.
+    pub fn new() -> Self {
+        Self {
+            agents: DashMap::new(),
+        }
+    }
+}
+
+impl Default for AgentRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
 }
