@@ -70,14 +70,14 @@ impl AnomalyDetector {
             return None;
         }
         let threshold = mean + self.config.spike_stddev_multiplier * stddev;
-        let current = baseline.action_count() as f64;
+        let current = baseline.latest_bucket_count();
         if current > threshold && stddev > 0.0 {
             Some(AnomalyEvent {
                 anomaly_type: AnomalyType::BehaviorSpike,
                 response: AnomalyResponse::default_for(AnomalyType::BehaviorSpike),
                 agent_id,
                 description: format!(
-                    "Action count {current} exceeds threshold {threshold:.1} (mean={mean:.1}, stddev={stddev:.1})"
+                    "Latest bucket count {current} exceeds threshold {threshold:.1} (mean={mean:.1}, stddev={stddev:.1})"
                 ),
                 detected_at: chrono::Utc::now(),
             })
@@ -313,5 +313,285 @@ impl AnomalyDetector {
         hasher.update(args.as_bytes());
         let result = hasher.finalize();
         u64::from_le_bytes(result[..8].try_into().unwrap())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use aa_core::AgentId;
+
+    fn agent(b: u8) -> AgentId {
+        AgentId::from_bytes([b; 16])
+    }
+
+    fn default_detector() -> AnomalyDetector {
+        AnomalyDetector::new(AnomalyConfig::default())
+    }
+
+    // ── 1. Behavior spike ────────────────────────────────────────────
+
+    #[test]
+    fn behavior_spike_detected_when_rate_exceeds_baseline() {
+        let mut config = AnomalyConfig::default();
+        config.baseline_window_secs = 60;
+        config.spike_stddev_multiplier = 2.0;
+        let detector = AnomalyDetector::new(config);
+        let id = agent(1);
+
+        // Establish a low, uniform baseline: 1 action per second for 10 seconds.
+        for i in 0..10 {
+            detector.record_action(id, 1000 + i * 1000);
+        }
+
+        // Inject a massive burst: 200 actions at the same timestamp.
+        for _ in 0..200 {
+            detector.record_action(id, 11000);
+        }
+
+        let result = detector.check_behavior_spike(id);
+        assert!(result.is_some(), "expected behavior spike anomaly");
+        let event = result.unwrap();
+        assert_eq!(event.anomaly_type, AnomalyType::BehaviorSpike);
+        assert_eq!(event.response, AnomalyResponse::Pause);
+    }
+
+    #[test]
+    fn behavior_spike_not_detected_for_uniform_rate() {
+        let detector = default_detector();
+        let id = agent(2);
+
+        // Uniform rate: 10 actions evenly spaced.
+        for i in 0..10 {
+            detector.record_action(id, 1000 + i * 1000);
+        }
+
+        assert!(detector.check_behavior_spike(id).is_none());
+    }
+
+    // ── 2. Unknown external connection ───────────────────────────────
+
+    #[test]
+    fn unknown_connection_detected_when_host_not_in_allowlist() {
+        let detector = default_detector();
+        let id = agent(3);
+        let allowlist = vec!["api.openai.com".to_string()];
+
+        let result = detector.check_unknown_connection(id, "https://evil.com/data", &allowlist);
+        assert!(result.is_some());
+        let event = result.unwrap();
+        assert_eq!(event.anomaly_type, AnomalyType::UnknownExternalConnection);
+        assert_eq!(event.response, AnomalyResponse::Block);
+    }
+
+    #[test]
+    fn unknown_connection_not_detected_when_host_in_allowlist() {
+        let detector = default_detector();
+        let id = agent(4);
+        let allowlist = vec!["api.openai.com".to_string()];
+
+        assert!(detector
+            .check_unknown_connection(id, "https://api.openai.com/v1", &allowlist)
+            .is_none());
+    }
+
+    #[test]
+    fn unknown_connection_not_detected_when_allowlist_empty() {
+        let detector = default_detector();
+        let id = agent(5);
+
+        assert!(detector
+            .check_unknown_connection(id, "https://anything.com", &[])
+            .is_none());
+    }
+
+    // ── 3. Credential leak ───────────────────────────────────────────
+
+    #[test]
+    fn credential_leak_detected_when_threshold_exceeded() {
+        let mut config = AnomalyConfig::default();
+        config.credential_leak_threshold = 3;
+        let detector = AnomalyDetector::new(config);
+        let id = agent(6);
+
+        detector.record_credential_finding(id);
+        detector.record_credential_finding(id);
+        assert!(detector.check_credential_leak(id).is_none());
+
+        detector.record_credential_finding(id);
+        let result = detector.check_credential_leak(id);
+        assert!(result.is_some());
+        let event = result.unwrap();
+        assert_eq!(event.anomaly_type, AnomalyType::CredentialLeakAttempt);
+        assert_eq!(event.response, AnomalyResponse::Alert);
+    }
+
+    // ── 4. Child process ─────────────────────────────────────────────
+
+    #[test]
+    fn child_process_always_detected() {
+        let detector = default_detector();
+        let id = agent(7);
+
+        let result = detector.check_child_process(id, "uname -a");
+        assert!(result.is_some());
+        let event = result.unwrap();
+        assert_eq!(event.anomaly_type, AnomalyType::ChildProcessExecution);
+        assert_eq!(event.response, AnomalyResponse::Block);
+    }
+
+    // ── 5. Data exfiltration ─────────────────────────────────────────
+
+    #[test]
+    fn data_exfiltration_detected_when_pii_in_network_request() {
+        let detector = default_detector();
+        let id = agent(8);
+
+        let result = detector.check_data_exfiltration(id, true, "https://external.com/api");
+        assert!(result.is_some());
+        let event = result.unwrap();
+        assert_eq!(event.anomaly_type, AnomalyType::DataExfiltrationAttempt);
+        assert_eq!(event.response, AnomalyResponse::Block);
+    }
+
+    #[test]
+    fn data_exfiltration_not_detected_when_no_pii() {
+        let detector = default_detector();
+        let id = agent(9);
+
+        assert!(detector
+            .check_data_exfiltration(id, false, "https://external.com/api")
+            .is_none());
+    }
+
+    // ── 6. Loop runaway ──────────────────────────────────────────────
+
+    #[test]
+    fn loop_runaway_detected_when_threshold_exceeded() {
+        let mut config = AnomalyConfig::default();
+        config.loop_threshold = 5; // low threshold for testing
+        let detector = AnomalyDetector::new(config);
+        let id = agent(10);
+
+        for i in 0..5 {
+            detector.record_tool_call(id, "search", "query=foo", 1000 + i * 100);
+        }
+
+        let result = detector.check_loop_runaway(id, "search", "query=foo");
+        assert!(result.is_some());
+        let event = result.unwrap();
+        assert_eq!(event.anomaly_type, AnomalyType::LoopRunaway);
+        assert_eq!(event.response, AnomalyResponse::Pause);
+    }
+
+    #[test]
+    fn loop_runaway_not_detected_below_threshold() {
+        let mut config = AnomalyConfig::default();
+        config.loop_threshold = 5;
+        let detector = AnomalyDetector::new(config);
+        let id = agent(11);
+
+        for i in 0..4 {
+            detector.record_tool_call(id, "search", "query=foo", 1000 + i * 100);
+        }
+
+        assert!(detector
+            .check_loop_runaway(id, "search", "query=foo")
+            .is_none());
+    }
+
+    #[test]
+    fn loop_runaway_different_args_not_counted_together() {
+        let mut config = AnomalyConfig::default();
+        config.loop_threshold = 5;
+        let detector = AnomalyDetector::new(config);
+        let id = agent(12);
+
+        for i in 0..3 {
+            detector.record_tool_call(id, "search", "query=foo", 1000 + i * 100);
+        }
+        for i in 0..3 {
+            detector.record_tool_call(id, "search", "query=bar", 2000 + i * 100);
+        }
+
+        assert!(detector
+            .check_loop_runaway(id, "search", "query=foo")
+            .is_none());
+        assert!(detector
+            .check_loop_runaway(id, "search", "query=bar")
+            .is_none());
+    }
+
+    // ── 7. Identity spoofing ─────────────────────────────────────────
+
+    #[test]
+    fn identity_spoofing_detected_when_ids_mismatch() {
+        let detector = default_detector();
+
+        let result = detector.check_identity_spoofing(agent(13), agent(14));
+        assert!(result.is_some());
+        let event = result.unwrap();
+        assert_eq!(event.anomaly_type, AnomalyType::CrossAgentIdentitySpoofing);
+        assert_eq!(event.response, AnomalyResponse::Alert);
+    }
+
+    #[test]
+    fn identity_spoofing_not_detected_when_ids_match() {
+        let detector = default_detector();
+
+        assert!(detector
+            .check_identity_spoofing(agent(15), agent(15))
+            .is_none());
+    }
+
+    // ── detect() facade ──────────────────────────────────────────────
+
+    #[test]
+    fn detect_returns_none_for_clean_tool_call() {
+        let detector = default_detector();
+        let id = agent(20);
+        let action = aa_core::GovernanceAction::ToolCall {
+            name: "search".to_string(),
+            args: "query=hello".to_string(),
+        };
+
+        assert!(detector.detect(id, &action, false, &[], None).is_none());
+    }
+
+    #[test]
+    fn detect_returns_block_for_process_exec() {
+        let detector = default_detector();
+        let id = agent(21);
+        let action = aa_core::GovernanceAction::ProcessExec {
+            command: "uname -a".to_string(),
+        };
+
+        let result = detector.detect(id, &action, false, &[], None);
+        assert!(result.is_some());
+        assert_eq!(result.unwrap().response, AnomalyResponse::Block);
+    }
+
+    #[test]
+    fn detect_prioritizes_block_over_pause() {
+        let detector = default_detector();
+        let id = agent(22);
+
+        // Establish spike conditions
+        for i in 0..10 {
+            detector.record_action(id, 1000 + i * 1000);
+        }
+        for _ in 0..200 {
+            detector.record_action(id, 11000);
+        }
+
+        let action = aa_core::GovernanceAction::ProcessExec {
+            command: "ls".to_string(),
+        };
+        let result = detector.detect(id, &action, false, &[], None);
+        assert!(result.is_some());
+        assert_eq!(
+            result.unwrap().anomaly_type,
+            AnomalyType::ChildProcessExecution
+        );
     }
 }
