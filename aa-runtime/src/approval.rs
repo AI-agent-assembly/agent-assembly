@@ -664,4 +664,138 @@ mod tests {
 
         assert!(q.list().is_empty());
     }
+
+    // --- Audit logging tests ---
+
+    #[tokio::test]
+    async fn submit_with_audit_emits_approval_requested_entry() {
+        let (tx, mut rx) = mpsc::channel::<AuditEntry>(64);
+        let q = ApprovalQueue::with_audit(tx, [0u8; 32]);
+
+        let req = make_request(60);
+        let _id = req.request_id;
+        let (_rid, _fut) = q.submit(req);
+
+        let entry = rx.try_recv().expect("should receive ApprovalRequested entry");
+        assert_eq!(entry.event_type(), AuditEventType::ApprovalRequested);
+        assert_eq!(entry.seq(), 0);
+    }
+
+    #[tokio::test]
+    async fn decide_approved_emits_approval_granted_entry() {
+        let (tx, mut rx) = mpsc::channel::<AuditEntry>(64);
+        let q = ApprovalQueue::with_audit(tx, [0u8; 32]);
+
+        let req = make_request(60);
+        let id = req.request_id;
+        let (_rid, _fut) = q.submit(req);
+
+        // Drain the ApprovalRequested entry from submit.
+        let _ = rx.try_recv().expect("submit entry");
+
+        q.decide(
+            id,
+            ApprovalDecision::Approved {
+                by: "alice".to_string(),
+                reason: None,
+            },
+        )
+        .expect("decide should succeed");
+
+        let entry = rx.try_recv().expect("should receive ApprovalGranted entry");
+        assert_eq!(entry.event_type(), AuditEventType::ApprovalGranted);
+        assert_eq!(entry.seq(), 1);
+    }
+
+    #[tokio::test]
+    async fn decide_rejected_emits_approval_denied_entry() {
+        let (tx, mut rx) = mpsc::channel::<AuditEntry>(64);
+        let q = ApprovalQueue::with_audit(tx, [0u8; 32]);
+
+        let req = make_request(60);
+        let id = req.request_id;
+        let (_rid, _fut) = q.submit(req);
+
+        let _ = rx.try_recv().expect("submit entry");
+
+        q.decide(
+            id,
+            ApprovalDecision::Rejected {
+                by: "bob".to_string(),
+                reason: "not allowed".to_string(),
+            },
+        )
+        .expect("decide should succeed");
+
+        let entry = rx.try_recv().expect("should receive ApprovalDenied entry");
+        assert_eq!(entry.event_type(), AuditEventType::ApprovalDenied);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn timeout_emits_approval_timed_out_entry() {
+        let (tx, mut rx) = mpsc::channel::<AuditEntry>(64);
+        let q = ApprovalQueue::with_audit(tx, [0u8; 32]);
+
+        let req = make_request(5);
+        let (_rid, _fut) = q.submit(req);
+
+        let _ = rx.try_recv().expect("submit entry");
+
+        tokio::time::advance(std::time::Duration::from_secs(6)).await;
+        // Yield to let the spawned timeout task run after time advances.
+        tokio::task::yield_now().await;
+
+        let entry = rx.recv().await.expect("should receive ApprovalTimedOut entry");
+        assert_eq!(entry.event_type(), AuditEventType::ApprovalTimedOut);
+    }
+
+    #[tokio::test]
+    async fn audit_entries_form_hash_chain() {
+        let (tx, mut rx) = mpsc::channel::<AuditEntry>(64);
+        let q = ApprovalQueue::with_audit(tx, [0u8; 32]);
+
+        let req = make_request(60);
+        let id = req.request_id;
+        let (_rid, _fut) = q.submit(req);
+
+        q.decide(
+            id,
+            ApprovalDecision::Approved {
+                by: "alice".to_string(),
+                reason: None,
+            },
+        )
+        .expect("decide should succeed");
+
+        let entry0 = rx.try_recv().expect("first entry");
+        let entry1 = rx.try_recv().expect("second entry");
+
+        // First entry's previous_hash should be the initial hash (all zeros).
+        assert_eq!(*entry0.previous_hash(), [0u8; 32]);
+        // Second entry's previous_hash should equal the first entry's entry_hash.
+        assert_eq!(entry1.previous_hash(), entry0.entry_hash());
+        // Hash chain entries should have distinct hashes.
+        assert_ne!(entry0.entry_hash(), entry1.entry_hash());
+    }
+
+    #[tokio::test]
+    async fn no_audit_without_audit_channel() {
+        // Using ApprovalQueue::new() (no audit channel) should not panic or fail.
+        let q = ApprovalQueue::new();
+        let req = make_request(60);
+        let id = req.request_id;
+        let (_rid, fut) = q.submit(req);
+
+        q.decide(
+            id,
+            ApprovalDecision::Approved {
+                by: "alice".to_string(),
+                reason: None,
+            },
+        )
+        .expect("decide should succeed");
+
+        let decision = fut.await.expect("future should resolve");
+        assert!(matches!(decision, ApprovalDecision::Approved { .. }));
+    }
 }
