@@ -6,22 +6,31 @@ use std::sync::Arc;
 use tonic::transport::Server;
 
 use crate::engine::PolicyEngine;
-use crate::service::PolicyServiceImpl;
+use crate::registry::AgentRegistry;
+use crate::service::{AgentLifecycleServiceImpl, PolicyServiceImpl};
+use aa_proto::assembly::agent::v1::agent_lifecycle_service_server::AgentLifecycleServiceServer;
 use aa_proto::assembly::policy::v1::policy_service_server::PolicyServiceServer;
 
 /// Start the gRPC server on a TCP address.
 ///
 /// Loads the policy from `policy_path`, wraps it in a `PolicyServiceImpl`, and
-/// serves on `listen_addr` (e.g. `"127.0.0.1:50051"`).
-pub async fn serve_tcp(policy_path: &Path, listen_addr: &str) -> Result<(), Box<dyn std::error::Error>> {
+/// serves on `listen_addr` (e.g. `"127.0.0.1:50051"`). The `registry` is shared
+/// with the `AgentLifecycleService` for agent registration and heartbeat tracking.
+pub async fn serve_tcp(
+    policy_path: &Path,
+    listen_addr: &str,
+    registry: Arc<AgentRegistry>,
+) -> Result<(), Box<dyn std::error::Error>> {
     let engine = PolicyEngine::load_from_file(policy_path).map_err(|e| format!("failed to load policy: {e:?}"))?;
-    let service = PolicyServiceImpl::new(Arc::new(engine));
+    let policy_svc = PolicyServiceImpl::new(Arc::new(engine));
+    let lifecycle_svc = AgentLifecycleServiceImpl::new(registry);
 
     let addr = listen_addr.parse()?;
     tracing::info!(%addr, "starting gRPC server on TCP");
 
     Server::builder()
-        .add_service(PolicyServiceServer::new(service))
+        .add_service(PolicyServiceServer::new(policy_svc))
+        .add_service(AgentLifecycleServiceServer::new(lifecycle_svc))
         .serve(addr)
         .await?;
 
@@ -32,9 +41,15 @@ pub async fn serve_tcp(policy_path: &Path, listen_addr: &str) -> Result<(), Box<
 ///
 /// Loads the policy from `policy_path`, wraps it in a `PolicyServiceImpl`, and
 /// serves on the given `socket_path`. Removes any stale socket file first.
-pub async fn serve_uds(policy_path: &Path, socket_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+/// The `registry` is shared with the `AgentLifecycleService`.
+pub async fn serve_uds(
+    policy_path: &Path,
+    socket_path: &Path,
+    registry: Arc<AgentRegistry>,
+) -> Result<(), Box<dyn std::error::Error>> {
     let engine = PolicyEngine::load_from_file(policy_path).map_err(|e| format!("failed to load policy: {e:?}"))?;
-    let service = PolicyServiceImpl::new(Arc::new(engine));
+    let policy_svc = PolicyServiceImpl::new(Arc::new(engine));
+    let lifecycle_svc = AgentLifecycleServiceImpl::new(registry);
 
     tracing::info!(socket = %socket_path.display(), "starting gRPC server on UDS");
 
@@ -46,7 +61,8 @@ pub async fn serve_uds(policy_path: &Path, socket_path: &Path) -> Result<(), Box
     let incoming = tokio_stream::wrappers::UnixListenerStream::new(uds);
 
     Server::builder()
-        .add_service(PolicyServiceServer::new(service))
+        .add_service(PolicyServiceServer::new(policy_svc))
+        .add_service(AgentLifecycleServiceServer::new(lifecycle_svc))
         .serve_with_incoming(incoming)
         .await?;
 
