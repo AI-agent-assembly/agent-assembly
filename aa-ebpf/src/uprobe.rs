@@ -134,9 +134,7 @@ fn load_program(prog: &mut UProbe, name: &str) -> Result<(), EbpfError> {
         let msg = e.to_string();
         if msg.contains("EPERM") || msg.contains("Operation not permitted") {
             EbpfError::PermissionDenied {
-                detail: format!(
-                    "loading program `{name}` requires CAP_BPF + CAP_PERFMON (or root)"
-                ),
+                detail: format!("loading program `{name}` requires CAP_BPF + CAP_PERFMON (or root)"),
             }
         } else {
             EbpfError::Program(e)
@@ -229,10 +227,7 @@ mod tests {
         let result = find_openssl_path(Some(4_194_303));
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(
-            matches!(err, EbpfError::Io(_)),
-            "expected Io error, got: {err}",
-        );
+        assert!(matches!(err, EbpfError::Io(_)), "expected Io error, got: {err}",);
     }
 
     /// On Linux: system-wide search with no libssl installed returns OpenSslNotFound.
