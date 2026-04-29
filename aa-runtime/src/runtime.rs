@@ -232,6 +232,9 @@ fn spawn_ebpf_file_io(
     let fio_seq = std::sync::Arc::clone(seq);
     let fio_agent_id = agent_id.to_string();
     tracker.spawn(async move {
+        // Keep the loader alive so the BPF handle and kprobes remain
+        // attached until the task is cancelled or the channel closes.
+        let _loader = loader;
         while let Some(event) = rx.recv().await {
             let audit = crate::ebpf_bridge::file_io_to_audit(&event);
             let enriched = crate::ebpf_bridge::enrich_ebpf(audit, &fio_agent_id, &fio_seq);
