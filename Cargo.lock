@@ -129,7 +129,7 @@ name = "aa-proxy"
 version = "0.0.1"
 dependencies = [
  "aa-core",
- "aa-runtime",
+ "aa-proto",
  "anyhow",
  "bytes",
  "dirs",
@@ -156,6 +156,7 @@ version = "0.0.1"
 dependencies = [
  "aa-core",
  "aa-proto",
+ "aa-proxy",
  "axum 0.7.9",
  "bitflags 2.11.1",
  "dashmap",
