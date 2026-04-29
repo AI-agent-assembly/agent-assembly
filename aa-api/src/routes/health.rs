@@ -13,6 +13,9 @@ pub struct HealthResponse {
 }
 
 /// `GET /api/v1/health` — liveness probe.
+///
+/// Returns a simple JSON body indicating the service is alive.
+/// Suitable for Kubernetes liveness probes.
 #[utoipa::path(
     get,
     path = "/api/v1/health",

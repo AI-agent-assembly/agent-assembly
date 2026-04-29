@@ -15,6 +15,9 @@ use utoipa::OpenApi;
     servers(
         (url = "http://localhost:7700", description = "Local development gateway")
     ),
+    tags(
+        (name = "health", description = "Liveness and readiness probes")
+    ),
     paths(
         crate::routes::health::health,
     ),
