@@ -86,6 +86,8 @@ impl Default for Interceptor {
 mod tests {
     use std::time::SystemTime;
 
+    use bytes::Bytes;
+
     use super::*;
     use crate::intercept::detect::LlmApiPattern;
     use crate::intercept::event::ProxyEvent;
@@ -132,5 +134,95 @@ mod tests {
         let mut event = make_event(LlmApiPattern::OpenAi);
         event.agent_id = None;
         assert!(interceptor.intercept(&event).await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn intercept_openai_with_body_extracts_fields() {
+        let interceptor = Interceptor::new();
+        let mut event = make_event(LlmApiPattern::OpenAi);
+        event.response_body = Some(Bytes::from(
+            r#"{"model":"gpt-4","usage":{"prompt_tokens":10,"completion_tokens":20}}"#,
+        ));
+        let fields = interceptor.intercept(&event).await.unwrap().unwrap();
+        assert_eq!(fields.model, "gpt-4");
+        assert_eq!(fields.prompt_tokens, Some(10));
+        assert_eq!(fields.completion_tokens, Some(20));
+    }
+
+    #[tokio::test]
+    async fn intercept_anthropic_with_body_extracts_fields() {
+        let interceptor = Interceptor::new();
+        let mut event = make_event(LlmApiPattern::Anthropic);
+        event.response_body = Some(Bytes::from(
+            r#"{"model":"claude-3-opus-20240229","usage":{"input_tokens":15,"output_tokens":30}}"#,
+        ));
+        let fields = interceptor.intercept(&event).await.unwrap().unwrap();
+        assert_eq!(fields.model, "claude-3-opus-20240229");
+        assert_eq!(fields.prompt_tokens, Some(15));
+        assert_eq!(fields.completion_tokens, Some(30));
+    }
+
+    #[tokio::test]
+    async fn intercept_cohere_with_body_extracts_fields() {
+        let interceptor = Interceptor::new();
+        let mut event = make_event(LlmApiPattern::Cohere);
+        event.response_body = Some(Bytes::from(
+            r#"{"model":"command-r-plus","message":"hello","meta":{"tokens":{"input_tokens":5,"output_tokens":12}}}"#,
+        ));
+        let fields = interceptor.intercept(&event).await.unwrap().unwrap();
+        assert_eq!(fields.model, "command-r-plus");
+        assert_eq!(fields.prompt_tokens, Some(5));
+        assert_eq!(fields.completion_tokens, Some(12));
+        assert_eq!(fields.messages_count, 1);
+    }
+
+    #[tokio::test]
+    async fn intercept_prefers_response_body_over_request() {
+        let interceptor = Interceptor::new();
+        let mut event = make_event(LlmApiPattern::OpenAi);
+        event.request_body = Some(Bytes::from(
+            r#"{"model":"gpt-4","messages":[{"role":"user","content":"hi"}]}"#,
+        ));
+        event.response_body = Some(Bytes::from(
+            r#"{"model":"gpt-4","usage":{"prompt_tokens":10,"completion_tokens":20}}"#,
+        ));
+        let fields = interceptor.intercept(&event).await.unwrap().unwrap();
+        // Response body was used — it has usage stats, not messages
+        assert_eq!(fields.prompt_tokens, Some(10));
+        assert_eq!(fields.completion_tokens, Some(20));
+        assert_eq!(fields.messages_count, 0);
+    }
+
+    #[tokio::test]
+    async fn intercept_falls_back_to_request_body() {
+        let interceptor = Interceptor::new();
+        let mut event = make_event(LlmApiPattern::OpenAi);
+        event.request_body = Some(Bytes::from(
+            r#"{"model":"gpt-4","messages":[{"role":"user","content":"hi"}]}"#,
+        ));
+        event.response_body = None;
+        let fields = interceptor.intercept(&event).await.unwrap().unwrap();
+        assert_eq!(fields.model, "gpt-4");
+        assert_eq!(fields.messages_count, 1);
+        assert_eq!(fields.prompt_tokens, None);
+    }
+
+    #[tokio::test]
+    async fn intercept_with_none_body_returns_none() {
+        let interceptor = Interceptor::new();
+        let event = make_event(LlmApiPattern::OpenAi);
+        // Both request_body and response_body are None
+        let result = interceptor.intercept(&event).await.unwrap();
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn intercept_with_malformed_body_returns_none() {
+        let interceptor = Interceptor::new();
+        let mut event = make_event(LlmApiPattern::OpenAi);
+        event.response_body = Some(Bytes::from("not json"));
+        // Malformed body logs a warning and returns None (not an error)
+        let result = interceptor.intercept(&event).await.unwrap();
+        assert!(result.is_none());
     }
 }
