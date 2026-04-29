@@ -7,9 +7,11 @@
 use aa_core::identity::{AgentId, SessionId};
 use aa_core::time::Timestamp;
 use aa_core::{AgentContext, FileMode, GovernanceAction, PolicyResult};
+use aa_proto::assembly::approval::v1::PendingApproval;
 use aa_proto::assembly::common::v1::Decision;
 use aa_proto::assembly::policy::v1::action_context::Action;
 use aa_proto::assembly::policy::v1::{CheckActionRequest, CheckActionResponse, RedactInstructions, RedactRule};
+use aa_runtime::approval::PendingApprovalRequest;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 
@@ -193,4 +195,17 @@ pub fn result_to_response(result: &PolicyResult, latency_us: i64, policy_rule: &
         deny_action: None,
     };
     eval_result_to_response(&eval, latency_us, policy_rule)
+}
+
+/// Convert a [`PendingApprovalRequest`] (from `ApprovalQueue::list()`) into its
+/// proto representation.
+pub fn pending_to_proto(p: &PendingApprovalRequest) -> PendingApproval {
+    PendingApproval {
+        request_id: p.request_id.to_string(),
+        agent_id: p.agent_id.clone(),
+        action: p.action.clone(),
+        condition_triggered: p.condition_triggered.clone(),
+        submitted_at: p.submitted_at,
+        timeout_secs: p.timeout_secs,
+    }
 }
