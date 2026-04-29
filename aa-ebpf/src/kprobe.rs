@@ -11,8 +11,8 @@ use crate::error::EbpfError;
 
 /// Attaches and manages file I/O kprobe programs.
 ///
-/// Create via [`KprobeManager::attach`]. The probes stay active until the
-/// `KprobeManager` is dropped.
+/// Create via [`KprobeManager::attach`]. The probes stay active until
+/// [`KprobeManager::detach`] is called or the `KprobeManager` is dropped.
 pub struct KprobeManager {
     /// Target PID to filter inside the eBPF program.
     target_pid: Option<i32>,
@@ -20,7 +20,7 @@ pub struct KprobeManager {
     /// kernel. Stored as type-erased `Box<dyn Any>` to avoid coupling to
     /// aya's internal link-id type (matches `UprobeManager` convention).
     #[cfg(target_os = "linux")]
-    _links: Vec<Box<dyn std::any::Any>>,
+    links: Vec<Box<dyn std::any::Any>>,
 }
 
 impl std::fmt::Debug for KprobeManager {
@@ -90,10 +90,7 @@ impl KprobeManager {
             tracing::info!(program = prog_name, function = fn_name, "kprobe attached");
         }
 
-        Ok(Self {
-            target_pid,
-            _links: links,
-        })
+        Ok(Self { target_pid, links })
     }
 
     /// Attach kprobes — non-Linux stub.
@@ -102,6 +99,36 @@ impl KprobeManager {
     #[cfg(not(target_os = "linux"))]
     pub fn attach(_bpf: &mut (), _target_pid: Option<i32>) -> Result<Self, EbpfError> {
         Err(EbpfError::ProbeAttach("kprobe attachment requires Linux".into()))
+    }
+
+    /// Explicitly detach all kprobes from the kernel.
+    ///
+    /// After this call, [`is_attached`](Self::is_attached) returns `false`.
+    /// Calling `detach` on an already-detached manager is a no-op.
+    /// This is also called automatically when the `KprobeManager` is dropped.
+    #[cfg(target_os = "linux")]
+    pub fn detach(&mut self) {
+        let count = self.links.len();
+        self.links.clear();
+        if count > 0 {
+            tracing::info!(probes = count, "kprobes detached");
+        }
+    }
+
+    /// Explicitly detach — non-Linux stub (no-op).
+    #[cfg(not(target_os = "linux"))]
+    pub fn detach(&mut self) {}
+
+    /// Returns `true` if the kprobes are currently attached.
+    #[cfg(target_os = "linux")]
+    pub fn is_attached(&self) -> bool {
+        !self.links.is_empty()
+    }
+
+    /// Returns `false` — non-Linux stub (probes are never attached).
+    #[cfg(not(target_os = "linux"))]
+    pub fn is_attached(&self) -> bool {
+        false
     }
 
     /// The complete list of (BPF program name, kernel function) pairs that
