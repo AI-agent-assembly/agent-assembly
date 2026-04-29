@@ -69,6 +69,7 @@ fn check_kernel_version() -> bool {
 
 /// Parse a kernel release string (e.g. `"5.15.0-91-generic"`) and return
 /// `true` if major.minor ≥ the given threshold.
+#[cfg(any(target_os = "linux", test))]
 fn parse_kernel_version_ge(release: &str, req_major: u32, req_minor: u32) -> bool {
     let mut parts = release.split(|c: char| !c.is_ascii_digit());
     let major = parts.next().and_then(|s| s.parse::<u32>().ok()).unwrap_or(0);
