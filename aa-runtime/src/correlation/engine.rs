@@ -538,4 +538,46 @@ mod tests {
         let engine = CorrelationEngine::new(CorrelationConfig::default());
         assert!(engine.correlate().is_empty());
     }
+
+    #[test]
+    fn eviction_removes_intent_preventing_match() {
+        let mut engine = CorrelationEngine::new(CorrelationConfig::default());
+
+        // Intent at t=1000.
+        engine.ingest(CorrelationEvent::Intent(IntentEvent {
+            event_id: Uuid::new_v4(),
+            timestamp_ms: 1000,
+            pid: 1,
+            intent_text: "delete file".to_string(),
+            action_keyword: "file_delete".to_string(),
+        }));
+
+        // Action at t=7000 (within window of 5000 from now=7000, but intent at
+        // t=1000 is outside the window).
+        let action_id = Uuid::new_v4();
+        engine.ingest(CorrelationEvent::Action(ActionEvent {
+            event_id: action_id,
+            timestamp_ms: 7000,
+            pid: 1,
+            syscall: "unlink".to_string(),
+            details: "/tmp/foo".to_string(),
+        }));
+
+        // Evict with now=7000 → cutoff=2000 → intent at 1000 is evicted.
+        engine.evict(7000);
+
+        let outcomes = engine.correlate();
+        // Intent was evicted, so action is unexpected.
+        let unexpected: Vec<_> = outcomes
+            .iter()
+            .filter(|o| matches!(o, CorrelationOutcome::UnexpectedAction { .. }))
+            .collect();
+        assert_eq!(unexpected.len(), 1);
+        // No matched outcomes.
+        let matched: Vec<_> = outcomes
+            .iter()
+            .filter(|o| matches!(o, CorrelationOutcome::Matched(_)))
+            .collect();
+        assert!(matched.is_empty());
+    }
 }
