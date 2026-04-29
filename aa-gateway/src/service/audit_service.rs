@@ -127,8 +127,19 @@ impl AuditService for AuditServiceImpl {
 
     async fn stream_events(
         &self,
-        _request: Request<tonic::Streaming<AuditEvent>>,
+        request: Request<tonic::Streaming<AuditEvent>>,
     ) -> Result<Response<StreamEventsResponse>, Status> {
-        Err(Status::unimplemented("StreamEvents not yet implemented"))
+        let mut stream = request.into_inner();
+        let mut events_received: i64 = 0;
+
+        while let Some(event) = stream.message().await.map_err(|e| {
+            tracing::error!(error = %e, "stream_events receive error");
+            Status::internal(format!("stream receive error: {e}"))
+        })? {
+            self.ingest_event(&event, [0u8; 32]);
+            events_received += 1;
+        }
+
+        Ok(Response::new(StreamEventsResponse { events_received }))
     }
 }
