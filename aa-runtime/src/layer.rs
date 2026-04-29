@@ -125,6 +125,16 @@ fn probe_ebpf() -> bool {
     check_kernel_version() && check_btf_available() && check_cap_bpf()
 }
 
+// ── Proxy availability probe ─────────────────────────────────────────────────
+
+/// Returns `true` if the `aa-proxy` binary is available on a supported platform.
+///
+/// Supported platforms: Linux and macOS. The binary must be discoverable via `$PATH`.
+fn probe_proxy() -> bool {
+    let supported_platform = cfg!(target_os = "linux") || cfg!(target_os = "macos");
+    supported_platform && which::which("aa-proxy").is_ok()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
