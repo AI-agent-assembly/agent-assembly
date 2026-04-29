@@ -326,7 +326,7 @@ jobs:
             "PATH=$PATH" \
             "RUSTUP_HOME=${RUNNER_RUSTUP}" \
             "CARGO_HOME=${RUNNER_CARGO}" \
-            cargo test -p aa-runtime --features integration-test -- layer_integration --nocapture
+            cargo test -p aa-runtime --features integration-test -- layer_integration --nocapture --test-threads=1
 
   benchmark:
     name: Benchmark
