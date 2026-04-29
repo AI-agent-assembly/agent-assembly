@@ -247,7 +247,10 @@ mod tests {
         b.record_action(13000);
         let (mean, stddev) = b.action_mean_stddev();
         // Most buckets are 0, one has ~10, one has 1 → high stddev.
-        assert!(stddev > 1.0, "stddev should be high for spiked distribution, got {stddev}");
+        assert!(
+            stddev > 1.0,
+            "stddev should be high for spiked distribution, got {stddev}"
+        );
         assert!(mean > 0.0, "mean should be positive, got {mean}");
     }
 }

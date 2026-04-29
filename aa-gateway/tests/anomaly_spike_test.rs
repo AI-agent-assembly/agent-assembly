@@ -6,9 +6,7 @@
 //! responder executes the pause action.
 
 use aa_core::AgentId;
-use aa_gateway::anomaly::{
-    AnomalyConfig, AnomalyDetector, AnomalyResponder, AnomalyResponse, AnomalyType,
-};
+use aa_gateway::anomaly::{AnomalyConfig, AnomalyDetector, AnomalyResponder, AnomalyResponse, AnomalyType};
 
 #[test]
 fn behavior_spike_triggers_auto_pause() {

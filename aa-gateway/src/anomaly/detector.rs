@@ -91,12 +91,7 @@ impl AnomalyDetector {
     /// Returns `Some(AnomalyEvent)` with [`AnomalyResponse::Block`] when the
     /// URL's host is not present in the provided allowlist. An empty allowlist
     /// means all hosts are allowed (open policy).
-    pub fn check_unknown_connection(
-        &self,
-        agent_id: AgentId,
-        url: &str,
-        allowlist: &[String],
-    ) -> Option<AnomalyEvent> {
+    pub fn check_unknown_connection(&self, agent_id: AgentId, url: &str, allowlist: &[String]) -> Option<AnomalyEvent> {
         if allowlist.is_empty() {
             return None;
         }
@@ -163,12 +158,7 @@ impl AnomalyDetector {
     ///
     /// Returns `Some(AnomalyEvent)` with [`AnomalyResponse::Block`] when
     /// sensitive data is detected in outbound network traffic.
-    pub fn check_data_exfiltration(
-        &self,
-        agent_id: AgentId,
-        has_pii: bool,
-        url: &str,
-    ) -> Option<AnomalyEvent> {
+    pub fn check_data_exfiltration(&self, agent_id: AgentId, has_pii: bool, url: &str) -> Option<AnomalyEvent> {
         if !has_pii {
             return None;
         }
@@ -186,12 +176,7 @@ impl AnomalyDetector {
     ///
     /// Returns `Some(AnomalyEvent)` with [`AnomalyResponse::Pause`] when
     /// identical tool invocations exceed the configured threshold.
-    pub fn check_loop_runaway(
-        &self,
-        agent_id: AgentId,
-        tool_name: &str,
-        args: &str,
-    ) -> Option<AnomalyEvent> {
+    pub fn check_loop_runaway(&self, agent_id: AgentId, tool_name: &str, args: &str) -> Option<AnomalyEvent> {
         let tool_hash = Self::hash_tool_call(tool_name, args);
         let baseline = self.baselines.get(&agent_id)?;
         let count = baseline.tool_call_count(tool_hash);
@@ -495,9 +480,7 @@ mod tests {
             detector.record_tool_call(id, "search", "query=foo", 1000 + i * 100);
         }
 
-        assert!(detector
-            .check_loop_runaway(id, "search", "query=foo")
-            .is_none());
+        assert!(detector.check_loop_runaway(id, "search", "query=foo").is_none());
     }
 
     #[test]
@@ -514,12 +497,8 @@ mod tests {
             detector.record_tool_call(id, "search", "query=bar", 2000 + i * 100);
         }
 
-        assert!(detector
-            .check_loop_runaway(id, "search", "query=foo")
-            .is_none());
-        assert!(detector
-            .check_loop_runaway(id, "search", "query=bar")
-            .is_none());
+        assert!(detector.check_loop_runaway(id, "search", "query=foo").is_none());
+        assert!(detector.check_loop_runaway(id, "search", "query=bar").is_none());
     }
 
     // ── 7. Identity spoofing ─────────────────────────────────────────
@@ -539,9 +518,7 @@ mod tests {
     fn identity_spoofing_not_detected_when_ids_match() {
         let detector = default_detector();
 
-        assert!(detector
-            .check_identity_spoofing(agent(15), agent(15))
-            .is_none());
+        assert!(detector.check_identity_spoofing(agent(15), agent(15)).is_none());
     }
 
     // ── detect() facade ──────────────────────────────────────────────
@@ -589,9 +566,6 @@ mod tests {
         };
         let result = detector.detect(id, &action, false, &[], None);
         assert!(result.is_some());
-        assert_eq!(
-            result.unwrap().anomaly_type,
-            AnomalyType::ChildProcessExecution
-        );
+        assert_eq!(result.unwrap().anomaly_type, AnomalyType::ChildProcessExecution);
     }
 }
