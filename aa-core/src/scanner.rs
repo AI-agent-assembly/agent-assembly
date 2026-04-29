@@ -873,4 +873,62 @@ mod tests {
             assert!(hard.is_empty(), "false positive in: {:?} → {:?}", text, hard);
         }
     }
+
+    // --- ScannerConfig ---
+
+    #[test]
+    fn disabled_scanner_returns_empty_result() {
+        let config = ScannerConfig {
+            disabled: true,
+            ..Default::default()
+        };
+        let scanner = CredentialScanner::with_config(config);
+        let result = scanner.scan("sk-proj-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX ghp_XXXXXXXXX");
+        assert!(result.is_clean(), "disabled scanner must return no findings");
+    }
+
+    #[test]
+    fn custom_pattern_detected_as_custom_kind() {
+        let config = ScannerConfig {
+            custom_patterns: vec!["INTERNAL_SECRET_".into()],
+            ..Default::default()
+        };
+        let scanner = CredentialScanner::with_config(config);
+        let result = scanner.scan("token=INTERNAL_SECRET_hello");
+        let custom: Vec<_> = result
+            .findings
+            .iter()
+            .filter(|f| f.kind == CredentialKind::Custom)
+            .collect();
+        assert!(!custom.is_empty(), "custom pattern must produce a Custom finding");
+        assert!(custom[0].matched.contains("[REDACTED:Custom]"));
+    }
+
+    #[test]
+    fn custom_pattern_coexists_with_builtin() {
+        let config = ScannerConfig {
+            custom_patterns: vec!["MY_TOKEN_".into()],
+            ..Default::default()
+        };
+        let scanner = CredentialScanner::with_config(config);
+        let text = "a=ghp_XXXXXXXXX b=MY_TOKEN_secret123";
+        let result = scanner.scan(text);
+        let kinds: Vec<_> = result.findings.iter().map(|f| &f.kind).collect();
+        assert!(kinds.contains(&&CredentialKind::GitHubPat));
+        assert!(kinds.contains(&&CredentialKind::Custom));
+    }
+
+    #[test]
+    fn default_config_matches_new() {
+        let default_scanner = CredentialScanner::new();
+        let config_scanner = CredentialScanner::with_config(ScannerConfig::default());
+        let text = "key=ghp_XXXXXXXXX url=postgres://u:p@host/db";
+        let r1 = default_scanner.scan(text);
+        let r2 = config_scanner.scan(text);
+        assert_eq!(r1.findings.len(), r2.findings.len());
+        for (a, b) in r1.findings.iter().zip(r2.findings.iter()) {
+            assert_eq!(a.kind, b.kind);
+            assert_eq!(a.offset, b.offset);
+        }
+    }
 }
