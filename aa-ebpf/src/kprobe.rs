@@ -177,6 +177,16 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(target_os = "linux"))]
+    fn detach_is_noop_on_non_linux() {
+        // Construct directly — no links field on non-Linux.
+        let mut mgr = KprobeManager { target_pid: None };
+        assert!(!mgr.is_attached());
+        mgr.detach(); // should not panic
+        assert!(!mgr.is_attached());
+    }
+
+    #[test]
     fn kprobe_targets_kernel_functions_are_prefixed() {
         for (_, fn_name) in KprobeManager::KPROBE_TARGETS {
             assert!(
