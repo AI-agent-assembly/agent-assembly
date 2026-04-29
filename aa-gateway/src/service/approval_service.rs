@@ -8,8 +8,7 @@ use tonic::{Request, Response, Status};
 
 use aa_proto::assembly::approval::v1::approval_service_server::ApprovalService;
 use aa_proto::assembly::approval::v1::{
-    ApprovalEvent, DecideRequest, DecideResponse, ListPendingRequest, ListPendingResponse,
-    WatchApprovalsRequest,
+    ApprovalEvent, DecideRequest, DecideResponse, ListPendingRequest, ListPendingResponse, WatchApprovalsRequest,
 };
 use aa_runtime::approval::ApprovalQueue;
 
@@ -29,8 +28,7 @@ impl ApprovalServiceImpl {
 
 #[tonic::async_trait]
 impl ApprovalService for ApprovalServiceImpl {
-    type WatchApprovalsStream =
-        Pin<Box<dyn Stream<Item = Result<ApprovalEvent, Status>> + Send + 'static>>;
+    type WatchApprovalsStream = Pin<Box<dyn Stream<Item = Result<ApprovalEvent, Status>> + Send + 'static>>;
 
     async fn list_pending(
         &self,
@@ -41,15 +39,11 @@ impl ApprovalService for ApprovalServiceImpl {
         Ok(Response::new(ListPendingResponse { requests }))
     }
 
-    async fn decide(
-        &self,
-        request: Request<DecideRequest>,
-    ) -> Result<Response<DecideResponse>, Status> {
+    async fn decide(&self, request: Request<DecideRequest>) -> Result<Response<DecideResponse>, Status> {
         let req = request.into_inner();
 
-        let (id, decision) = convert::decide_request_to_core(&req).map_err(|e| {
-            Status::invalid_argument(e.to_string())
-        })?;
+        let (id, decision) =
+            convert::decide_request_to_core(&req).map_err(|e| Status::invalid_argument(e.to_string()))?;
 
         match self.queue.decide(id, decision) {
             Ok(()) => Ok(Response::new(DecideResponse {

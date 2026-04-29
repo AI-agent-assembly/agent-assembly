@@ -6,12 +6,12 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
+use aa_gateway::service::ApprovalServiceImpl;
 use aa_proto::assembly::approval::v1::approval_service_client::ApprovalServiceClient;
 use aa_proto::assembly::approval::v1::approval_service_server::ApprovalServiceServer;
 use aa_proto::assembly::approval::v1::{
     ApprovalDecisionType, DecideRequest, ListPendingRequest, WatchApprovalsRequest,
 };
-use aa_gateway::service::ApprovalServiceImpl;
 use aa_runtime::approval::{ApprovalQueue, ApprovalRequest};
 use tokio::net::TcpListener;
 use tonic::transport::Server;
@@ -55,15 +55,9 @@ fn make_test_request() -> ApprovalRequest {
 #[tokio::test]
 async fn list_pending_returns_empty_initially() {
     let (addr, _queue) = start_server().await;
-    let mut client = ApprovalServiceClient::connect(format!("http://{addr}"))
-        .await
-        .unwrap();
+    let mut client = ApprovalServiceClient::connect(format!("http://{addr}")).await.unwrap();
 
-    let resp = client
-        .list_pending(ListPendingRequest {})
-        .await
-        .unwrap()
-        .into_inner();
+    let resp = client.list_pending(ListPendingRequest {}).await.unwrap().into_inner();
 
     assert!(resp.requests.is_empty());
 }
@@ -71,19 +65,13 @@ async fn list_pending_returns_empty_initially() {
 #[tokio::test]
 async fn list_pending_returns_submitted_request() {
     let (addr, queue) = start_server().await;
-    let mut client = ApprovalServiceClient::connect(format!("http://{addr}"))
-        .await
-        .unwrap();
+    let mut client = ApprovalServiceClient::connect(format!("http://{addr}")).await.unwrap();
 
     let req = make_test_request();
     let expected_id = req.request_id.to_string();
     let (_rid, _fut) = queue.submit(req);
 
-    let resp = client
-        .list_pending(ListPendingRequest {})
-        .await
-        .unwrap()
-        .into_inner();
+    let resp = client.list_pending(ListPendingRequest {}).await.unwrap().into_inner();
 
     assert_eq!(resp.requests.len(), 1);
     assert_eq!(resp.requests[0].request_id, expected_id);
@@ -94,9 +82,7 @@ async fn list_pending_returns_submitted_request() {
 #[tokio::test]
 async fn decide_approve_resolves_request() {
     let (addr, queue) = start_server().await;
-    let mut client = ApprovalServiceClient::connect(format!("http://{addr}"))
-        .await
-        .unwrap();
+    let mut client = ApprovalServiceClient::connect(format!("http://{addr}")).await.unwrap();
 
     let req = make_test_request();
     let request_id = req.request_id.to_string();
@@ -116,20 +102,14 @@ async fn decide_approve_resolves_request() {
     assert!(resp.success);
     assert!(resp.error_message.is_empty());
 
-    let list_resp = client
-        .list_pending(ListPendingRequest {})
-        .await
-        .unwrap()
-        .into_inner();
+    let list_resp = client.list_pending(ListPendingRequest {}).await.unwrap().into_inner();
     assert!(list_resp.requests.is_empty());
 }
 
 #[tokio::test]
 async fn decide_reject_resolves_request() {
     let (addr, queue) = start_server().await;
-    let mut client = ApprovalServiceClient::connect(format!("http://{addr}"))
-        .await
-        .unwrap();
+    let mut client = ApprovalServiceClient::connect(format!("http://{addr}")).await.unwrap();
 
     let req = make_test_request();
     let request_id = req.request_id.to_string();
@@ -148,20 +128,14 @@ async fn decide_reject_resolves_request() {
 
     assert!(resp.success);
 
-    let list_resp = client
-        .list_pending(ListPendingRequest {})
-        .await
-        .unwrap()
-        .into_inner();
+    let list_resp = client.list_pending(ListPendingRequest {}).await.unwrap().into_inner();
     assert!(list_resp.requests.is_empty());
 }
 
 #[tokio::test]
 async fn decide_unknown_id_returns_failure() {
     let (addr, _queue) = start_server().await;
-    let mut client = ApprovalServiceClient::connect(format!("http://{addr}"))
-        .await
-        .unwrap();
+    let mut client = ApprovalServiceClient::connect(format!("http://{addr}")).await.unwrap();
 
     let resp = client
         .decide(DecideRequest {
@@ -181,9 +155,7 @@ async fn decide_unknown_id_returns_failure() {
 #[tokio::test]
 async fn decide_invalid_uuid_returns_error() {
     let (addr, _queue) = start_server().await;
-    let mut client = ApprovalServiceClient::connect(format!("http://{addr}"))
-        .await
-        .unwrap();
+    let mut client = ApprovalServiceClient::connect(format!("http://{addr}")).await.unwrap();
 
     let result = client
         .decide(DecideRequest {
@@ -202,9 +174,7 @@ async fn decide_invalid_uuid_returns_error() {
 #[tokio::test]
 async fn reject_without_reason_returns_error() {
     let (addr, queue) = start_server().await;
-    let mut client = ApprovalServiceClient::connect(format!("http://{addr}"))
-        .await
-        .unwrap();
+    let mut client = ApprovalServiceClient::connect(format!("http://{addr}")).await.unwrap();
 
     let req = make_test_request();
     let request_id = req.request_id.to_string();
@@ -227,9 +197,7 @@ async fn reject_without_reason_returns_error() {
 #[tokio::test]
 async fn watch_approvals_streams_new_request() {
     let (addr, queue) = start_server().await;
-    let mut client = ApprovalServiceClient::connect(format!("http://{addr}"))
-        .await
-        .unwrap();
+    let mut client = ApprovalServiceClient::connect(format!("http://{addr}")).await.unwrap();
 
     let mut stream = client
         .watch_approvals(WatchApprovalsRequest {})
@@ -243,14 +211,11 @@ async fn watch_approvals_streams_new_request() {
     let expected_id = req.request_id.to_string();
     let (_rid, _fut) = queue.submit(req);
 
-    let event = tokio::time::timeout(
-        std::time::Duration::from_secs(3),
-        stream.message(),
-    )
-    .await
-    .expect("should receive event within 3 seconds")
-    .expect("stream should not error")
-    .expect("stream should not end");
+    let event = tokio::time::timeout(std::time::Duration::from_secs(3), stream.message())
+        .await
+        .expect("should receive event within 3 seconds")
+        .expect("stream should not error")
+        .expect("stream should not end");
 
     assert_eq!(event.request_id, expected_id);
     assert_eq!(event.agent_id, "agent-test");
@@ -260,9 +225,7 @@ async fn watch_approvals_streams_new_request() {
 #[tokio::test]
 async fn watch_approvals_streams_multiple_requests() {
     let (addr, queue) = start_server().await;
-    let mut client = ApprovalServiceClient::connect(format!("http://{addr}"))
-        .await
-        .unwrap();
+    let mut client = ApprovalServiceClient::connect(format!("http://{addr}")).await.unwrap();
 
     let mut stream = client
         .watch_approvals(WatchApprovalsRequest {})
@@ -281,14 +244,11 @@ async fn watch_approvals_streams_multiple_requests() {
 
     let mut received_ids = Vec::new();
     for _ in 0..3 {
-        let event = tokio::time::timeout(
-            std::time::Duration::from_secs(3),
-            stream.message(),
-        )
-        .await
-        .expect("should receive event within 3 seconds")
-        .expect("stream should not error")
-        .expect("stream should not end");
+        let event = tokio::time::timeout(std::time::Duration::from_secs(3), stream.message())
+            .await
+            .expect("should receive event within 3 seconds")
+            .expect("stream should not error")
+            .expect("stream should not end");
 
         received_ids.push(event.request_id);
     }
