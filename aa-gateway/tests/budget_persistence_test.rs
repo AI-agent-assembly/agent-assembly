@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use aa_core::AgentId;
-use aa_gateway::budget::persistence::{load_from_disk, save_to_disk_atomic};
+use aa_gateway::budget::persistence::{load_from_disk, save_to_disk_atomic, PersistedBudget};
 use aa_gateway::budget::pricing::PricingTable;
 use aa_gateway::budget::tracker::BudgetTracker;
 use aa_gateway::budget::types::BudgetAlert;
@@ -91,4 +91,42 @@ fn restored_tracker_accumulates_further_spend() {
     let final_snapshot = restored.snapshot();
     assert_eq!(final_snapshot.per_agent[0].state.spent_usd, Decimal::from_str("15.00").unwrap());
     assert_eq!(final_snapshot.global.spent_usd, Decimal::from_str("15.00").unwrap());
+}
+
+/// Corrupt JSON on disk returns an error from load_from_disk.
+#[test]
+fn corrupt_file_returns_error() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("budget.json");
+    std::fs::write(&path, b"NOT VALID JSON {{{").unwrap();
+    assert!(load_from_disk(&path).is_err());
+}
+
+/// Simulate the graceful fallback: when load fails, start fresh and continue.
+#[test]
+fn corrupt_file_fallback_produces_empty_tracker() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("budget.json");
+    std::fs::write(&path, b"NOT VALID JSON {{{").unwrap();
+
+    let (alert_tx, _rx) = tokio::sync::broadcast::channel::<BudgetAlert>(16);
+
+    // Mirror the fallback logic from server::setup_budget.
+    let persisted = load_from_disk(&path).unwrap_or_else(|_| PersistedBudget {
+        per_agent: vec![],
+        global: aa_gateway::budget::types::BudgetState::new_today(),
+        timezone: chrono_tz::UTC,
+    });
+
+    let tracker = BudgetTracker::with_state_and_alert_sender(
+        PricingTable::default_table(),
+        None,
+        None,
+        persisted,
+        alert_tx,
+    );
+
+    let snapshot = tracker.snapshot();
+    assert!(snapshot.per_agent.is_empty());
+    assert_eq!(snapshot.global.spent_usd, Decimal::ZERO);
 }
