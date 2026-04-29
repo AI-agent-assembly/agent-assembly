@@ -55,6 +55,18 @@ impl PolicyValidator {
         let data = Self::validate_data(raw.data, &mut errors);
         let tools = Self::validate_tools(raw.tools, &mut errors, &mut warnings);
 
+        let approval_timeout_secs = match raw.approval_timeout_secs {
+            Some(0) => {
+                errors.push(ValidationError::new(
+                    "approval_timeout_secs",
+                    "must be greater than 0",
+                ));
+                300
+            }
+            Some(v) => v,
+            None => 300,
+        };
+
         if !errors.is_empty() {
             return Err(errors);
         }
@@ -66,6 +78,7 @@ impl PolicyValidator {
                 schedule,
                 budget,
                 data,
+                approval_timeout_secs,
                 tools,
             },
             warnings,
@@ -684,5 +697,30 @@ data:
         let out = result.unwrap();
         assert!(out.warnings.is_empty());
         assert!(out.document.network.is_none());
+    }
+
+    // ── Approval timeout validation ──────────────────────────────────────────
+
+    #[test]
+    fn approval_timeout_valid_value_round_trips() {
+        let yaml = "approval_timeout_secs: 600\n";
+        let out = PolicyValidator::from_yaml(yaml).unwrap();
+        assert_eq!(out.document.approval_timeout_secs, 600);
+    }
+
+    #[test]
+    fn approval_timeout_absent_defaults_to_300() {
+        let yaml = "{}\n";
+        let out = PolicyValidator::from_yaml(yaml).unwrap();
+        assert_eq!(out.document.approval_timeout_secs, 300);
+    }
+
+    #[test]
+    fn approval_timeout_zero_is_an_error() {
+        let yaml = "approval_timeout_secs: 0\n";
+        let result = PolicyValidator::from_yaml(yaml);
+        assert!(result.is_err());
+        let errs = result.unwrap_err();
+        assert!(errs.iter().any(|e| e.field == "approval_timeout_secs"));
     }
 }
