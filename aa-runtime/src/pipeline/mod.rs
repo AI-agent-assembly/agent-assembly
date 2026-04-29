@@ -69,8 +69,8 @@ pub async fn run(
     response_router: ResponseRouter,
     approval_queue: Arc<ApprovalQueue>,
     gateway_client: Option<Arc<Mutex<GatewayClient>>>,
+    seq: Arc<AtomicU64>,
 ) {
-    let seq = AtomicU64::new(0);
     let mut batch: Vec<EnrichedEvent> = Vec::with_capacity(config.batch_size);
     let mut ticker = tokio::time::interval(config.flush_interval);
     ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
