@@ -3,9 +3,10 @@
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::{Extension, Json};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
+use crate::error::ProblemDetail;
 use crate::pagination::{PaginatedResponse, PaginationParams};
 use crate::state::AppState;
 
@@ -48,4 +49,31 @@ pub async fn list_policies(
             total: 0,
         }),
     )
+}
+
+/// Request body for creating a new policy.
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct CreatePolicyRequest {
+    /// Raw YAML content of the governance policy.
+    pub policy_yaml: String,
+}
+
+/// `POST /api/v1/policies` — apply a new governance policy.
+#[utoipa::path(
+    post,
+    path = "/api/v1/policies",
+    request_body = CreatePolicyRequest,
+    responses(
+        (status = 201, description = "Policy created", body = PolicyResponse),
+        (status = 400, description = "Invalid policy YAML")
+    ),
+    tag = "policies"
+)]
+pub async fn create_policy(
+    Extension(_state): Extension<AppState>,
+    Json(_body): Json<CreatePolicyRequest>,
+) -> Result<(StatusCode, Json<PolicyResponse>), ProblemDetail> {
+    // TODO: validate YAML, store version, reload engine
+    Err(ProblemDetail::from_status(StatusCode::NOT_IMPLEMENTED)
+        .with_detail("Policy creation not yet wired"))
 }
