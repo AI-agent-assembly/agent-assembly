@@ -41,7 +41,10 @@ impl AgentLifecycleService for AgentLifecycleServiceImpl {
     async fn register(&self, request: Request<RegisterRequest>) -> Result<Response<RegisterResponse>, Status> {
         let req = request.into_inner();
 
-        let proto_id = req.agent_id.as_ref().ok_or_else(|| Status::invalid_argument("missing agent_id"))?;
+        let proto_id = req
+            .agent_id
+            .as_ref()
+            .ok_or_else(|| Status::invalid_argument("missing agent_id"))?;
         validate_proto_agent_id(proto_id).map_err(|e| Status::invalid_argument(e.to_string()))?;
 
         if req.public_key.is_empty() {
@@ -49,8 +52,8 @@ impl AgentLifecycleService for AgentLifecycleServiceImpl {
         }
 
         // Validate that public_key is a valid Ed25519 public key (32 bytes, hex-encoded).
-        let pk_bytes = hex::decode(&req.public_key)
-            .map_err(|_| Status::invalid_argument("public_key is not valid hex"))?;
+        let pk_bytes =
+            hex::decode(&req.public_key).map_err(|_| Status::invalid_argument("public_key is not valid hex"))?;
         ed25519_dalek::VerifyingKey::from_bytes(
             pk_bytes
                 .as_slice()
@@ -94,7 +97,10 @@ impl AgentLifecycleService for AgentLifecycleServiceImpl {
     async fn heartbeat(&self, request: Request<HeartbeatRequest>) -> Result<Response<HeartbeatResponse>, Status> {
         let req = request.into_inner();
 
-        let proto_id = req.agent_id.as_ref().ok_or_else(|| Status::invalid_argument("missing agent_id"))?;
+        let proto_id = req
+            .agent_id
+            .as_ref()
+            .ok_or_else(|| Status::invalid_argument("missing agent_id"))?;
         let agent_key = proto_agent_id_to_key(proto_id);
 
         validate_token(&self.registry, &agent_key, &req.credential_token)
@@ -115,7 +121,10 @@ impl AgentLifecycleService for AgentLifecycleServiceImpl {
     async fn deregister(&self, request: Request<DeregisterRequest>) -> Result<Response<DeregisterResponse>, Status> {
         let req = request.into_inner();
 
-        let proto_id = req.agent_id.as_ref().ok_or_else(|| Status::invalid_argument("missing agent_id"))?;
+        let proto_id = req
+            .agent_id
+            .as_ref()
+            .ok_or_else(|| Status::invalid_argument("missing agent_id"))?;
         let agent_key = proto_agent_id_to_key(proto_id);
 
         validate_token(&self.registry, &agent_key, &req.credential_token)
