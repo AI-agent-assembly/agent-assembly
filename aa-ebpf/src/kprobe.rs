@@ -51,8 +51,36 @@ impl KprobeManager {
                 .map_err(|e| EbpfError::ProbeAttach(e.to_string()))?;
         }
 
-        // TODO(AAASM-144): attach kprobe programs (next commit).
-        let links: Vec<Box<dyn std::any::Any>> = Vec::new();
+        // Attach all file I/O kprobe programs to their kernel functions.
+        let probes: &[(&str, &str)] = &[
+            ("aa_sys_openat", "__x64_sys_openat"),
+            ("aa_sys_openat_ret", "__x64_sys_openat"),
+            ("aa_sys_read", "__x64_sys_read"),
+            ("aa_sys_write", "__x64_sys_write"),
+            ("aa_sys_unlink", "__x64_sys_unlinkat"),
+            ("aa_sys_rename", "__x64_sys_renameat2"),
+        ];
+
+        let mut links: Vec<Box<dyn std::any::Any>> = Vec::with_capacity(probes.len());
+
+        for (prog_name, fn_name) in probes {
+            let program: &mut aya::programs::KProbe = bpf
+                .program_mut(prog_name)
+                .ok_or_else(|| EbpfError::ProbeAttach(format!("{prog_name} program not found")))?
+                .try_into()
+                .map_err(|e: aya::programs::ProgramError| EbpfError::ProbeAttach(e.to_string()))?;
+
+            program
+                .load()
+                .map_err(|e| EbpfError::ProbeAttach(format!("{prog_name} load failed: {e}")))?;
+
+            let link = program
+                .attach(fn_name, 0)
+                .map_err(|e| EbpfError::ProbeAttach(format!("{prog_name} attach to {fn_name} failed: {e}")))?;
+
+            links.push(Box::new(link));
+            tracing::info!(program = prog_name, function = fn_name, "kprobe attached");
+        }
 
         Ok(Self {
             target_pid,
