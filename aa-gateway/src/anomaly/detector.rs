@@ -181,6 +181,36 @@ impl AnomalyDetector {
         })
     }
 
+    /// Detect loop runaway: same tool+args called more than N times within
+    /// the sliding window.
+    ///
+    /// Returns `Some(AnomalyEvent)` with [`AnomalyResponse::Pause`] when
+    /// identical tool invocations exceed the configured threshold.
+    pub fn check_loop_runaway(
+        &self,
+        agent_id: AgentId,
+        tool_name: &str,
+        args: &str,
+    ) -> Option<AnomalyEvent> {
+        let tool_hash = Self::hash_tool_call(tool_name, args);
+        let baseline = self.baselines.get(&agent_id)?;
+        let count = baseline.tool_call_count(tool_hash);
+        if count >= self.config.loop_threshold {
+            Some(AnomalyEvent {
+                anomaly_type: AnomalyType::LoopRunaway,
+                response: AnomalyResponse::default_for(AnomalyType::LoopRunaway),
+                agent_id,
+                description: format!(
+                    "Tool '{tool_name}' called {count} times (threshold: {})",
+                    self.config.loop_threshold
+                ),
+                detected_at: chrono::Utc::now(),
+            })
+        } else {
+            None
+        }
+    }
+
     /// Compute a stable hash for a (tool_name, args) pair.
     fn hash_tool_call(tool_name: &str, args: &str) -> u64 {
         let mut hasher = Sha256::new();
