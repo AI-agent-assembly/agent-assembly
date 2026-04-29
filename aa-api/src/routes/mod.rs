@@ -2,9 +2,10 @@
 //!
 //! All endpoints are nested under `/api/v1/`.
 
+pub mod auth;
 pub mod health;
 
-use axum::routing::get;
+use axum::routing::{get, post};
 use axum::Router;
 
 use crate::error::ProblemDetail;
@@ -14,6 +15,7 @@ pub fn v1_router() -> Router {
     Router::new()
         .route("/health", get(health::health))
         .route("/ws/events", get(crate::ws::handler::ws_events_handler))
+        .route("/auth/token", post(auth::issue_token))
 }
 
 /// Fallback handler returning a 404 RFC 7807 response.
