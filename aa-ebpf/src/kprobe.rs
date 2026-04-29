@@ -23,6 +23,14 @@ pub struct KprobeManager {
     _links: Vec<Box<dyn std::any::Any>>,
 }
 
+impl std::fmt::Debug for KprobeManager {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("KprobeManager")
+            .field("target_pid", &self.target_pid)
+            .finish()
+    }
+}
+
 impl KprobeManager {
     /// Attach file I/O kprobes (`openat`, `write`, `unlink`) for the target PID.
     ///
@@ -96,5 +104,60 @@ impl KprobeManager {
         Err(EbpfError::ProbeAttach(
             "kprobe attachment requires Linux".into(),
         ))
+    }
+
+    /// The complete list of (BPF program name, kernel function) pairs that
+    /// `attach()` will load. Exposed for testing and introspection.
+    pub const KPROBE_TARGETS: &[(&str, &str)] = &[
+        ("aa_sys_openat", "__x64_sys_openat"),
+        ("aa_sys_openat_ret", "__x64_sys_openat"),
+        ("aa_sys_read", "__x64_sys_read"),
+        ("aa_sys_write", "__x64_sys_write"),
+        ("aa_sys_unlink", "__x64_sys_unlinkat"),
+        ("aa_sys_rename", "__x64_sys_renameat2"),
+    ];
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    #[cfg(not(target_os = "linux"))]
+    fn attach_returns_error_on_non_linux() {
+        let err = KprobeManager::attach(&mut (), Some(1234)).unwrap_err();
+        assert!(matches!(err, EbpfError::ProbeAttach(_)));
+        assert!(err.to_string().contains("requires Linux"));
+    }
+
+    #[test]
+    #[cfg(not(target_os = "linux"))]
+    fn attach_returns_error_on_non_linux_system_wide() {
+        let err = KprobeManager::attach(&mut (), None).unwrap_err();
+        assert!(matches!(err, EbpfError::ProbeAttach(_)));
+    }
+
+    #[test]
+    fn kprobe_targets_covers_all_file_io_syscalls() {
+        let targets = KprobeManager::KPROBE_TARGETS;
+        assert_eq!(targets.len(), 6);
+
+        let prog_names: Vec<&str> = targets.iter().map(|(p, _)| *p).collect();
+        assert!(prog_names.contains(&"aa_sys_openat"));
+        assert!(prog_names.contains(&"aa_sys_openat_ret"));
+        assert!(prog_names.contains(&"aa_sys_read"));
+        assert!(prog_names.contains(&"aa_sys_write"));
+        assert!(prog_names.contains(&"aa_sys_unlink"));
+        assert!(prog_names.contains(&"aa_sys_rename"));
+    }
+
+    #[test]
+    fn kprobe_targets_kernel_functions_are_prefixed() {
+        for (_, fn_name) in KprobeManager::KPROBE_TARGETS {
+            assert!(
+                fn_name.starts_with("__x64_sys_"),
+                "kernel function {fn_name} should use __x64_sys_ prefix"
+            );
+        }
     }
 }
