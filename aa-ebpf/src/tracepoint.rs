@@ -99,3 +99,15 @@ impl TracepointManager {
         ))
     }
 }
+
+impl Drop for TracepointManager {
+    fn drop(&mut self) {
+        #[cfg(target_os = "linux")]
+        if !self._links.is_empty() {
+            tracing::debug!(
+                count = self._links.len(),
+                "TracepointManager dropping, detaching tracepoints"
+            );
+        }
+    }
+}
