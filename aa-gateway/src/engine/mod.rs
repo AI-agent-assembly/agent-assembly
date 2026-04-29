@@ -1124,4 +1124,92 @@ mod tests {
         let result = engine.apply_yaml(":\n  [[[bad", None, &store).await;
         assert!(result.is_err());
     }
+
+    // ── Budget alert integration ────────────────────────────────────────
+
+    fn make_engine_with_alert_sender(
+        doc: PolicyDocument,
+        alert_tx: tokio::sync::broadcast::Sender<crate::budget::BudgetAlert>,
+    ) -> PolicyEngine {
+        let compiled_patterns = doc
+            .data
+            .as_ref()
+            .map(|dp| {
+                dp.sensitive_patterns
+                    .iter()
+                    .filter_map(|p| regex::Regex::new(p).ok())
+                    .collect()
+            })
+            .unwrap_or_default();
+        let daily_limit = doc
+            .budget
+            .as_ref()
+            .and_then(|bp| bp.daily_limit_usd)
+            .and_then(|v| rust_decimal::Decimal::try_from(v).ok());
+        let monthly_limit = doc
+            .budget
+            .as_ref()
+            .and_then(|bp| bp.monthly_limit_usd)
+            .and_then(|v| rust_decimal::Decimal::try_from(v).ok());
+        PolicyEngine {
+            policy: Arc::new(ArcSwap::new(Arc::new(doc))),
+            scanner: aa_core::CredentialScanner::new(),
+            compiled_patterns,
+            rate_state: DashMap::new(),
+            budget: crate::budget::BudgetTracker::new_with_alert_sender(
+                crate::budget::PricingTable::default_table(),
+                daily_limit,
+                monthly_limit,
+                chrono_tz::UTC,
+                alert_tx,
+            ),
+            _watcher: None,
+        }
+    }
+
+    #[test]
+    fn record_spend_fires_alert_on_external_channel() {
+        let (alert_tx, mut alert_rx) =
+            tokio::sync::broadcast::channel::<crate::budget::BudgetAlert>(64);
+        let mut doc = empty_doc();
+        doc.budget = Some(BudgetPolicy {
+            daily_limit_usd: Some(10.0),
+            monthly_limit_usd: None,
+            timezone: None,
+            action_on_exceed: ActionOnExceed::default(),
+        });
+        let engine = make_engine_with_alert_sender(doc, alert_tx);
+        let ctx = make_ctx();
+
+        // Record spend at exactly 80% of daily limit
+        engine.record_spend(&ctx, 8.0);
+
+        let alert = alert_rx.try_recv().expect("expected 80% threshold alert");
+        assert_eq!(alert.threshold_pct, 80);
+        assert!((alert.spent_usd - 8.0).abs() < 0.01);
+        assert!((alert.limit_usd - 10.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn budget_deny_still_works_after_migration() {
+        let mut doc = empty_doc();
+        doc.budget = Some(BudgetPolicy {
+            daily_limit_usd: Some(1.0),
+            monthly_limit_usd: None,
+            timezone: None,
+            action_on_exceed: ActionOnExceed::default(),
+        });
+        let engine = make_engine(doc);
+        let ctx = make_ctx();
+
+        engine.record_spend(&ctx, 1.0);
+
+        let action = tool_call("any", "");
+        assert_eq!(
+            engine.evaluate(&ctx, &action).decision,
+            PolicyResult::Deny {
+                reason: "daily budget exceeded".into()
+            }
+        );
+    }
 }
