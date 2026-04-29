@@ -128,6 +128,39 @@ impl BudgetTracker {
         }
     }
 
+    /// Create a tracker pre-loaded with persisted state that sends alerts on an
+    /// externally-owned channel.
+    ///
+    /// Combines [`with_state`] (restoring prior spend) with [`new_with_alert_sender`]
+    /// (sharing a broadcast channel created upstream).
+    pub fn with_state_and_alert_sender(
+        pricing: PricingTable,
+        daily_limit_usd: Option<Decimal>,
+        monthly_limit_usd: Option<Decimal>,
+        initial: crate::budget::persistence::PersistedBudget,
+        alert_tx: broadcast::Sender<BudgetAlert>,
+    ) -> Self {
+        let timezone = initial.timezone;
+        let per_agent: DashMap<AgentId, BudgetState> = initial
+            .per_agent
+            .into_iter()
+            .filter_map(|e| {
+                crate::budget::persistence::hex_to_agent_id(&e.agent_id_hex)
+                    .ok()
+                    .map(|id| (id, e.state))
+            })
+            .collect();
+        Self {
+            per_agent,
+            global: Mutex::new(initial.global),
+            pricing,
+            daily_limit_usd,
+            monthly_limit_usd,
+            alert_tx,
+            timezone,
+        }
+    }
+
     /// Subscribe to budget threshold alert events (80% and 95% crossings).
     pub fn subscribe_alerts(&self) -> broadcast::Receiver<BudgetAlert> {
         self.alert_tx.subscribe()
