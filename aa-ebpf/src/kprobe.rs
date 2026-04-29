@@ -37,9 +37,26 @@ impl KprobeManager {
     /// * `target_pid` — PID to filter, or `None` for system-wide monitoring.
     #[cfg(target_os = "linux")]
     pub fn attach(bpf: &mut Ebpf, target_pid: Option<i32>) -> Result<Self, EbpfError> {
-        // TODO(AAASM-38): attach openat_kprobe, write_kprobe, unlink_kprobe
-        // and write target_pid into the PID filter BPF map.
-        let _ = (bpf, target_pid);
-        todo!("attach file I/O kprobes")
+        // Write target PID into the BPF-side filter map so the kernel-space
+        // probes only emit events for the monitored process.
+        if let Some(pid) = target_pid {
+            let mut pid_filter: aya::maps::HashMap<_, u32, u8> = aya::maps::HashMap::try_from(
+                bpf.map_mut("PID_FILTER")
+                    .ok_or_else(|| EbpfError::ProbeAttach("PID_FILTER map not found".into()))?,
+            )
+            .map_err(|e| EbpfError::ProbeAttach(e.to_string()))?;
+
+            pid_filter
+                .insert(pid as u32, 1, 0)
+                .map_err(|e| EbpfError::ProbeAttach(e.to_string()))?;
+        }
+
+        // TODO(AAASM-144): attach kprobe programs (next commit).
+        let links: Vec<Box<dyn std::any::Any>> = Vec::new();
+
+        Ok(Self {
+            target_pid,
+            _links: links,
+        })
     }
 }
