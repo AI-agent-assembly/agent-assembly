@@ -11,6 +11,8 @@ on:
       - "Cargo.lock"
       - "deny.toml"
       - "dashboard/**"
+      - "openapi/**"
+      - ".spectral.yaml"
       - ".github/workflows/ci.yml"
   pull_request:
     branches: [master]
@@ -22,6 +24,8 @@ on:
       - "Cargo.lock"
       - "deny.toml"
       - "dashboard/**"
+      - "openapi/**"
+      - ".spectral.yaml"
       - ".github/workflows/ci.yml"
 
 env:
@@ -238,6 +242,33 @@ jobs:
           ajv validate \
             -s schemas/policy/v1/policy-document.schema.json \
             -d schemas/examples/audit-only.yaml
+
+  openapi-drift:
+    name: OpenAPI spec drift check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install protobuf compiler
+        run: sudo apt-get install -y protobuf-compiler
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+      - name: Generate OpenAPI spec from code
+        run: cargo run -p aa-api --bin generate_openapi > /tmp/generated-v1.yaml
+      - name: Check spec is up to date
+        run: diff openapi/v1.yaml /tmp/generated-v1.yaml
+
+  openapi-lint:
+    name: OpenAPI spec lint (Spectral)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install Spectral CLI
+        run: npm install -g @stoplight/spectral-cli
+      - name: Lint OpenAPI spec
+        run: spectral lint openapi/v1.yaml --fail-severity warn
 
   compat-matrix-check:
     name: Compatibility matrix update check
