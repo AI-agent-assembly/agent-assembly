@@ -92,7 +92,10 @@ impl PolicyServiceImpl {
         };
 
         let deny_action = eval.deny_action;
-        Ok((convert::eval_result_to_response(&eval, latency_us, policy_rule), deny_action))
+        Ok((
+            convert::eval_result_to_response(&eval, latency_us, policy_rule),
+            deny_action,
+        ))
     }
 
     /// Execute the suspension side-effect when the engine signals `SuspendAgent`.
