@@ -997,3 +997,46 @@ mod tests {
         }
     }
 }
+
+// ── Layer integration tests ─────────────────────────────────────────────
+//
+// Integration tests that exercise both proxy and eBPF layers together on
+// a shared broadcast channel. These require Linux + root (CAP_BPF) and
+// are gated behind the `integration-test` feature flag.
+//
+// Run locally (Linux, as root):
+//   sudo cargo test -p aa-runtime --features integration-test \
+//        --test layer_integration -- --nocapture
+//
+// In CI, the ebpf-build job runs these with sudo + nightly after building
+// the eBPF probes.
+#[cfg(all(test, target_os = "linux", feature = "integration-test"))]
+mod layer_integration {
+    use std::time::Duration;
+
+    use crate::pipeline::PipelineEvent;
+
+    /// Drain all events from a broadcast receiver within `timeout`.
+    ///
+    /// Returns the collected events once the channel is quiet for the full
+    /// duration (no partial-timeout reset on each event).
+    async fn collect_events(
+        rx: &mut tokio::sync::broadcast::Receiver<PipelineEvent>,
+        timeout: Duration,
+    ) -> Vec<PipelineEvent> {
+        let mut events = Vec::new();
+        let deadline = tokio::time::Instant::now() + timeout;
+        loop {
+            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+            if remaining.is_zero() {
+                break;
+            }
+            match tokio::time::timeout(remaining, rx.recv()).await {
+                Ok(Ok(event)) => events.push(event),
+                Ok(Err(_)) => break, // channel closed
+                Err(_) => break,     // timeout
+            }
+        }
+        events
+    }
+}
