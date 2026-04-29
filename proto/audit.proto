@@ -155,6 +155,26 @@ message ApprovalEvent {
   int64  wait_time_ms = 5;
 }
 
+// ── Layer degradation ────────────────────────────────────────────────────────
+
+// LayerDegradationEvent records that an interception layer became unavailable.
+// Emitted at startup when a layer fails detection, or at runtime when a layer
+// degrades (e.g. proxy process exits).
+message LayerDegradationEvent {
+  // Agent identity string.
+  string agent_id         = 1;
+  // Session identifier (runtime instance).
+  string session_id       = 2;
+  // Nanosecond Unix timestamp when degradation was detected.
+  int64  timestamp_ns     = 3;
+  // Name of the degraded layer: "ebpf", "proxy", or "sdk".
+  string layer            = 4;
+  // Human-readable reason for the degradation.
+  string reason           = 5;
+  // Remaining active layers after degradation (e.g. "proxy+sdk").
+  string remaining_layers = 6;
+}
+
 // ── Batch upload ──────────────────────────────────────────────────────────────
 
 // ReportEventsRequest submits a batch of audit events to the gateway.
