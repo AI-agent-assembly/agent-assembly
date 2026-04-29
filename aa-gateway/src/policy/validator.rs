@@ -196,6 +196,20 @@ impl PolicyValidator {
             }
         }
 
+        if let Some(limit) = raw.monthly_limit_usd {
+            if limit <= 0.0 {
+                errors.push(ValidationError::new("budget.monthly_limit_usd", "must be greater than 0"));
+            }
+            if let Some(daily) = raw.daily_limit_usd {
+                if limit < daily {
+                    errors.push(ValidationError::new(
+                        "budget.monthly_limit_usd",
+                        "must be >= daily_limit_usd",
+                    ));
+                }
+            }
+        }
+
         // Validate timezone string if provided
         if let Some(tz_str) = &raw.timezone {
             if tz_str.parse::<chrono_tz::Tz>().is_err() {
