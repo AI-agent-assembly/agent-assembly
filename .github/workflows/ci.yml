@@ -167,10 +167,35 @@ jobs:
           cache-dependency-path: dashboard/pnpm-lock.yaml
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      - name: Generate API types from OpenAPI spec
+        run: pnpm generate:api
       - name: Type check
         run: pnpm type-check
       - name: Lint
         run: pnpm lint
+
+  dashboard-codegen-drift:
+    name: Dashboard codegen drift check
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: dashboard
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 10.9.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: dashboard/pnpm-lock.yaml
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Regenerate API types
+        run: pnpm generate:api
+      - name: Check generated types are up to date
+        run: git diff --exit-code src/api/generated/
 
   no-std:
     name: no_std targets
