@@ -8,6 +8,7 @@ pub use metrics::PipelineMetrics;
 
 use crate::approval::{ApprovalDecision as RuntimeApprovalDecision, ApprovalQueue, ApprovalRequest};
 use crate::config::RuntimeConfig;
+use crate::gateway_client::GatewayClient;
 use crate::ipc::{IpcFrame, IpcResponse, ResponseRouter};
 use crate::policy::PolicyRules;
 use aa_proto::assembly::audit::v1::{audit_event::Detail, AuditEvent, PolicyViolation};
@@ -17,7 +18,7 @@ use aa_proto::assembly::policy::v1::CheckActionResponse;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use tokio::sync::{broadcast, mpsc};
+use tokio::sync::{broadcast, mpsc, Mutex};
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
@@ -67,6 +68,7 @@ pub async fn run(
     policy: Arc<PolicyRules>,
     response_router: ResponseRouter,
     approval_queue: Arc<ApprovalQueue>,
+    gateway_client: Option<Arc<Mutex<GatewayClient>>>,
 ) {
     let seq = AtomicU64::new(0);
     let mut batch: Vec<EnrichedEvent> = Vec::with_capacity(config.batch_size);
@@ -112,6 +114,7 @@ pub async fn run(
                             &policy,
                             &approval_queue,
                             &response_router,
+                            &gateway_client,
                         )
                         .await;
                     }
@@ -227,7 +230,11 @@ async fn send_ipc_response(connection_id: u64, response: IpcResponse, router: &R
 
 /// Evaluate a [`IpcFrame::PolicyQuery`] against the loaded policy and respond.
 ///
-/// Decision priority (first match wins):
+/// When `gateway_client` is `Some`, the request is forwarded to the governance
+/// gateway over gRPC. If the gateway call fails, the function falls back to
+/// local [`PolicyRules`] evaluation with a warning log.
+///
+/// Local decision priority (first match wins):
 /// 1. `requires_approval_actions` → `PENDING` + submit to [`ApprovalQueue`]; spawn a task to
 ///    push an [`IpcResponse::ApprovalDecision`] back once the request is resolved.
 /// 2. `blocked_actions` → `DENY`.
@@ -238,7 +245,29 @@ async fn handle_policy_query(
     policy: &PolicyRules,
     approval_queue: &Arc<ApprovalQueue>,
     response_router: &ResponseRouter,
+    gateway_client: &Option<Arc<Mutex<GatewayClient>>>,
 ) {
+    // ── Gateway forwarding path ─────────────────────────────────────────
+    if let Some(client) = gateway_client {
+        let mut guard = client.lock().await;
+        match guard.check_action(req.clone()).await {
+            Ok(resp) => {
+                tracing::debug!(connection_id, decision = resp.decision, "gateway responded");
+                send_ipc_response(connection_id, IpcResponse::PolicyResponse(resp), response_router).await;
+                return;
+            }
+            Err(e) => {
+                tracing::warn!(
+                    connection_id,
+                    error = %e,
+                    "gateway call failed — falling back to local policy evaluation"
+                );
+                // Fall through to local evaluation below.
+            }
+        }
+    }
+
+    // ── Local evaluation path ───────────────────────────────────────────
     let action_str = ActionType::try_from(req.action_type)
         .map(|a| a.as_str_name())
         .unwrap_or("");
@@ -456,6 +485,7 @@ mod tests {
             pipeline_broadcast_capacity: 512,
             metrics_addr: "0.0.0.0:8080".to_string(),
             policy_path: None,
+            gateway_endpoint: None,
         };
 
         let pipeline_config = PipelineConfig::from_runtime_config(&runtime_config);
@@ -538,6 +568,7 @@ mod tests {
             Arc::new(PolicyRules::default()),
             crate::ipc::new_response_router(),
             crate::approval::ApprovalQueue::new(),
+            None,
         ));
 
         // Send 3 events — batch threshold reached, should flush before interval
@@ -573,6 +604,7 @@ mod tests {
             Arc::new(PolicyRules::default()),
             crate::ipc::new_response_router(),
             crate::approval::ApprovalQueue::new(),
+            None,
         ));
 
         // Send 5 events (less than batch_size=100) — should arrive after interval flush
@@ -608,6 +640,7 @@ mod tests {
             Arc::new(PolicyRules::default()),
             crate::ipc::new_response_router(),
             crate::approval::ApprovalQueue::new(),
+            None,
         ));
 
         // Send a violation — should arrive immediately, bypassing batch
@@ -640,6 +673,7 @@ mod tests {
             Arc::new(PolicyRules::default()),
             crate::ipc::new_response_router(),
             crate::approval::ApprovalQueue::new(),
+            None,
         ));
 
         // Send 5 events (batch won't flush yet)
@@ -693,6 +727,7 @@ mod tests {
             Arc::new(PolicyRules::default()),
             crate::ipc::new_response_router(),
             crate::approval::ApprovalQueue::new(),
+            None,
         ));
 
         // Send non-event frames
@@ -736,6 +771,7 @@ mod tests {
             policy,
             crate::ipc::new_response_router(),
             crate::approval::ApprovalQueue::new(),
+            None,
         ));
 
         // Build an AuditEvent with action_type = FILE_OPERATION
@@ -786,6 +822,7 @@ mod tests {
             policy,
             crate::ipc::new_response_router(),
             crate::approval::ApprovalQueue::new(),
+            None,
         ));
 
         // Yield briefly so the pipeline's interval fires its immediate first tick
@@ -827,6 +864,7 @@ mod tests {
             Arc::new(PolicyRules::default()),
             crate::ipc::new_response_router(),
             crate::approval::ApprovalQueue::new(),
+            None,
         ));
 
         for _ in 0..3 {
@@ -869,6 +907,7 @@ mod tests {
             Arc::new(PolicyRules::default()),
             crate::ipc::new_response_router(),
             crate::approval::ApprovalQueue::new(),
+            None,
         ));
 
         // First batch of 2
@@ -933,6 +972,7 @@ mod tests {
             Arc::new(PolicyRules::default()),
             crate::ipc::new_response_router(),
             crate::approval::ApprovalQueue::new(),
+            None,
         ));
 
         // Spawn a receiver that drains the broadcast channel
@@ -1012,6 +1052,7 @@ mod tests {
             Arc::new(PolicyRules::default()),
             router,
             approval_queue,
+            None,
         ));
 
         tx.send((0, policy_query_frame(ActionType::ToolCall))).await.unwrap();
@@ -1059,6 +1100,7 @@ mod tests {
             policy,
             router,
             approval_queue,
+            None,
         ));
 
         tx.send((0, policy_query_frame(ActionType::ToolCall))).await.unwrap();
@@ -1108,6 +1150,7 @@ mod tests {
             policy,
             router,
             approval_queue,
+            None,
         ));
 
         tx.send((0, policy_query_frame(ActionType::ToolCall))).await.unwrap();
@@ -1164,6 +1207,7 @@ mod tests {
             policy,
             router,
             approval_queue,
+            None,
         ));
 
         // Send the query — get back PENDING with approval_id.

@@ -654,6 +654,7 @@ mod tests {
             Arc::new(crate::policy::PolicyRules::default()),
             pipeline_router,
             crate::approval::ApprovalQueue::new(),
+            None,
         ));
 
         // Connect a client.
@@ -743,6 +744,7 @@ mod tests {
             Arc::new(crate::policy::PolicyRules::default()),
             pipeline_router,
             crate::approval::ApprovalQueue::new(),
+            None,
         ));
 
         // Connect a client.
