@@ -1208,4 +1208,92 @@ mod layer_integration {
         tracker.close();
         tracker.wait().await;
     }
+
+    /// Verify that proxy layer degradation does not prevent eBPF layers
+    /// from loading and emitting events.
+    ///
+    /// Requires: Linux + root (CAP_BPF) so eBPF loaders can succeed.
+    /// The proxy layer is expected to degrade (no `aa-proxy` binary).
+    #[tokio::test]
+    async fn proxy_degradation_does_not_block_ebpf() {
+        use std::sync::atomic::AtomicU64;
+        use std::sync::Arc;
+
+        use crate::pipeline::EventSource;
+
+        let tracker = tokio_util::task::TaskTracker::new();
+        let (tx, mut rx) = tokio::sync::broadcast::channel::<PipelineEvent>(64);
+        let seq = Arc::new(AtomicU64::new(0));
+        let token = tokio_util::sync::CancellationToken::new();
+        let mut degraded = Vec::new();
+
+        // Spawn proxy — expected to degrade (aa-proxy not on PATH in test).
+        super::spawn_proxy(
+            &tracker,
+            &tx,
+            crate::layer::LayerSet::EBPF | crate::layer::LayerSet::PROXY,
+            &mut degraded,
+        );
+
+        // Spawn eBPF file I/O layer (needs root).
+        super::spawn_ebpf_file_io(&tracker, &tx, &seq, "integration-test", &mut degraded);
+
+        // If eBPF also degraded, skip the eBPF event assertions.
+        if degraded.contains(&"ebpf/file_io".to_string()) {
+            eprintln!(
+                "SKIPPING proxy_degradation_does_not_block_ebpf: eBPF file_io \
+                 degraded (probably missing root/CAP_BPF)"
+            );
+            token.cancel();
+            tracker.close();
+            tracker.wait().await;
+            return;
+        }
+
+        // Trigger a file I/O event.
+        let trigger_path = "/tmp/aa-integration-test-proxy-degrade";
+        std::fs::write(trigger_path, b"proxy-degrade-test").expect("write trigger file");
+        let _ = std::fs::read_to_string(trigger_path);
+        let _ = std::fs::remove_file(trigger_path);
+
+        // Give the perf event reader time to deliver.
+        tokio::time::sleep(Duration::from_millis(500)).await;
+
+        let events = collect_events(&mut rx, Duration::from_secs(3)).await;
+
+        // Proxy should have degraded.
+        assert!(
+            degraded.contains(&"proxy".to_string()),
+            "expected proxy in degraded list (aa-proxy not on PATH): {degraded:?}"
+        );
+
+        // Proxy LayerDegradation event should be present.
+        let has_proxy_degradation = events.iter().any(|e| {
+            matches!(
+                e,
+                PipelineEvent::LayerDegradation(info) if info.layer == "proxy"
+            )
+        });
+        assert!(
+            has_proxy_degradation,
+            "expected LayerDegradation for proxy layer"
+        );
+
+        // eBPF audit events should still have arrived despite proxy failure.
+        let ebpf_count = events
+            .iter()
+            .filter(|e| {
+                matches!(e, PipelineEvent::Audit(ref a) if a.source == EventSource::EBpf)
+            })
+            .count();
+        assert!(
+            ebpf_count > 0,
+            "expected eBPF audit events despite proxy degradation, got 0"
+        );
+
+        // Cleanup.
+        token.cancel();
+        tracker.close();
+        tracker.wait().await;
+    }
 }
