@@ -101,9 +101,7 @@ impl KprobeManager {
     /// Returns an error immediately since eBPF is not supported on this platform.
     #[cfg(not(target_os = "linux"))]
     pub fn attach(_bpf: &mut (), _target_pid: Option<i32>) -> Result<Self, EbpfError> {
-        Err(EbpfError::ProbeAttach(
-            "kprobe attachment requires Linux".into(),
-        ))
+        Err(EbpfError::ProbeAttach("kprobe attachment requires Linux".into()))
     }
 
     /// The complete list of (BPF program name, kernel function) pairs that
