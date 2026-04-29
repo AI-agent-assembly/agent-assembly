@@ -44,14 +44,13 @@ impl AssemblyHandle {
     ///     event_type: The type of event (e.g., "tool_call", "llm_response").
     ///     details: Human-readable description of the event.
     pub fn report_event(&self, event_type: String, details: String) -> PyResult<()> {
-        let guard = self.inner.lock().map_err(|e| {
-            pyo3::exceptions::PyRuntimeError::new_err(format!("lock poisoned: {e}"))
-        })?;
+        let guard = self
+            .inner
+            .lock()
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("lock poisoned: {e}")))?;
 
         let ipc = guard.as_ref().ok_or_else(|| {
-            pyo3::exceptions::PyRuntimeError::new_err(
-                "AssemblyHandle is shut down; cannot report events",
-            )
+            pyo3::exceptions::PyRuntimeError::new_err("AssemblyHandle is shut down; cannot report events")
         })?;
 
         let mut labels = std::collections::HashMap::new();
@@ -59,18 +58,14 @@ impl AssemblyHandle {
         labels.insert("details".to_string(), details);
 
         let event = aa_proto::assembly::audit::v1::AuditEvent {
-            event_id: uuid_v4_string(),
+            event_id: unique_event_id(),
             labels,
             ..Default::default()
         };
 
         ipc.cmd_tx
             .blocking_send(IpcCommand::SendEvent(event))
-            .map_err(|e| {
-                pyo3::exceptions::PyRuntimeError::new_err(format!(
-                    "failed to enqueue event: {e}"
-                ))
-            })?;
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("failed to enqueue event: {e}")))?;
 
         Ok(())
     }
@@ -79,9 +74,10 @@ impl AssemblyHandle {
     ///
     /// Safe to call multiple times — subsequent calls are no-ops.
     pub fn shutdown(&self, py: Python<'_>) -> PyResult<()> {
-        let mut guard = self.inner.lock().map_err(|e| {
-            pyo3::exceptions::PyRuntimeError::new_err(format!("lock poisoned: {e}"))
-        })?;
+        let mut guard = self
+            .inner
+            .lock()
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("lock poisoned: {e}")))?;
 
         if let Some(mut ipc) = guard.take() {
             // Send shutdown command (best-effort — channel may be closed).
@@ -121,16 +117,20 @@ impl AssemblyHandle {
     }
 }
 
-/// Generate a UUID v4 string for event IDs.
-fn uuid_v4_string() -> String {
-    // Simple UUID v4 using random bytes — no external dep needed.
+/// Generate a unique event ID string.
+fn unique_event_id() -> String {
+    use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
-        .as_nanos();
+        .as_nanos() as u64;
+    let seq = COUNTER.fetch_add(1, Ordering::Relaxed);
     let pid = std::process::id();
-    format!("{:016x}-{:08x}", nanos, pid)
+    format!("{:016x}-{:08x}-{:04x}", nanos, pid, seq)
 }
 
 #[cfg(test)]
@@ -138,15 +138,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn uuid_v4_string_is_nonempty() {
-        let id = uuid_v4_string();
+    fn unique_event_id_is_nonempty() {
+        let id = unique_event_id();
         assert!(!id.is_empty());
     }
 
     #[test]
-    fn uuid_v4_string_unique() {
-        let a = uuid_v4_string();
-        let b = uuid_v4_string();
+    fn unique_event_id_unique() {
+        let a = unique_event_id();
+        let b = unique_event_id();
         // Not strictly guaranteed but extremely likely with nanos.
         assert_ne!(a, b);
     }
