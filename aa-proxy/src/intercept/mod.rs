@@ -411,4 +411,20 @@ mod tests {
             "pipeline event must not contain raw credential"
         );
     }
+
+    #[tokio::test]
+    async fn intercept_with_scanner_disabled_skips_redaction() {
+        let (tx, _rx) = broadcast::channel(16);
+        let interceptor = Interceptor::with_scanner(tx, None);
+        let mut event = make_event(LlmApiPattern::OpenAi);
+        // Body contains a credential — but scanner is disabled.
+        event.response_body = Some(Bytes::from(
+            r#"{"model":"gpt-4","usage":{"prompt_tokens":5,"completion_tokens":8},"debug":"sk-proj-aBcDeFgHiJkLmNoPqRsT1234567890abcdef1234567890ab"}"#,
+        ));
+
+        let fields = interceptor.intercept(&event).await.unwrap().unwrap();
+        // Fields are still extracted — scanning is off, not extraction.
+        assert_eq!(fields.model, "gpt-4");
+        assert_eq!(fields.prompt_tokens, Some(5));
+    }
 }
