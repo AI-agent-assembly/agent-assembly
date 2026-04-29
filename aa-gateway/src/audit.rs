@@ -89,8 +89,30 @@ impl AuditWriter {
     /// Read the `entry_hash` of the last entry in a JSONL file.
     ///
     /// Returns `None` if the file does not exist or is empty.
-    pub async fn read_last_hash(_path: &Path) -> io::Result<Option<[u8; 32]>> {
-        todo!("AuditWriter::read_last_hash")
+    /// Skips blank or incomplete trailing lines (standard JSONL recovery).
+    pub async fn read_last_hash(path: &Path) -> io::Result<Option<[u8; 32]>> {
+        let file = match tokio::fs::File::open(path).await {
+            Ok(f) => f,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(None),
+            Err(e) => return Err(e),
+        };
+        let reader = tokio::io::BufReader::new(file);
+        let mut lines = reader.lines();
+        let mut last_hash: Option<[u8; 32]> = None;
+
+        while let Some(line) = lines.next_line().await? {
+            if line.trim().is_empty() {
+                continue;
+            }
+            match serde_json::from_str::<AuditEntry>(&line) {
+                Ok(entry) => last_hash = Some(*entry.entry_hash()),
+                Err(_) => {
+                    // Incomplete trailing line from a crash — skip it.
+                    continue;
+                }
+            }
+        }
+        Ok(last_hash)
     }
 }
 
