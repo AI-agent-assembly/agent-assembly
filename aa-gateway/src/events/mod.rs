@@ -7,6 +7,7 @@
 
 pub mod delivery;
 pub mod publisher;
+pub mod startup;
 pub mod webhook;
 
 use std::fmt;
