@@ -152,6 +152,7 @@ dependencies = [
  "axum 0.7.9",
  "bitflags 2.11.1",
  "dashmap",
+ "libc",
  "metrics",
  "metrics-exporter-prometheus",
  "prost",
