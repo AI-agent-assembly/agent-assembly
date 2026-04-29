@@ -217,6 +217,70 @@ mod tests {
     }
 
     #[test]
+    fn monthly_reset_clears_monthly_spend_on_month_change() {
+        use chrono::NaiveDate;
+        use rust_decimal::Decimal;
+        let jan31 = NaiveDate::from_ymd_opt(2024, 1, 31).unwrap();
+        let mut state = BudgetState {
+            spent_usd: Decimal::new(500, 2),
+            date: jan31,
+            month: BudgetState::month_tag(jan31),
+            monthly_spent_usd: Some(Decimal::new(10000, 2)), // 100.00
+        };
+        let feb1 = NaiveDate::from_ymd_opt(2024, 2, 1).unwrap();
+        state.maybe_reset(feb1);
+        assert_eq!(state.spent_usd, Decimal::ZERO);
+        assert_eq!(state.monthly_spent_usd, Some(Decimal::ZERO));
+        assert_eq!(state.month, 202402);
+        assert_eq!(state.date, feb1);
+    }
+
+    #[test]
+    fn monthly_no_reset_within_same_month() {
+        use chrono::NaiveDate;
+        use rust_decimal::Decimal;
+        let jan1 = NaiveDate::from_ymd_opt(2024, 1, 1).unwrap();
+        let monthly = Decimal::new(5000, 2); // 50.00
+        let mut state = BudgetState {
+            spent_usd: Decimal::new(500, 2),
+            date: jan1,
+            month: BudgetState::month_tag(jan1),
+            monthly_spent_usd: Some(monthly),
+        };
+        let jan2 = NaiveDate::from_ymd_opt(2024, 1, 2).unwrap();
+        state.maybe_reset(jan2);
+        // Daily resets, monthly does not
+        assert_eq!(state.spent_usd, Decimal::ZERO);
+        assert_eq!(state.monthly_spent_usd, Some(monthly));
+        assert_eq!(state.month, 202401);
+    }
+
+    #[test]
+    fn monthly_none_stays_none_on_month_change() {
+        use chrono::NaiveDate;
+        use rust_decimal::Decimal;
+        let dec31 = NaiveDate::from_ymd_opt(2024, 12, 31).unwrap();
+        let mut state = BudgetState {
+            spent_usd: Decimal::new(100, 2),
+            date: dec31,
+            month: BudgetState::month_tag(dec31),
+            monthly_spent_usd: None,
+        };
+        let jan1 = NaiveDate::from_ymd_opt(2025, 1, 1).unwrap();
+        state.maybe_reset(jan1);
+        assert!(state.monthly_spent_usd.is_none());
+        assert_eq!(state.month, 202501);
+    }
+
+    #[test]
+    fn month_tag_computes_correctly() {
+        use chrono::NaiveDate;
+        assert_eq!(BudgetState::month_tag(NaiveDate::from_ymd_opt(2024, 1, 1).unwrap()), 202401);
+        assert_eq!(BudgetState::month_tag(NaiveDate::from_ymd_opt(2024, 12, 31).unwrap()), 202412);
+        assert_eq!(BudgetState::month_tag(NaiveDate::from_ymd_opt(2026, 4, 29).unwrap()), 202604);
+    }
+
+    #[test]
     fn budget_alert_stores_fields() {
         use aa_core::AgentId;
         let id = AgentId::from_bytes([1u8; 16]);
