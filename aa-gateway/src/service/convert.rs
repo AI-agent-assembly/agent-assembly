@@ -7,7 +7,8 @@
 use aa_core::identity::{AgentId, SessionId};
 use aa_core::time::Timestamp;
 use aa_core::{AgentContext, FileMode, GovernanceAction, PolicyResult};
-use aa_proto::assembly::approval::v1::PendingApproval;
+use aa_proto::assembly::approval::v1::{ApprovalEvent, PendingApproval};
+use aa_runtime::approval::ApprovalRequest;
 use aa_proto::assembly::common::v1::Decision;
 use aa_proto::assembly::policy::v1::action_context::Action;
 use aa_proto::assembly::policy::v1::{CheckActionRequest, CheckActionResponse, RedactInstructions, RedactRule};
@@ -207,5 +208,18 @@ pub fn pending_to_proto(p: &PendingApprovalRequest) -> PendingApproval {
         condition_triggered: p.condition_triggered.clone(),
         submitted_at: p.submitted_at,
         timeout_secs: p.timeout_secs,
+    }
+}
+
+/// Convert an [`ApprovalRequest`] (from the broadcast channel) into a proto
+/// [`ApprovalEvent`] for streaming to WatchApprovals subscribers.
+pub fn approval_event_to_proto(req: &ApprovalRequest) -> ApprovalEvent {
+    ApprovalEvent {
+        request_id: req.request_id.to_string(),
+        agent_id: req.agent_id.clone(),
+        action: req.action.clone(),
+        condition_triggered: req.condition_triggered.clone(),
+        submitted_at: req.submitted_at,
+        timeout_secs: req.timeout_secs,
     }
 }
