@@ -250,6 +250,59 @@ fn spawn_ebpf_file_io(
     degraded_layers.push("ebpf/file_io".to_string());
 }
 
+/// Spawn the eBPF process-exec tracepoint sub-layer.
+///
+/// Loads the BPF program and attaches tracepoints. The loader holds the BPF
+/// handle alive and internally maintains a `ProcessLineageTracker` and
+/// `ShellDetector`. A ring-buffer event reader will be wired in a future ticket.
+#[cfg(target_os = "linux")]
+fn spawn_ebpf_exec_tracepoints(
+    tracker: &tokio_util::task::TaskTracker,
+    broadcast_tx: &tokio::sync::broadcast::Sender<crate::pipeline::PipelineEvent>,
+    token: &tokio_util::sync::CancellationToken,
+    degraded_layers: &mut Vec<String>,
+) {
+    let pid = std::process::id();
+    let mut loader = aa_ebpf::ExecLoader::new(pid);
+
+    if let Err(e) = loader.load() {
+        let reason = format!("exec BPF load failed: {e}");
+        tracing::warn!(%reason, "degrading ebpf/exec sub-layer");
+        emit_ebpf_degradation(broadcast_tx, "ebpf/exec", reason);
+        degraded_layers.push("ebpf/exec".to_string());
+        return;
+    }
+
+    if let Err(e) = loader.attach_tracepoints() {
+        let reason = format!("exec tracepoint attach failed: {e}");
+        tracing::warn!(%reason, "degrading ebpf/exec sub-layer");
+        emit_ebpf_degradation(broadcast_tx, "ebpf/exec", reason);
+        degraded_layers.push("ebpf/exec".to_string());
+        return;
+    }
+
+    let exec_token = token.clone();
+    tracker.spawn(async move {
+        // Keep the loader alive so the BPF handle and tracepoints remain
+        // attached until the runtime shuts down.
+        let _loader = loader;
+        exec_token.cancelled().await;
+        tracing::info!("ebpf/exec sub-layer shutting down");
+    });
+    tracing::info!("ebpf/exec sub-layer task spawned");
+}
+
+#[cfg(not(target_os = "linux"))]
+fn spawn_ebpf_exec_tracepoints(
+    _tracker: &tokio_util::task::TaskTracker,
+    broadcast_tx: &tokio::sync::broadcast::Sender<crate::pipeline::PipelineEvent>,
+    _token: &tokio_util::sync::CancellationToken,
+    degraded_layers: &mut Vec<String>,
+) {
+    emit_ebpf_degradation(broadcast_tx, "ebpf/exec", "eBPF not supported on this platform".to_string());
+    degraded_layers.push("ebpf/exec".to_string());
+}
+
 /// Emit a [`PipelineEvent::LayerDegradation`] for the proxy layer.
 fn emit_proxy_degradation(
     broadcast_tx: &tokio::sync::broadcast::Sender<crate::pipeline::PipelineEvent>,
