@@ -1124,10 +1124,12 @@ mod layer_integration {
             "sequence numbers should be unique and monotonically increasing"
         );
 
-        // Cleanup.
+        // Cleanup: cancel the exec tracepoints task and close the tracker.
+        // The per-CPU perf reader tasks spawned inside FileIoLoader are detached
+        // (not tracked), so we use a timeout to avoid hanging on tracker.wait().
         token.cancel();
         tracker.close();
-        tracker.wait().await;
+        let _ = tokio::time::timeout(Duration::from_secs(1), tracker.wait()).await;
     }
 
     /// Verify that eBPF loader failures emit per-sub-layer `LayerDegradation`
@@ -1203,10 +1205,11 @@ mod layer_integration {
         // If aa-proxy is not on PATH, we expect a proxy degradation too.
         // Either way, proxy ran independently.
 
-        // Cleanup.
+        // Cleanup: cancel tracked tasks and timeout the wait since detached
+        // per-CPU perf reader tasks may keep running.
         token.cancel();
         tracker.close();
-        tracker.wait().await;
+        let _ = tokio::time::timeout(Duration::from_secs(1), tracker.wait()).await;
     }
 
     /// Verify that proxy layer degradation does not prevent eBPF layers
@@ -1246,7 +1249,7 @@ mod layer_integration {
             );
             token.cancel();
             tracker.close();
-            tracker.wait().await;
+            let _ = tokio::time::timeout(Duration::from_secs(1), tracker.wait()).await;
             return;
         }
 
@@ -1286,9 +1289,10 @@ mod layer_integration {
             "expected eBPF audit events despite proxy degradation, got 0"
         );
 
-        // Cleanup.
+        // Cleanup: cancel tracked tasks and timeout the wait since detached
+        // per-CPU perf reader tasks may keep running.
         token.cancel();
         tracker.close();
-        tracker.wait().await;
+        let _ = tokio::time::timeout(Duration::from_secs(1), tracker.wait()).await;
     }
 }
