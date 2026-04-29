@@ -4,6 +4,7 @@
 //! and the interceptor. It is the top-level runtime object of the proxy.
 
 use std::sync::Arc;
+use std::time::SystemTime;
 
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer, ServerName};
 use rustls::ServerConfig;
@@ -13,6 +14,8 @@ use tokio_rustls::{TlsAcceptor, TlsConnector};
 
 use crate::config::ProxyConfig;
 use crate::error::ProxyError;
+use crate::intercept::detect::{detect_api, LlmApiPattern};
+use crate::intercept::event::ProxyEvent;
 use crate::intercept::Interceptor;
 use crate::tls::{CaStore, CertCache};
 
@@ -138,6 +141,21 @@ impl ProxyServer {
                 .map_err(|e| ProxyError::Tls(e.to_string()))?;
 
             tracing::debug!(%host, "TLS MitM handshake complete");
+
+            // Emit interception event for this tunnelled connection.
+            let pattern = detect_api(host);
+            if pattern != LlmApiPattern::Unknown {
+                let event = ProxyEvent {
+                    agent_id: None,
+                    pattern,
+                    method: "CONNECT".into(),
+                    path: format!("tunnel to {target}"),
+                    request_body: None,
+                    response_body: None,
+                    timestamp: SystemTime::now(),
+                };
+                self.interceptor.intercept(event).await?;
+            }
 
             // Bidirectional copy between client and upstream.
             let (mut client_read, mut client_write) = tokio::io::split(client_tls);
