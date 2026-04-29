@@ -334,7 +334,15 @@ impl PolicyService for PolicyServiceImpl {
 
         let (eval, latency_us, policy_rule) = self.evaluate_one(&req)?;
         let deny_action = eval.deny_action;
-        let response = convert::eval_result_to_response(&eval, latency_us, &policy_rule);
+
+        // If RequiresApproval, submit to the queue and block until decided.
+        let response = if let Some(approval_response) =
+            self.maybe_submit_approval(&req, &eval, latency_us, &policy_rule).await
+        {
+            approval_response
+        } else {
+            convert::eval_result_to_response(&eval, latency_us, &policy_rule)
+        };
 
         tracing::debug!(
             decision = response.decision,
