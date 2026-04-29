@@ -8,6 +8,7 @@ pub mod anomaly;
 pub mod audit;
 pub mod budget;
 pub mod engine;
+pub mod events;
 pub mod policy;
 pub mod registry;
 pub mod server;
