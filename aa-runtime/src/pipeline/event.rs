@@ -108,4 +108,29 @@ mod tests {
         assert_eq!(cloned.agent_id, original.agent_id);
         assert_eq!(cloned.connection_id, original.connection_id);
     }
+
+    #[test]
+    fn layer_degradation_info_fields_are_accessible() {
+        let info = LayerDegradationInfo {
+            layer: "ebpf".to_string(),
+            reason: "kernel version 4.18 < 5.8".to_string(),
+            remaining_layers: "proxy+sdk".to_string(),
+        };
+        assert_eq!(info.layer, "ebpf");
+        assert_eq!(info.reason, "kernel version 4.18 < 5.8");
+        assert_eq!(info.remaining_layers, "proxy+sdk");
+    }
+
+    #[test]
+    fn layer_degradation_info_is_clone() {
+        let original = LayerDegradationInfo {
+            layer: "proxy".to_string(),
+            reason: "aa-proxy not in PATH".to_string(),
+            remaining_layers: "sdk".to_string(),
+        };
+        let cloned = original.clone();
+        assert_eq!(cloned.layer, original.layer);
+        assert_eq!(cloned.reason, original.reason);
+        assert_eq!(cloned.remaining_layers, original.remaining_layers);
+    }
 }
