@@ -74,11 +74,27 @@ pub struct CreatePolicyRequest {
     tag = "policies"
 )]
 pub async fn create_policy(
-    Extension(_state): Extension<AppState>,
-    Json(_body): Json<CreatePolicyRequest>,
+    Extension(state): Extension<AppState>,
+    Json(body): Json<CreatePolicyRequest>,
 ) -> Result<(StatusCode, Json<PolicyResponse>), ProblemDetail> {
-    // TODO: validate YAML, store version, reload engine
-    Err(ProblemDetail::from_status(StatusCode::NOT_IMPLEMENTED).with_detail("Policy creation not yet wired"))
+    let meta = state
+        .policy_engine
+        .apply_yaml(&body.policy_yaml, Some("api"), state.policy_history.as_ref())
+        .await
+        .map_err(|e| {
+            ProblemDetail::from_status(StatusCode::BAD_REQUEST)
+                .with_detail(format!("Invalid policy: {e:?}"))
+        })?;
+
+    Ok((
+        StatusCode::CREATED,
+        Json(PolicyResponse {
+            name: meta.sha256[..12].to_string(),
+            version: meta.timestamp,
+            active: true,
+            rule_count: 0,
+        }),
+    ))
 }
 
 /// `GET /api/v1/policies/active` — get the currently active policy.
