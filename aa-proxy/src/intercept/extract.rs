@@ -157,3 +157,137 @@ pub enum ExtractionError {
     #[error("unrecognized format: {reason}")]
     UnrecognizedFormat { reason: String },
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── OpenAI tests ────────────────────────────────────────────────────
+
+    #[test]
+    fn openai_minimal_request() {
+        let body = br#"{"model":"gpt-4","messages":[{"role":"user","content":"hi"}]}"#;
+        let fields = extract_openai(body).unwrap();
+        assert_eq!(fields.model, "gpt-4");
+        assert_eq!(fields.messages_count, 1);
+        assert_eq!(fields.prompt_tokens, None);
+        assert_eq!(fields.completion_tokens, None);
+    }
+
+    #[test]
+    fn openai_response_with_usage() {
+        let body = br#"{
+            "model": "gpt-4",
+            "choices": [],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 20}
+        }"#;
+        let fields = extract_openai(body).unwrap();
+        assert_eq!(fields.model, "gpt-4");
+        assert_eq!(fields.prompt_tokens, Some(10));
+        assert_eq!(fields.completion_tokens, Some(20));
+    }
+
+    #[test]
+    fn openai_malformed_json_returns_error() {
+        let body = b"not json";
+        let err = extract_openai(body).unwrap_err();
+        assert!(matches!(err, ExtractionError::InvalidJson(_)));
+    }
+
+    #[test]
+    fn openai_empty_object_returns_unrecognized() {
+        let body = br#"{}"#;
+        let err = extract_openai(body).unwrap_err();
+        assert!(matches!(err, ExtractionError::UnrecognizedFormat { .. }));
+    }
+
+    // ── Anthropic tests ─────────────────────────────────────────────────
+
+    #[test]
+    fn anthropic_minimal_request() {
+        let body = br#"{"model":"claude-3-opus-20240229","messages":[{"role":"user","content":"hi"}]}"#;
+        let fields = extract_anthropic(body).unwrap();
+        assert_eq!(fields.model, "claude-3-opus-20240229");
+        assert_eq!(fields.messages_count, 1);
+        assert_eq!(fields.prompt_tokens, None);
+    }
+
+    #[test]
+    fn anthropic_response_with_usage() {
+        let body = br#"{
+            "model": "claude-3-opus-20240229",
+            "content": [],
+            "usage": {"input_tokens": 15, "output_tokens": 30}
+        }"#;
+        let fields = extract_anthropic(body).unwrap();
+        assert_eq!(fields.model, "claude-3-opus-20240229");
+        assert_eq!(fields.prompt_tokens, Some(15));
+        assert_eq!(fields.completion_tokens, Some(30));
+    }
+
+    #[test]
+    fn anthropic_malformed_json_returns_error() {
+        let body = b"{invalid";
+        let err = extract_anthropic(body).unwrap_err();
+        assert!(matches!(err, ExtractionError::InvalidJson(_)));
+    }
+
+    #[test]
+    fn anthropic_empty_object_returns_unrecognized() {
+        let body = br#"{}"#;
+        let err = extract_anthropic(body).unwrap_err();
+        assert!(matches!(err, ExtractionError::UnrecognizedFormat { .. }));
+    }
+
+    // ── Cohere tests ────────────────────────────────────────────────────
+
+    #[test]
+    fn cohere_minimal_request() {
+        let body = br#"{"model":"command-r-plus","message":"hello"}"#;
+        let fields = extract_cohere(body).unwrap();
+        assert_eq!(fields.model, "command-r-plus");
+        assert_eq!(fields.messages_count, 1);
+        assert_eq!(fields.prompt_tokens, None);
+    }
+
+    #[test]
+    fn cohere_response_with_meta_tokens() {
+        let body = br#"{
+            "model": "command-r-plus",
+            "text": "response",
+            "meta": {"tokens": {"input_tokens": 5, "output_tokens": 12}}
+        }"#;
+        let fields = extract_cohere(body).unwrap();
+        assert_eq!(fields.model, "command-r-plus");
+        assert_eq!(fields.prompt_tokens, Some(5));
+        assert_eq!(fields.completion_tokens, Some(12));
+    }
+
+    #[test]
+    fn cohere_with_chat_history() {
+        let body = br#"{
+            "model": "command-r",
+            "message": "next question",
+            "chat_history": [
+                {"role": "USER", "message": "first"},
+                {"role": "CHATBOT", "message": "reply"}
+            ]
+        }"#;
+        let fields = extract_cohere(body).unwrap();
+        assert_eq!(fields.messages_count, 3); // 2 history + 1 current
+    }
+
+    #[test]
+    fn cohere_malformed_json_returns_error() {
+        let body = b"<<<";
+        let err = extract_cohere(body).unwrap_err();
+        assert!(matches!(err, ExtractionError::InvalidJson(_)));
+    }
+
+    #[test]
+    fn cohere_empty_object_returns_unrecognized() {
+        let body = br#"{}"#;
+        let err = extract_cohere(body).unwrap_err();
+        assert!(matches!(err, ExtractionError::UnrecognizedFormat { .. }));
+    }
+}
