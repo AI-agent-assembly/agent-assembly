@@ -11,7 +11,14 @@ crate-type = ["cdylib"]
 
 [dependencies]
 aa-core = { path = "../aa-core" }
+aa-proto = { path = "../aa-proto" }
+prost = "0.13"
 pyo3 = { version = "0.24", features = ["extension-module"] }
+tokio = { version = "1", features = ["net", "rt", "sync", "time", "io-util", "macros"] }
+tracing = "0.1"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["test-util"] }
 
 [lints]
 workspace = true

@@ -72,7 +72,11 @@ name = "aa-ffi-python"
 version = "0.0.1"
 dependencies = [
  "aa-core",
+ "aa-proto",
+ "prost",
  "pyo3",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
