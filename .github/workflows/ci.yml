@@ -258,6 +258,10 @@ jobs:
         working-directory: aa-ebpf-probes
     steps:
       - uses: actions/checkout@v4
+      - name: Install protobuf compiler
+        # Required by aa-proto (transitive dep of aa-runtime) for the
+        # multi-layer integration test step.
+        run: sudo apt-get install -y protobuf-compiler
       - uses: dtolnay/rust-toolchain@nightly
         with:
           # Do NOT add bpfel-unknown-none to targets: there is no precompiled rust-std
