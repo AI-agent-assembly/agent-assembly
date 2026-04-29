@@ -52,9 +52,9 @@ impl ProxyServer {
         tracing::info!(addr = %self.config.bind_addr, "proxy listening");
 
         let mut sigint = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())
-            .map_err(|e| ProxyError::Io(e))?;
+            .map_err(ProxyError::Io)?;
         let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-            .map_err(|e| ProxyError::Io(e))?;
+            .map_err(ProxyError::Io)?;
 
         loop {
             tokio::select! {
