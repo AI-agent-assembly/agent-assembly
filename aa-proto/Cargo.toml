@@ -8,7 +8,7 @@ description = "Generated protobuf/gRPC types for Agent Assembly (prost + tonic)"
 
 [dependencies]
 prost       = "0.13"
-tonic       = { version = "0.13", features = ["transport"] }
+tonic       = { version = "0.14", features = ["transport"] }
 
 [build-dependencies]
 tonic-build = "0.13"
