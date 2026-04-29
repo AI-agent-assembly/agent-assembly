@@ -82,8 +82,58 @@ impl AuditWriter {
     }
 
     /// Verify the hash chain of a JSONL audit file.
-    pub async fn verify_chain(_path: &Path) -> Result<VerifyResult, AuditError> {
-        todo!("AuditWriter::verify_chain")
+    ///
+    /// Reads every entry, checks each entry's internal hash integrity via
+    /// [`AuditEntry::verify_integrity`], and verifies the `previous_hash`
+    /// linkage between consecutive entries.
+    pub async fn verify_chain(path: &Path) -> Result<VerifyResult, AuditError> {
+        let file = tokio::fs::File::open(path).await?;
+        let reader = tokio::io::BufReader::new(file);
+        let mut lines = reader.lines();
+
+        let mut entries_checked: u64 = 0;
+        let mut previous_hash: Option<[u8; 32]> = None;
+
+        while let Some(line) = lines.next_line().await? {
+            if line.trim().is_empty() {
+                continue;
+            }
+            let entry: AuditEntry =
+                serde_json::from_str(&line).map_err(|source| AuditError::Deserialize {
+                    line: entries_checked,
+                    source,
+                })?;
+
+            // Check internal hash integrity.
+            if !entry.verify_integrity() {
+                return Ok(VerifyResult {
+                    is_valid: false,
+                    entries_checked,
+                    first_invalid: Some(entries_checked),
+                });
+            }
+
+            // Check chain linkage: entry's previous_hash must match the prior
+            // entry's entry_hash (or [0u8; 32] for the genesis entry).
+            if let Some(expected) = previous_hash {
+                if *entry.previous_hash() != expected {
+                    return Ok(VerifyResult {
+                        is_valid: false,
+                        entries_checked,
+                        first_invalid: Some(entries_checked),
+                    });
+                }
+            }
+
+            previous_hash = Some(*entry.entry_hash());
+            entries_checked += 1;
+        }
+
+        Ok(VerifyResult {
+            is_valid: true,
+            entries_checked,
+            first_invalid: None,
+        })
     }
 
     /// Read the `entry_hash` of the last entry in a JSONL file.
