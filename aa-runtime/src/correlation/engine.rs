@@ -473,4 +473,69 @@ mod tests {
             .collect();
         assert_eq!(unexpected.len(), 1);
     }
+
+    #[test]
+    fn correlate_intent_without_action_when_no_action() {
+        let mut engine = CorrelationEngine::new(CorrelationConfig::default());
+        let intent_id = Uuid::new_v4();
+
+        // Intent with no subsequent action.
+        engine.ingest(CorrelationEvent::Intent(IntentEvent {
+            event_id: intent_id,
+            timestamp_ms: 1000,
+            pid: 1,
+            intent_text: "delete file".to_string(),
+            action_keyword: "file_delete".to_string(),
+        }));
+
+        let outcomes = engine.correlate();
+        assert_eq!(outcomes.len(), 1);
+        match &outcomes[0] {
+            CorrelationOutcome::IntentWithoutAction { intent_event_id } => {
+                assert_eq!(*intent_event_id, intent_id);
+            }
+            other => panic!("expected IntentWithoutAction, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn correlate_intent_without_action_when_action_precedes_intent() {
+        let mut engine = CorrelationEngine::new(CorrelationConfig::default());
+        let intent_id = Uuid::new_v4();
+
+        // Action at t=1000, intent at t=2000 — action happened before intent.
+        engine.ingest(CorrelationEvent::Action(ActionEvent {
+            event_id: Uuid::new_v4(),
+            timestamp_ms: 1000,
+            pid: 1,
+            syscall: "unlink".to_string(),
+            details: "/tmp/foo".to_string(),
+        }));
+        engine.ingest(CorrelationEvent::Intent(IntentEvent {
+            event_id: intent_id,
+            timestamp_ms: 2000,
+            pid: 1,
+            intent_text: "delete file".to_string(),
+            action_keyword: "file_delete".to_string(),
+        }));
+
+        let outcomes = engine.correlate();
+        let intent_without: Vec<_> = outcomes
+            .iter()
+            .filter(|o| matches!(o, CorrelationOutcome::IntentWithoutAction { .. }))
+            .collect();
+        assert_eq!(intent_without.len(), 1);
+        match &intent_without[0] {
+            CorrelationOutcome::IntentWithoutAction { intent_event_id } => {
+                assert_eq!(*intent_event_id, intent_id);
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn correlate_empty_window_returns_empty() {
+        let engine = CorrelationEngine::new(CorrelationConfig::default());
+        assert!(engine.correlate().is_empty());
+    }
 }
