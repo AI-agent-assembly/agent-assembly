@@ -67,6 +67,25 @@ impl ApprovalService for ApprovalServiceImpl {
         &self,
         _request: Request<WatchApprovalsRequest>,
     ) -> Result<Response<Self::WatchApprovalsStream>, Status> {
-        Err(Status::unimplemented("not yet implemented"))
+        let mut rx = self.queue.subscribe_events();
+
+        let stream = async_stream::stream! {
+            loop {
+                match rx.recv().await {
+                    Ok(approval_request) => {
+                        yield Ok(convert::approval_event_to_proto(&approval_request));
+                    }
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                        tracing::warn!(skipped = n, "WatchApprovals subscriber lagged");
+                        continue;
+                    }
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                        break;
+                    }
+                }
+            }
+        };
+
+        Ok(Response::new(Box::pin(stream)))
     }
 }
