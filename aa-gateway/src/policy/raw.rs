@@ -79,6 +79,9 @@ pub struct RawPolicyDocument {
     pub data: Option<RawDataPolicy>,
     /// Per-tool policies keyed by tool name.
     pub tools: Option<HashMap<String, RawToolPolicy>>,
+    /// Seconds before an approval request times out.
+    /// Defaults to 300 when absent.
+    pub approval_timeout_secs: Option<u32>,
     /// Unknown top-level keys captured for warning emission.
     #[serde(flatten)]
     pub unknown: HashMap<String, serde_yaml::Value>,
@@ -151,6 +154,20 @@ mod tests {
         assert!(raw.budget.is_none());
         assert!(raw.data.is_none());
         assert!(raw.tools.is_none());
+    }
+
+    #[test]
+    fn raw_policy_document_deserializes_approval_timeout() {
+        let yaml = "approval_timeout_secs: 600\n";
+        let raw: RawPolicyDocument = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(raw.approval_timeout_secs, Some(600));
+    }
+
+    #[test]
+    fn raw_policy_document_absent_approval_timeout_is_none() {
+        let yaml = "{}\n";
+        let raw: RawPolicyDocument = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(raw.approval_timeout_secs, None);
     }
 
     #[test]
