@@ -13,6 +13,8 @@ use aa_core::{AuditEntry, AuditEventType};
 use aa_proto::assembly::policy::v1::policy_service_server::PolicyService;
 use aa_proto::assembly::policy::v1::{BatchCheckRequest, BatchCheckResponse, CheckActionRequest, CheckActionResponse};
 
+use aa_runtime::approval::ApprovalQueue;
+
 use crate::engine::{DenyAction, PolicyEngine};
 use crate::registry::convert::proto_agent_id_to_key;
 use crate::registry::{AgentRegistry, SuspendReason};
@@ -22,6 +24,7 @@ use crate::service::convert;
 pub struct PolicyServiceImpl {
     engine: Arc<PolicyEngine>,
     registry: Option<Arc<AgentRegistry>>,
+    approval_queue: Option<Arc<ApprovalQueue>>,
     audit_tx: mpsc::Sender<AuditEntry>,
     audit_drops: Arc<AtomicU64>,
     seq: AtomicU64,
@@ -43,6 +46,7 @@ impl PolicyServiceImpl {
         Self {
             engine,
             registry: None,
+            approval_queue: None,
             audit_tx,
             audit_drops,
             seq: AtomicU64::new(0),
@@ -64,6 +68,7 @@ impl PolicyServiceImpl {
         Self {
             engine,
             registry: Some(registry),
+            approval_queue: None,
             audit_tx,
             audit_drops,
             seq: AtomicU64::new(0),
