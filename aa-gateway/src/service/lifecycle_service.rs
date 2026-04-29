@@ -146,8 +146,27 @@ impl AgentLifecycleService for AgentLifecycleServiceImpl {
 
     async fn control_stream(
         &self,
-        _request: Request<ControlStreamRequest>,
+        request: Request<ControlStreamRequest>,
     ) -> Result<Response<Self::ControlStreamStream>, Status> {
-        todo!("AAASM-136: implement ControlStream RPC")
+        let req = request.into_inner();
+
+        let proto_id = req
+            .agent_id
+            .as_ref()
+            .ok_or_else(|| Status::invalid_argument("missing agent_id"))?;
+        let agent_key = proto_agent_id_to_key(proto_id);
+
+        validate_token(&self.registry, &agent_key, &req.credential_token)
+            .map_err(|_| Status::unauthenticated("invalid credential token"))?;
+
+        let rx = self
+            .registry
+            .open_control_stream(&agent_key)
+            .map_err(|e| Status::not_found(e.to_string()))?;
+
+        tracing::info!(agent_id = ?proto_id.agent_id, "control stream opened");
+
+        let stream = tokio_stream::wrappers::ReceiverStream::new(rx);
+        Ok(Response::new(Box::pin(stream) as Self::ControlStreamStream))
     }
 }
