@@ -34,7 +34,7 @@ pub enum ConvertError {
 /// Proto identity fields are variable-length strings; core identity types are
 /// fixed `[u8; 16]`. This deterministic mapping avoids collisions in practice
 /// while satisfying the type constraint.
-fn hash_to_16(s: &str) -> [u8; 16] {
+pub(crate) fn hash_to_16(s: &str) -> [u8; 16] {
     let digest = Sha256::digest(s.as_bytes());
     let mut out = [0u8; 16];
     out.copy_from_slice(&digest[..16]);

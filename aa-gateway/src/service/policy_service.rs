@@ -1,10 +1,15 @@
 //! `PolicyService` tonic trait implementation wiring gRPC RPCs to `PolicyEngine`.
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Instant, SystemTime};
 
+use tokio::sync::{mpsc, Mutex};
 use tonic::{Request, Response, Status};
 
+use aa_core::identity::{AgentId, SessionId};
+use aa_core::time::Timestamp;
+use aa_core::{AuditEntry, AuditEventType};
 use aa_proto::assembly::policy::v1::policy_service_server::PolicyService;
 use aa_proto::assembly::policy::v1::{BatchCheckRequest, BatchCheckResponse, CheckActionRequest, CheckActionResponse};
 
@@ -14,12 +19,31 @@ use crate::service::convert;
 /// gRPC service implementation wiring `CheckAction` / `BatchCheck` to [`PolicyEngine`].
 pub struct PolicyServiceImpl {
     engine: Arc<PolicyEngine>,
+    audit_tx: mpsc::Sender<AuditEntry>,
+    audit_drops: Arc<AtomicU64>,
+    seq: AtomicU64,
+    last_hash: Mutex<[u8; 32]>,
 }
 
 impl PolicyServiceImpl {
-    /// Create a new service backed by the given policy engine.
-    pub fn new(engine: Arc<PolicyEngine>) -> Self {
-        Self { engine }
+    /// Create a new service backed by the given policy engine and audit channel.
+    ///
+    /// `initial_hash` should be the `entry_hash` of the last persisted audit entry
+    /// (obtained via [`AuditWriter::read_last_hash`]) so the hash chain is maintained
+    /// across process restarts. Pass `[0u8; 32]` for a fresh chain.
+    pub fn new(
+        engine: Arc<PolicyEngine>,
+        audit_tx: mpsc::Sender<AuditEntry>,
+        audit_drops: Arc<AtomicU64>,
+        initial_hash: [u8; 32],
+    ) -> Self {
+        Self {
+            engine,
+            audit_tx,
+            audit_drops,
+            seq: AtomicU64::new(0),
+            last_hash: Mutex::new(initial_hash),
+        }
     }
 
     /// Evaluate a single request against the engine, returning the gRPC response.
@@ -42,6 +66,64 @@ impl PolicyServiceImpl {
         };
 
         Ok(convert::eval_result_to_response(&eval, latency_us, policy_rule))
+    }
+
+    /// Build an `AuditEntry` from a request and evaluation result, then fire-and-forget
+    /// via `try_send`. Maintains the hash chain by reading and updating `last_hash`.
+    /// Never blocks the caller beyond the brief mutex acquisition.
+    async fn record_audit(&self, req: &CheckActionRequest, response: &CheckActionResponse) {
+        let proto_agent = match req.agent_id.as_ref() {
+            Some(a) => a,
+            None => return, // No agent identity — cannot construct entry.
+        };
+        let agent_id = AgentId::from_bytes(convert::hash_to_16(&proto_agent.agent_id));
+        let session_id = SessionId::from_bytes(convert::hash_to_16(&req.trace_id));
+        let event_type = Self::decision_to_event_type_from_response(response.decision);
+        let timestamp_ns = Timestamp::from(SystemTime::now()).as_nanos();
+        let seq = self.seq.fetch_add(1, Ordering::Relaxed);
+
+        let payload = serde_json::json!({
+            "action_type": req.action_type,
+            "decision": response.decision,
+            "reason": &response.reason,
+            "policy_rule": &response.policy_rule,
+            "latency_us": response.decision_latency_us,
+        })
+        .to_string();
+
+        let mut last_hash = self.last_hash.lock().await;
+
+        let entry = AuditEntry::new(seq, timestamp_ns, event_type, agent_id, session_id, payload, *last_hash);
+
+        // Update the chain head before sending — even if try_send fails (the entry
+        // is dropped), we advance the chain so subsequent entries don't duplicate
+        // the previous_hash and produce a misleading "valid" chain with a gap.
+        *last_hash = *entry.entry_hash();
+        drop(last_hash);
+
+        if let Err(e) = self.audit_tx.try_send(entry) {
+            match e {
+                mpsc::error::TrySendError::Full(_) => {
+                    tracing::warn!(seq, "audit channel full — entry dropped");
+                    self.audit_drops.fetch_add(1, Ordering::Relaxed);
+                }
+                mpsc::error::TrySendError::Closed(_) => {
+                    tracing::error!("audit channel closed — AuditWriter task has exited");
+                }
+            }
+        }
+    }
+
+    /// Map a proto `Decision` i32 to `AuditEventType`.
+    fn decision_to_event_type_from_response(decision: i32) -> AuditEventType {
+        use aa_proto::assembly::common::v1::Decision;
+        match Decision::try_from(decision) {
+            Ok(Decision::Allow) => AuditEventType::ToolCallIntercepted,
+            Ok(Decision::Deny) => AuditEventType::PolicyViolation,
+            Ok(Decision::Redact) => AuditEventType::CredentialLeakBlocked,
+            Ok(Decision::Pending) => AuditEventType::ApprovalRequested,
+            _ => AuditEventType::PolicyViolation, // fallback for unknown
+        }
     }
 }
 
@@ -77,6 +159,9 @@ impl PolicyService for PolicyServiceImpl {
             );
         }
 
+        // Fire-and-forget audit entry — never blocks the response.
+        self.record_audit(&req, &response).await;
+
         Ok(Response::new(response))
     }
 
@@ -85,7 +170,9 @@ impl PolicyService for PolicyServiceImpl {
         let mut responses = Vec::with_capacity(batch.requests.len());
 
         for req in &batch.requests {
-            responses.push(self.evaluate_one(req)?);
+            let resp = self.evaluate_one(req)?;
+            self.record_audit(req, &resp).await;
+            responses.push(resp);
         }
 
         Ok(Response::new(BatchCheckResponse { responses }))

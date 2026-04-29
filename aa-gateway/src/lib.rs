@@ -5,6 +5,7 @@
 //! back to proxies and SDK shims, and writes the audit trail.
 
 pub mod anomaly;
+pub mod audit;
 pub mod budget;
 pub mod engine;
 pub mod policy;

@@ -5,11 +5,18 @@
 //! until a human operator calls [`ApprovalQueue::decide`], or the per-request
 //! timeout elapses and the queue auto-resolves it as [`ApprovalDecision::TimedOut`].
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::time::SystemTime;
 
 use dashmap::DashMap;
-use tokio::sync::oneshot;
+use sha2::{Digest, Sha256};
+use tokio::sync::{mpsc, oneshot, Mutex};
 use uuid::Uuid;
+
+use aa_core::identity::{AgentId, SessionId};
+use aa_core::time::Timestamp;
+use aa_core::{AuditEntry, AuditEventType};
 
 // ---------------------------------------------------------------------------
 // Public type aliases
@@ -129,6 +136,17 @@ impl std::error::Error for ApprovalError {}
 /// a back-reference).
 pub struct ApprovalQueue {
     pending: DashMap<ApprovalRequestId, (ApprovalRequest, oneshot::Sender<ApprovalDecision>)>,
+    audit_tx: Option<mpsc::Sender<AuditEntry>>,
+    audit_seq: AtomicU64,
+    audit_last_hash: Mutex<[u8; 32]>,
+}
+
+/// Hash a string into a 16-byte identifier using SHA-256 truncation.
+fn hash_to_16(s: &str) -> [u8; 16] {
+    let digest = Sha256::digest(s.as_bytes());
+    let mut out = [0u8; 16];
+    out.copy_from_slice(&digest[..16]);
+    out
 }
 
 impl ApprovalQueue {
@@ -136,6 +154,22 @@ impl ApprovalQueue {
     pub fn new() -> Arc<Self> {
         Arc::new(Self {
             pending: DashMap::new(),
+            audit_tx: None,
+            audit_seq: AtomicU64::new(0),
+            audit_last_hash: Mutex::new([0u8; 32]),
+        })
+    }
+
+    /// Creates a new queue with audit logging enabled.
+    ///
+    /// Approval decisions (Approved, Rejected, TimedOut) will be recorded
+    /// as `AuditEntry` values on the given channel.
+    pub fn with_audit(audit_tx: mpsc::Sender<AuditEntry>, initial_hash: [u8; 32]) -> Arc<Self> {
+        Arc::new(Self {
+            pending: DashMap::new(),
+            audit_tx: Some(audit_tx),
+            audit_seq: AtomicU64::new(0),
+            audit_last_hash: Mutex::new(initial_hash),
         })
     }
 
@@ -179,19 +213,87 @@ impl ApprovalQueue {
     /// `id` is a safe no-op).
     fn resolve(&self, id: ApprovalRequestId, decision: ApprovalDecision) -> bool {
         if let Some((_key, (req, tx))) = self.pending.remove(&id) {
-            let (event_type, decided_by) = match &decision {
+            let (event_type_str, decided_by) = match &decision {
                 ApprovalDecision::Approved { by, .. } => ("ApprovalGranted", by.clone()),
                 ApprovalDecision::Rejected { by, .. } => ("ApprovalDenied", by.clone()),
                 ApprovalDecision::TimedOut { .. } => ("ApprovalTimedOut", "timeout".to_string()),
             };
             tracing::info!(
-                event_type,
+                event_type = event_type_str,
                 request_id = %req.request_id,
                 agent_id = %req.agent_id,
                 action = %req.action,
                 decided_by = %decided_by,
                 "approval decision recorded"
             );
+
+            // Record an audit entry for the approval decision.
+            if let Some(audit_tx) = &self.audit_tx {
+                let audit_event_type = match &decision {
+                    ApprovalDecision::Approved { .. } => AuditEventType::ApprovalGranted,
+                    ApprovalDecision::Rejected { .. } => AuditEventType::ApprovalDenied,
+                    ApprovalDecision::TimedOut { .. } => AuditEventType::ApprovalTimedOut,
+                };
+                let seq = self.audit_seq.fetch_add(1, Ordering::Relaxed);
+                let agent_id = AgentId::from_bytes(hash_to_16(&req.agent_id));
+                let session_id = SessionId::from_bytes(hash_to_16(&req.request_id.to_string()));
+                let timestamp_ns = Timestamp::from(SystemTime::now()).as_nanos();
+
+                let payload = serde_json::json!({
+                    "request_id": req.request_id.to_string(),
+                    "agent_id": &req.agent_id,
+                    "action": &req.action,
+                    "condition_triggered": &req.condition_triggered,
+                    "decided_by": &decided_by,
+                })
+                .to_string();
+
+                // Use try_lock to avoid blocking the resolve path; fall back to
+                // a broken chain link rather than deadlocking.
+                let (entry, hash_updated) = match self.audit_last_hash.try_lock() {
+                    Ok(mut guard) => {
+                        let entry = AuditEntry::new(
+                            seq,
+                            timestamp_ns,
+                            audit_event_type,
+                            agent_id,
+                            session_id,
+                            payload,
+                            *guard,
+                        );
+                        *guard = *entry.entry_hash();
+                        (entry, true)
+                    }
+                    Err(_) => {
+                        let entry = AuditEntry::new(
+                            seq,
+                            timestamp_ns,
+                            audit_event_type,
+                            agent_id,
+                            session_id,
+                            payload,
+                            [0u8; 32],
+                        );
+                        (entry, false)
+                    }
+                };
+
+                if !hash_updated {
+                    tracing::debug!(seq, "audit hash chain lock contended — entry uses zero previous_hash");
+                }
+
+                if let Err(e) = audit_tx.try_send(entry) {
+                    match e {
+                        mpsc::error::TrySendError::Full(_) => {
+                            tracing::warn!(seq, "audit channel full — approval event dropped");
+                        }
+                        mpsc::error::TrySendError::Closed(_) => {
+                            tracing::error!("audit channel closed — AuditWriter task has exited");
+                        }
+                    }
+                }
+            }
+
             // Ignore send errors: the receiver may have been dropped (caller
             // gave up waiting), which is not a failure on our side.
             let _ = tx.send(decision);
@@ -227,6 +329,37 @@ impl ApprovalQueue {
             timeout_secs,
             "approval requested"
         );
+
+        // Record the submission as an ApprovalRequested audit entry.
+        if let Some(audit_tx) = &self.audit_tx {
+            let seq = self.audit_seq.fetch_add(1, Ordering::Relaxed);
+            let agent_id = AgentId::from_bytes(hash_to_16(&request.agent_id));
+            let session_id = SessionId::from_bytes(hash_to_16(&id.to_string()));
+            let timestamp_ns = Timestamp::from(SystemTime::now()).as_nanos();
+
+            let payload = serde_json::json!({
+                "request_id": id.to_string(),
+                "agent_id": &request.agent_id,
+                "action": &request.action,
+                "condition_triggered": &request.condition_triggered,
+                "timeout_secs": request.timeout_secs,
+            })
+            .to_string();
+
+            if let Ok(mut guard) = self.audit_last_hash.try_lock() {
+                let entry = AuditEntry::new(
+                    seq,
+                    timestamp_ns,
+                    AuditEventType::ApprovalRequested,
+                    agent_id,
+                    session_id,
+                    payload,
+                    *guard,
+                );
+                *guard = *entry.entry_hash();
+                let _ = audit_tx.try_send(entry);
+            }
+        }
 
         let (tx, rx) = oneshot::channel();
         self.pending.insert(id, (request, tx));
@@ -530,5 +663,139 @@ mod tests {
         }
 
         assert!(q.list().is_empty());
+    }
+
+    // --- Audit logging tests ---
+
+    #[tokio::test]
+    async fn submit_with_audit_emits_approval_requested_entry() {
+        let (tx, mut rx) = mpsc::channel::<AuditEntry>(64);
+        let q = ApprovalQueue::with_audit(tx, [0u8; 32]);
+
+        let req = make_request(60);
+        let _id = req.request_id;
+        let (_rid, _fut) = q.submit(req);
+
+        let entry = rx.try_recv().expect("should receive ApprovalRequested entry");
+        assert_eq!(entry.event_type(), AuditEventType::ApprovalRequested);
+        assert_eq!(entry.seq(), 0);
+    }
+
+    #[tokio::test]
+    async fn decide_approved_emits_approval_granted_entry() {
+        let (tx, mut rx) = mpsc::channel::<AuditEntry>(64);
+        let q = ApprovalQueue::with_audit(tx, [0u8; 32]);
+
+        let req = make_request(60);
+        let id = req.request_id;
+        let (_rid, _fut) = q.submit(req);
+
+        // Drain the ApprovalRequested entry from submit.
+        let _ = rx.try_recv().expect("submit entry");
+
+        q.decide(
+            id,
+            ApprovalDecision::Approved {
+                by: "alice".to_string(),
+                reason: None,
+            },
+        )
+        .expect("decide should succeed");
+
+        let entry = rx.try_recv().expect("should receive ApprovalGranted entry");
+        assert_eq!(entry.event_type(), AuditEventType::ApprovalGranted);
+        assert_eq!(entry.seq(), 1);
+    }
+
+    #[tokio::test]
+    async fn decide_rejected_emits_approval_denied_entry() {
+        let (tx, mut rx) = mpsc::channel::<AuditEntry>(64);
+        let q = ApprovalQueue::with_audit(tx, [0u8; 32]);
+
+        let req = make_request(60);
+        let id = req.request_id;
+        let (_rid, _fut) = q.submit(req);
+
+        let _ = rx.try_recv().expect("submit entry");
+
+        q.decide(
+            id,
+            ApprovalDecision::Rejected {
+                by: "bob".to_string(),
+                reason: "not allowed".to_string(),
+            },
+        )
+        .expect("decide should succeed");
+
+        let entry = rx.try_recv().expect("should receive ApprovalDenied entry");
+        assert_eq!(entry.event_type(), AuditEventType::ApprovalDenied);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn timeout_emits_approval_timed_out_entry() {
+        let (tx, mut rx) = mpsc::channel::<AuditEntry>(64);
+        let q = ApprovalQueue::with_audit(tx, [0u8; 32]);
+
+        let req = make_request(5);
+        let (_rid, _fut) = q.submit(req);
+
+        let _ = rx.try_recv().expect("submit entry");
+
+        tokio::time::advance(std::time::Duration::from_secs(6)).await;
+        // Yield to let the spawned timeout task run after time advances.
+        tokio::task::yield_now().await;
+
+        let entry = rx.recv().await.expect("should receive ApprovalTimedOut entry");
+        assert_eq!(entry.event_type(), AuditEventType::ApprovalTimedOut);
+    }
+
+    #[tokio::test]
+    async fn audit_entries_form_hash_chain() {
+        let (tx, mut rx) = mpsc::channel::<AuditEntry>(64);
+        let q = ApprovalQueue::with_audit(tx, [0u8; 32]);
+
+        let req = make_request(60);
+        let id = req.request_id;
+        let (_rid, _fut) = q.submit(req);
+
+        q.decide(
+            id,
+            ApprovalDecision::Approved {
+                by: "alice".to_string(),
+                reason: None,
+            },
+        )
+        .expect("decide should succeed");
+
+        let entry0 = rx.try_recv().expect("first entry");
+        let entry1 = rx.try_recv().expect("second entry");
+
+        // First entry's previous_hash should be the initial hash (all zeros).
+        assert_eq!(*entry0.previous_hash(), [0u8; 32]);
+        // Second entry's previous_hash should equal the first entry's entry_hash.
+        assert_eq!(entry1.previous_hash(), entry0.entry_hash());
+        // Hash chain entries should have distinct hashes.
+        assert_ne!(entry0.entry_hash(), entry1.entry_hash());
+    }
+
+    #[tokio::test]
+    async fn no_audit_without_audit_channel() {
+        // Using ApprovalQueue::new() (no audit channel) should not panic or fail.
+        let q = ApprovalQueue::new();
+        let req = make_request(60);
+        let id = req.request_id;
+        let (_rid, fut) = q.submit(req);
+
+        q.decide(
+            id,
+            ApprovalDecision::Approved {
+                by: "alice".to_string(),
+                reason: None,
+            },
+        )
+        .expect("decide should succeed");
+
+        let decision = fut.await.expect("future should resolve");
+        assert!(matches!(decision, ApprovalDecision::Approved { .. }));
     }
 }
