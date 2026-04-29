@@ -3,6 +3,8 @@
 //! `ProxyServer` owns the bound TCP listener, the TLS context (CA + cert cache),
 //! and the interceptor. It is the top-level runtime object of the proxy.
 
+use tokio::net::TcpListener;
+
 use crate::config::ProxyConfig;
 use crate::error::ProxyError;
 use crate::intercept::Interceptor;
@@ -38,6 +40,13 @@ impl ProxyServer {
     /// This future runs until the process is killed or an unrecoverable error
     /// occurs. It is called from [`crate::run`].
     pub async fn run(&self) -> Result<(), ProxyError> {
-        todo!()
+        let listener = TcpListener::bind(self.config.bind_addr).await?;
+        tracing::info!(addr = %self.config.bind_addr, "proxy listening");
+
+        loop {
+            let (stream, peer) = listener.accept().await?;
+            tracing::debug!(%peer, "accepted connection");
+            drop(stream); // placeholder — per-connection handling added next
+        }
     }
 }
