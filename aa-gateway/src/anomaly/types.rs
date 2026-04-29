@@ -101,3 +101,126 @@ pub struct AnomalyEvent {
     /// When the anomaly was detected.
     pub detected_at: chrono::DateTime<chrono::Utc>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn anomaly_type_variants_are_distinct() {
+        let variants = [
+            AnomalyType::BehaviorSpike,
+            AnomalyType::UnknownExternalConnection,
+            AnomalyType::CredentialLeakAttempt,
+            AnomalyType::ChildProcessExecution,
+            AnomalyType::DataExfiltrationAttempt,
+            AnomalyType::LoopRunaway,
+            AnomalyType::CrossAgentIdentitySpoofing,
+        ];
+        for (i, a) in variants.iter().enumerate() {
+            for (j, b) in variants.iter().enumerate() {
+                if i == j {
+                    assert_eq!(a, b);
+                } else {
+                    assert_ne!(a, b);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn anomaly_type_has_seven_variants() {
+        let variants = [
+            AnomalyType::BehaviorSpike,
+            AnomalyType::UnknownExternalConnection,
+            AnomalyType::CredentialLeakAttempt,
+            AnomalyType::ChildProcessExecution,
+            AnomalyType::DataExfiltrationAttempt,
+            AnomalyType::LoopRunaway,
+            AnomalyType::CrossAgentIdentitySpoofing,
+        ];
+        assert_eq!(variants.len(), 7);
+    }
+
+    #[test]
+    fn anomaly_type_description_is_non_empty() {
+        let variants = [
+            AnomalyType::BehaviorSpike,
+            AnomalyType::UnknownExternalConnection,
+            AnomalyType::CredentialLeakAttempt,
+            AnomalyType::ChildProcessExecution,
+            AnomalyType::DataExfiltrationAttempt,
+            AnomalyType::LoopRunaway,
+            AnomalyType::CrossAgentIdentitySpoofing,
+        ];
+        for v in &variants {
+            assert!(!v.description().is_empty(), "{:?} has empty description", v);
+        }
+    }
+
+    #[test]
+    fn anomaly_response_variants_are_distinct() {
+        let variants = [
+            AnomalyResponse::Pause,
+            AnomalyResponse::Block,
+            AnomalyResponse::Alert,
+            AnomalyResponse::Quarantine,
+        ];
+        for (i, a) in variants.iter().enumerate() {
+            for (j, b) in variants.iter().enumerate() {
+                if i == j {
+                    assert_eq!(a, b);
+                } else {
+                    assert_ne!(a, b);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn default_response_matches_epic_table() {
+        assert_eq!(
+            AnomalyResponse::default_for(AnomalyType::BehaviorSpike),
+            AnomalyResponse::Pause,
+        );
+        assert_eq!(
+            AnomalyResponse::default_for(AnomalyType::UnknownExternalConnection),
+            AnomalyResponse::Block,
+        );
+        assert_eq!(
+            AnomalyResponse::default_for(AnomalyType::CredentialLeakAttempt),
+            AnomalyResponse::Alert,
+        );
+        assert_eq!(
+            AnomalyResponse::default_for(AnomalyType::ChildProcessExecution),
+            AnomalyResponse::Block,
+        );
+        assert_eq!(
+            AnomalyResponse::default_for(AnomalyType::DataExfiltrationAttempt),
+            AnomalyResponse::Block,
+        );
+        assert_eq!(
+            AnomalyResponse::default_for(AnomalyType::LoopRunaway),
+            AnomalyResponse::Pause,
+        );
+        assert_eq!(
+            AnomalyResponse::default_for(AnomalyType::CrossAgentIdentitySpoofing),
+            AnomalyResponse::Alert,
+        );
+    }
+
+    #[test]
+    fn anomaly_event_stores_fields() {
+        use aa_core::AgentId;
+        let event = AnomalyEvent {
+            anomaly_type: AnomalyType::BehaviorSpike,
+            response: AnomalyResponse::Pause,
+            agent_id: AgentId::from_bytes([1u8; 16]),
+            description: "rate exceeded baseline".to_string(),
+            detected_at: chrono::Utc::now(),
+        };
+        assert_eq!(event.anomaly_type, AnomalyType::BehaviorSpike);
+        assert_eq!(event.response, AnomalyResponse::Pause);
+        assert_eq!(event.description, "rate exceeded baseline");
+    }
+}
