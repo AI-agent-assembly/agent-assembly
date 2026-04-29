@@ -13,6 +13,8 @@ use aa_proto::assembly::common::v1::ActionType;
 use aa_runtime::pipeline::event::{EnrichedEvent, EventSource};
 use aa_runtime::pipeline::PipelineEvent;
 
+use aa_core::CredentialScanner;
+
 use crate::error::ProxyError;
 use crate::intercept::detect::LlmApiPattern;
 use crate::intercept::extract::{extract_anthropic, extract_cohere, extract_openai, ExtractionError, LlmFields};
@@ -24,12 +26,24 @@ use crate::intercept::extract::{extract_anthropic, extract_cohere, extract_opena
 /// LLM calls into the runtime event pipeline.
 pub struct Interceptor {
     event_tx: broadcast::Sender<PipelineEvent>,
+    scanner: Option<CredentialScanner>,
 }
 
 impl Interceptor {
-    /// Create a new `Interceptor` that emits events on the given broadcast channel.
+    /// Create a new `Interceptor` with default credential scanning enabled.
     pub fn new(event_tx: broadcast::Sender<PipelineEvent>) -> Self {
-        Self { event_tx }
+        Self {
+            event_tx,
+            scanner: Some(CredentialScanner::new()),
+        }
+    }
+
+    /// Create a new `Interceptor` with an explicit scanner configuration.
+    ///
+    /// Pass `None` to disable credential scanning entirely, or `Some(scanner)`
+    /// to use a custom-configured [`CredentialScanner`].
+    pub fn with_scanner(event_tx: broadcast::Sender<PipelineEvent>, scanner: Option<CredentialScanner>) -> Self {
+        Self { event_tx, scanner }
     }
 
     /// Inspect an intercepted exchange, extract LLM fields from the body,
@@ -46,9 +60,30 @@ impl Interceptor {
 
         // Pick the body to extract from: prefer response (has usage stats),
         // fall back to request.
-        let body = event.response_body.as_ref().or(event.request_body.as_ref());
+        let raw_body = event.response_body.as_ref().or(event.request_body.as_ref());
 
-        let fields = match body {
+        // Scan for credentials and redact before any further processing so
+        // that secrets never appear in audit events or log output.
+        let body: Option<bytes::Bytes> = raw_body.map(|b| {
+            if let Some(scanner) = &self.scanner {
+                let text = String::from_utf8_lossy(b);
+                let result = scanner.scan(&text);
+                if result.is_clean() {
+                    b.clone()
+                } else {
+                    tracing::warn!(
+                        findings = result.findings.len(),
+                        agent_id = event.agent_id.as_deref().unwrap_or("<unknown>"),
+                        "credentials detected in LLM body, redacting before audit"
+                    );
+                    bytes::Bytes::from(result.redact(&text))
+                }
+            } else {
+                b.clone()
+            }
+        });
+
+        let fields = match body.as_ref() {
             Some(bytes) => match Self::extract_for_pattern(&event.pattern, bytes) {
                 Ok(f) => Some(f),
                 Err(e) => {
@@ -333,5 +368,60 @@ mod tests {
             }
             other => panic!("expected Audit event, got {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn intercept_redacts_credentials_from_body() {
+        let interceptor = make_interceptor();
+        let mut event = make_event(LlmApiPattern::OpenAi);
+        // Embed a well-known OpenAI API key pattern in a message content field.
+        event.request_body = Some(Bytes::from(
+            r#"{"model":"gpt-4","messages":[{"role":"user","content":"my key is sk-proj-aBcDeFgHiJkLmNoPqRsT1234567890abcdef1234567890ab"}]}"#,
+        ));
+        event.response_body = None;
+
+        let fields = interceptor.intercept(&event).await.unwrap().unwrap();
+        // Extraction still succeeds — model and message count are preserved.
+        assert_eq!(fields.model, "gpt-4");
+        assert_eq!(fields.messages_count, 1);
+    }
+
+    #[tokio::test]
+    async fn intercept_credential_body_emits_redacted_event() {
+        let (tx, mut rx) = broadcast::channel(16);
+        let interceptor = Interceptor::new(tx);
+        let mut event = make_event(LlmApiPattern::OpenAi);
+        // Response body with a credential embedded in a field.
+        event.response_body = Some(Bytes::from(
+            r#"{"model":"gpt-4","usage":{"prompt_tokens":5,"completion_tokens":8},"debug":"sk-proj-aBcDeFgHiJkLmNoPqRsT1234567890abcdef1234567890ab"}"#,
+        ));
+
+        let fields = interceptor.intercept(&event).await.unwrap().unwrap();
+        assert_eq!(fields.model, "gpt-4");
+        assert_eq!(fields.prompt_tokens, Some(5));
+
+        // The pipeline event should not contain the raw credential.
+        let pipeline_event = rx.try_recv().expect("should receive pipeline event");
+        let event_str = format!("{pipeline_event:?}");
+        assert!(
+            !event_str.contains("sk-proj-"),
+            "pipeline event must not contain raw credential"
+        );
+    }
+
+    #[tokio::test]
+    async fn intercept_with_scanner_disabled_skips_redaction() {
+        let (tx, _rx) = broadcast::channel(16);
+        let interceptor = Interceptor::with_scanner(tx, None);
+        let mut event = make_event(LlmApiPattern::OpenAi);
+        // Body contains a credential — but scanner is disabled.
+        event.response_body = Some(Bytes::from(
+            r#"{"model":"gpt-4","usage":{"prompt_tokens":5,"completion_tokens":8},"debug":"sk-proj-aBcDeFgHiJkLmNoPqRsT1234567890abcdef1234567890ab"}"#,
+        ));
+
+        let fields = interceptor.intercept(&event).await.unwrap().unwrap();
+        // Fields are still extracted — scanning is off, not extraction.
+        assert_eq!(fields.model, "gpt-4");
+        assert_eq!(fields.prompt_tokens, Some(5));
     }
 }

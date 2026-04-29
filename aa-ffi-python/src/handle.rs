@@ -7,6 +7,8 @@ use std::sync::Mutex;
 
 use pyo3::prelude::*;
 
+use aa_core::CredentialScanner;
+
 use crate::ipc::{IpcCommand, IpcHandle};
 
 /// Handle to an active Agent Assembly session.
@@ -24,14 +26,28 @@ use crate::ipc::{IpcCommand, IpcHandle};
 pub struct AssemblyHandle {
     inner: Mutex<Option<IpcHandle>>,
     detected_frameworks: Vec<String>,
+    scanner: Option<CredentialScanner>,
 }
 
 impl AssemblyHandle {
-    /// Create a new handle wrapping an IPC connection.
+    /// Create a new handle with default credential scanning enabled.
     pub fn new(ipc_handle: IpcHandle, detected_frameworks: Vec<String>) -> Self {
+        Self::with_scanner(ipc_handle, detected_frameworks, Some(CredentialScanner::new()))
+    }
+
+    /// Create a new handle with an explicit scanner configuration.
+    ///
+    /// Pass `None` to disable credential scanning, or `Some(scanner)` to use
+    /// a custom-configured [`CredentialScanner`].
+    pub fn with_scanner(
+        ipc_handle: IpcHandle,
+        detected_frameworks: Vec<String>,
+        scanner: Option<CredentialScanner>,
+    ) -> Self {
         Self {
             inner: Mutex::new(Some(ipc_handle)),
             detected_frameworks,
+            scanner,
         }
     }
 }
@@ -53,9 +69,26 @@ impl AssemblyHandle {
             pyo3::exceptions::PyRuntimeError::new_err("AssemblyHandle is shut down; cannot report events")
         })?;
 
+        // Redact any credentials from user-supplied details before they enter
+        // the audit pipeline.
+        let safe_details = if let Some(scanner) = &self.scanner {
+            let scan_result = scanner.scan(&details);
+            if scan_result.is_clean() {
+                details
+            } else {
+                tracing::warn!(
+                    findings = scan_result.findings.len(),
+                    "credentials detected in report_event details, redacting"
+                );
+                scan_result.redact(&details)
+            }
+        } else {
+            details
+        };
+
         let mut labels = std::collections::HashMap::new();
         labels.insert("event_type".to_string(), event_type);
-        labels.insert("details".to_string(), details);
+        labels.insert("details".to_string(), safe_details);
 
         let event = aa_proto::assembly::audit::v1::AuditEvent {
             event_id: unique_event_id(),
@@ -192,6 +225,18 @@ fn unique_event_id() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ipc::{IpcCommand, IpcHandle};
+    use tokio::sync::mpsc;
+
+    /// Create an `AssemblyHandle` backed by a test mpsc channel (no real socket).
+    fn make_test_handle() -> (AssemblyHandle, mpsc::Receiver<IpcCommand>) {
+        let (tx, rx) = mpsc::channel(16);
+        let ipc = IpcHandle {
+            cmd_tx: tx,
+            thread: None,
+        };
+        (AssemblyHandle::new(ipc, vec![]), rx)
+    }
 
     /// Create a test handle backed by a real mpsc channel (no socket).
     /// Returns `(handle, receiver)` so tests can inspect sent commands.
@@ -291,6 +336,71 @@ mod tests {
                 }
             }
             other => panic!("expected SendEvent, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn report_event_redacts_credentials_in_details() {
+        let (handle, mut rx) = make_test_handle();
+        let secret = "sk-proj-aBcDeFgHiJkLmNoPqRsT1234567890abcdef1234567890ab";
+        let details = format!("called openai with key {secret}");
+
+        handle.report_event("llm_call".into(), details).unwrap();
+
+        let cmd = rx.try_recv().expect("should receive command");
+        match cmd {
+            IpcCommand::SendEvent(event) => {
+                let labels_str = format!("{:?}", event.labels);
+                assert!(
+                    !labels_str.contains("sk-proj-"),
+                    "details label must not contain raw credential, got: {labels_str}"
+                );
+                assert!(
+                    labels_str.contains("[REDACTED:"),
+                    "details label should contain redaction marker"
+                );
+            }
+            other => panic!("expected SendEvent, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn report_event_passes_clean_details_unchanged() {
+        let (handle, mut rx) = make_test_handle();
+
+        handle
+            .report_event("tool_call".into(), "searched for cats".into())
+            .unwrap();
+
+        let cmd = rx.try_recv().expect("should receive command");
+        match cmd {
+            IpcCommand::SendEvent(event) => {
+                assert_eq!(event.labels.get("details").unwrap(), "searched for cats");
+            }
+            other => panic!("expected SendEvent, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn report_event_with_scanner_disabled_passes_details_through() {
+        let (tx, mut rx) = mpsc::channel(16);
+        let ipc = IpcHandle {
+            cmd_tx: tx,
+            thread: None,
+        };
+        let handle = AssemblyHandle::with_scanner(ipc, vec![], None);
+        let secret = "sk-proj-aBcDeFgHiJkLmNoPqRsT1234567890abcdef1234567890ab";
+        let details = format!("key is {secret}");
+
+        handle.report_event("llm_call".into(), details.clone()).unwrap();
+
+        let cmd = rx.try_recv().expect("should receive command");
+        match cmd {
+            IpcCommand::SendEvent(event) => {
+                // Scanner is disabled — raw credential passes through.
+                assert_eq!(event.labels.get("details").unwrap(), &details);
+            }
+            other => panic!("expected SendEvent, got {other:?}"),
         }
     }
 }
