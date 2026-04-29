@@ -744,4 +744,42 @@ mod tests {
             _ => panic!("expected Audit event"),
         }
     }
+
+    // ── spawn_ebpf_tls tests ────────────────────────────────────────────
+
+    #[test]
+    fn spawn_ebpf_tls_degrades_on_non_linux() {
+        let tracker = tokio_util::task::TaskTracker::new();
+        let (tx, mut rx) = tokio::sync::broadcast::channel::<crate::pipeline::PipelineEvent>(16);
+        let mut degraded = Vec::new();
+
+        super::spawn_ebpf_tls(&tracker, &tx, &mut degraded);
+
+        // On macOS the non-Linux cfg path fires immediately.
+        #[cfg(not(target_os = "linux"))]
+        {
+            assert!(degraded.contains(&"ebpf/tls".to_string()));
+            let event = rx.try_recv().unwrap();
+            match event {
+                crate::pipeline::PipelineEvent::LayerDegradation(info) => {
+                    assert_eq!(info.layer, "ebpf/tls");
+                }
+                _ => panic!("expected LayerDegradation event"),
+            }
+        }
+
+        // On Linux the BPF load will fail without root/capabilities,
+        // so it also degrades.
+        #[cfg(target_os = "linux")]
+        {
+            assert!(degraded.contains(&"ebpf/tls".to_string()));
+            let event = rx.try_recv().unwrap();
+            match event {
+                crate::pipeline::PipelineEvent::LayerDegradation(info) => {
+                    assert_eq!(info.layer, "ebpf/tls");
+                }
+                _ => panic!("expected LayerDegradation event"),
+            }
+        }
+    }
 }
