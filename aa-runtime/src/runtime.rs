@@ -381,10 +381,10 @@ mod tests {
     /// the correlation engine and verify that correlate() produces outcomes.
     #[tokio::test]
     async fn correlation_subscriber_ingests_and_correlates() {
-        use aa_proto::assembly::audit::v1::AuditEvent;
-        use aa_proto::assembly::common::v1::ActionType;
         use crate::correlation::{CorrelationConfig, CorrelationEngine};
         use crate::pipeline::event::{EnrichedEvent, EventSource};
+        use aa_proto::assembly::audit::v1::AuditEvent;
+        use aa_proto::assembly::common::v1::ActionType;
 
         // Short window and interval for fast test execution.
         let config = CorrelationConfig {
@@ -441,12 +441,11 @@ mod tests {
     /// convert it.
     #[tokio::test]
     async fn broadcast_channel_delivers_to_correlation() {
+        use crate::pipeline::event::{EnrichedEvent, EventSource, PipelineEvent};
         use aa_proto::assembly::audit::v1::AuditEvent;
         use aa_proto::assembly::common::v1::ActionType;
-        use crate::pipeline::event::{EnrichedEvent, EventSource, PipelineEvent};
 
-        let (tx, mut rx) =
-            tokio::sync::broadcast::channel::<PipelineEvent>(16);
+        let (tx, mut rx) = tokio::sync::broadcast::channel::<PipelineEvent>(16);
 
         let enriched = EnrichedEvent {
             inner: AuditEvent {

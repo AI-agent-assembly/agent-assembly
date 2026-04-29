@@ -101,8 +101,8 @@ fn extract_action_fields(detail: &Option<Detail>, action_type: ActionType) -> (S
 #[cfg(test)]
 mod tests {
     use super::*;
-    use aa_proto::assembly::audit::v1::AuditEvent;
     use crate::pipeline::event::{EnrichedEvent, EventSource};
+    use aa_proto::assembly::audit::v1::AuditEvent;
 
     /// Helper to build an `EnrichedEvent` with the given source and action_type.
     fn make_enriched(source: EventSource, action_type: ActionType) -> EnrichedEvent {
@@ -186,10 +186,7 @@ mod tests {
         match result {
             CorrelationEvent::Intent(intent) => {
                 assert_eq!(intent.timestamp_ms, 1000);
-                assert_eq!(
-                    intent.event_id.to_string(),
-                    "550e8400-e29b-41d4-a716-446655440000"
-                );
+                assert_eq!(intent.event_id.to_string(), "550e8400-e29b-41d4-a716-446655440000");
             }
             _ => panic!("expected Intent"),
         }
@@ -202,10 +199,7 @@ mod tests {
         match result {
             CorrelationEvent::Action(action) => {
                 assert_eq!(action.timestamp_ms, 1000);
-                assert_eq!(
-                    action.event_id.to_string(),
-                    "550e8400-e29b-41d4-a716-446655440000"
-                );
+                assert_eq!(action.event_id.to_string(), "550e8400-e29b-41d4-a716-446655440000");
             }
             _ => panic!("expected Action"),
         }
