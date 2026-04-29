@@ -64,7 +64,7 @@ impl UprobeManager {
                     name: "ssl_write".into(),
                 })?
                 .try_into()?;
-            prog.load()?;
+            load_program(prog, "ssl_write")?;
             links.push(Box::new(prog.attach(Some("SSL_write"), 0, &ssl_path, target_pid)?));
         }
 
@@ -76,7 +76,7 @@ impl UprobeManager {
                     name: "ssl_read_entry".into(),
                 })?
                 .try_into()?;
-            prog.load()?;
+            load_program(prog, "ssl_read_entry")?;
             links.push(Box::new(prog.attach(Some("SSL_read"), 0, &ssl_path, target_pid)?));
         }
 
@@ -88,7 +88,7 @@ impl UprobeManager {
                     name: "ssl_read_exit".into(),
                 })?
                 .try_into()?;
-            prog.load()?;
+            load_program(prog, "ssl_read_exit")?;
             links.push(Box::new(prog.attach(Some("SSL_read"), 0, &ssl_path, target_pid)?));
         }
 
@@ -105,6 +105,28 @@ impl UprobeManager {
             name: "uprobe attachment requires Linux".into(),
         })
     }
+}
+
+/// Load a BPF program, converting EPERM to [`EbpfError::PermissionDenied`].
+///
+/// `prog.load()` returns `aya::programs::ProgramError` on failure.  When the
+/// kernel rejects the load with EPERM the error string contains "EPERM" or
+/// "Operation not permitted".  This wrapper detects that pattern and returns a
+/// more actionable [`EbpfError::PermissionDenied`] instead.
+#[cfg(target_os = "linux")]
+fn load_program(prog: &mut UProbe, name: &str) -> Result<(), EbpfError> {
+    prog.load().map_err(|e| {
+        let msg = e.to_string();
+        if msg.contains("EPERM") || msg.contains("Operation not permitted") {
+            EbpfError::PermissionDenied {
+                detail: format!(
+                    "loading program `{name}` requires CAP_BPF + CAP_PERFMON (or root)"
+                ),
+            }
+        } else {
+            EbpfError::Program(e)
+        }
+    })
 }
 
 /// Target well-known `libssl.so` filesystem paths tried when the library is
