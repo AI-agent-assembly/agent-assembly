@@ -2,8 +2,8 @@
 
 use std::net::SocketAddr;
 
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::net::TcpStream;
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
+use tokio::net::{TcpListener, TcpStream};
 
 use aa_proxy::config::ProxyConfig;
 use aa_proxy::tls::CaStore;
@@ -108,4 +108,66 @@ async fn server_accepts_multiple_sequential_connections() {
         reader.read_line(&mut line).await.unwrap();
         assert!(line.contains("200"));
     }
+}
+
+/// Start a mock HTTP upstream that returns a fixed response, returning its address.
+async fn start_mock_upstream(body: &'static str) -> SocketAddr {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+
+    tokio::spawn(async move {
+        loop {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            // Read request (we don't care about the content).
+            let mut buf = vec![0u8; 4096];
+            let _ = stream.read(&mut buf).await;
+            // Send a minimal HTTP response.
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            let _ = stream.write_all(response.as_bytes()).await;
+        }
+    });
+
+    addr
+}
+
+#[tokio::test]
+async fn plain_http_request_is_forwarded_to_upstream() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let ca = CaStore::load_or_create(dir.path()).await.unwrap();
+    let config = test_config(dir.path());
+    let (proxy_addr, _handle) = start_proxy(config, ca).await;
+
+    let upstream_addr = start_mock_upstream("hello from upstream").await;
+
+    // Send a plain HTTP request through the proxy targeting our mock upstream.
+    let mut stream = TcpStream::connect(proxy_addr).await.unwrap();
+    let request = format!(
+        "GET http://{upstream_addr}/ HTTP/1.1\r\nHost: {upstream_addr}\r\n\r\n"
+    );
+    stream.write_all(request.as_bytes()).await.unwrap();
+
+    // Read the forwarded response.
+    let mut response = String::new();
+    let mut reader = BufReader::new(stream);
+    reader.read_line(&mut response).await.unwrap();
+    assert!(
+        response.contains("200"),
+        "expected 200 from upstream, got: {response}"
+    );
+
+    // Read remaining headers + body.
+    let mut full = String::new();
+    let _ = tokio::time::timeout(
+        std::time::Duration::from_secs(2),
+        reader.read_to_string(&mut full),
+    )
+    .await;
+    assert!(
+        full.contains("hello from upstream"),
+        "response body should contain upstream content"
+    );
 }
