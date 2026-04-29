@@ -27,10 +27,7 @@ impl ProblemDetail {
     pub fn from_status(status: StatusCode) -> Self {
         Self {
             type_uri: "about:blank".to_string(),
-            title: status
-                .canonical_reason()
-                .unwrap_or("Unknown Error")
-                .to_string(),
+            title: status.canonical_reason().unwrap_or("Unknown Error").to_string(),
             status: status.as_u16(),
             detail: None,
             instance: None,
@@ -54,18 +51,13 @@ impl ProblemDetail {
 
 impl IntoResponse for ProblemDetail {
     fn into_response(self) -> Response {
-        let status =
-            StatusCode::from_u16(self.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
-        let body = serde_json::to_string(&self).unwrap_or_else(|_| {
-            r#"{"type":"about:blank","title":"Internal Server Error","status":500}"#.to_string()
-        });
+        let status = StatusCode::from_u16(self.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+        let body = serde_json::to_string(&self)
+            .unwrap_or_else(|_| r#"{"type":"about:blank","title":"Internal Server Error","status":500}"#.to_string());
 
         (
             status,
-            [(
-                axum::http::header::CONTENT_TYPE,
-                "application/problem+json",
-            )],
+            [(axum::http::header::CONTENT_TYPE, "application/problem+json")],
             body,
         )
             .into_response()

@@ -29,9 +29,5 @@ pub fn trace_layer() -> TraceLayer<
             )
         })
         .on_request(())
-        .on_response(
-            DefaultOnResponse::new()
-                .level(Level::INFO)
-                .include_headers(false),
-        )
+        .on_response(DefaultOnResponse::new().level(Level::INFO).include_headers(false))
 }

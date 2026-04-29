@@ -23,10 +23,7 @@ pub fn build_app(state: AppState) -> Router {
 }
 
 /// Start the HTTP server and block until shutdown.
-pub async fn run_server(
-    config: ApiConfig,
-    state: AppState,
-) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn run_server(config: ApiConfig, state: AppState) -> Result<(), Box<dyn std::error::Error>> {
     let app = build_app(state);
 
     let listener = TcpListener::bind(config.bind_addr).await?;

@@ -33,8 +33,7 @@ spec:
 
     let events = Arc::new(EventBroadcast::default());
     let budget_alert_tx = events.budget_sender();
-    let policy_engine =
-        Arc::new(PolicyEngine::load_from_file(&policy_path, budget_alert_tx).unwrap());
+    let policy_engine = Arc::new(PolicyEngine::load_from_file(&policy_path, budget_alert_tx).unwrap());
     let budget_tracker = Arc::new(BudgetTracker::new(
         PricingTable::default_table(),
         None,
