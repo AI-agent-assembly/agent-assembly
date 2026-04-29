@@ -111,7 +111,7 @@ mod tests {
         pyo3::prepare_freethreaded_python();
         Python::with_gil(|py| {
             let result = init_assembly(py, String::new(), None, "auto");
-            let err = result.err().expect("should reject empty agent_id");
+            let err = result.expect_err("should reject empty agent_id");
             assert!(err.to_string().contains("agent_id must not be empty"));
         });
     }
@@ -121,7 +121,7 @@ mod tests {
         pyo3::prepare_freethreaded_python();
         Python::with_gil(|py| {
             let result = init_assembly(py, "test-agent".to_string(), None, "embedded");
-            let err = result.err().expect("should reject embedded mode");
+            let err = result.expect_err("should reject embedded mode");
             assert!(err.to_string().contains("embedded mode is not yet supported"));
         });
     }
@@ -131,7 +131,7 @@ mod tests {
         pyo3::prepare_freethreaded_python();
         Python::with_gil(|py| {
             let result = init_assembly(py, "test-agent".to_string(), None, "bogus");
-            let err = result.err().expect("should reject unknown mode");
+            let err = result.expect_err("should reject unknown mode");
             assert!(err.to_string().contains("unknown mode"));
         });
     }

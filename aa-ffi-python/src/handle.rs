@@ -262,7 +262,7 @@ mod tests {
 
         // Now report_llm_call should fail.
         let result = handle.report_llm_call("gpt-4o".to_string(), 0, 0, 0, "openai");
-        let err = result.err().expect("should error on shutdown handle");
+        let err = result.expect_err("should error on shutdown handle");
         assert!(err.to_string().contains("shut down"));
     }
 
