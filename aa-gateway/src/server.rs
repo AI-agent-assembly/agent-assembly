@@ -19,7 +19,7 @@ use tokio::sync::broadcast;
 
 use aa_runtime::approval::ApprovalQueue;
 
-use crate::budget::persistence::{default_budget_path, load_from_disk};
+use crate::budget::persistence::{default_budget_path, load_from_disk, start_background_writer};
 use crate::budget::{BudgetAlert, BudgetTracker};
 
 /// Default audit directory relative to the system data directory (`~/.aa/audit`).
@@ -123,7 +123,8 @@ pub async fn serve_tcp(
     approval_queue: Arc<ApprovalQueue>,
     budget_alert_tx: broadcast::Sender<BudgetAlert>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let (tracker, _budget_path) = setup_budget(policy_path, budget_alert_tx);
+    let (tracker, budget_path) = setup_budget(policy_path, budget_alert_tx);
+    let _budget_writer = start_background_writer(Arc::clone(&tracker), budget_path);
     let engine = PolicyEngine::load_from_file_with_budget(policy_path, Arc::clone(&tracker))
         .map_err(|e| format!("failed to load policy: {e:?}"))?;
     let (audit_tx, audit_drops, initial_hash) = setup_audit("gateway", "default").await?;
@@ -165,7 +166,8 @@ pub async fn serve_uds(
     approval_queue: Arc<ApprovalQueue>,
     budget_alert_tx: broadcast::Sender<BudgetAlert>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let (tracker, _budget_path) = setup_budget(policy_path, budget_alert_tx);
+    let (tracker, budget_path) = setup_budget(policy_path, budget_alert_tx);
+    let _budget_writer = start_background_writer(Arc::clone(&tracker), budget_path);
     let engine = PolicyEngine::load_from_file_with_budget(policy_path, Arc::clone(&tracker))
         .map_err(|e| format!("failed to load policy: {e:?}"))?;
     let (audit_tx, audit_drops, initial_hash) = setup_audit("gateway", "default").await?;
