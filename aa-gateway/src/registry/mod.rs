@@ -21,13 +21,22 @@ pub enum RegistryError {
     NotFound([u8; 16]),
 }
 
+/// Reason an agent was suspended — determines whether auto-resume is possible.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SuspendReason {
+    /// Suspended because a budget limit was exceeded. Auto-resumable when budget resets.
+    BudgetExceeded,
+    /// Suspended by an operator or external system. Only manually resumable.
+    Manual,
+}
+
 /// Runtime status of a registered agent.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AgentStatus {
     /// Agent is actively running and sending heartbeats.
     Active,
-    /// Agent has been suspended by the gateway (e.g. budget exceeded, manual pause).
-    Suspended,
+    /// Agent has been suspended by the gateway. Contains the reason for suspension.
+    Suspended(SuspendReason),
     /// Agent has been removed from the registry (clean shutdown or forced removal).
     Deregistered,
 }
