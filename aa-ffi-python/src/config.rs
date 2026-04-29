@@ -55,10 +55,7 @@ mod tests {
     #[test]
     fn resolve_uses_explicit_socket_path() {
         let config = make_config("test-agent", Some("/custom/path.sock"));
-        assert_eq!(
-            config.resolve_socket_path(),
-            PathBuf::from("/custom/path.sock")
-        );
+        assert_eq!(config.resolve_socket_path(), PathBuf::from("/custom/path.sock"));
     }
 
     #[test]

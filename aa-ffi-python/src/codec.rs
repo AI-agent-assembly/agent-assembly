@@ -129,20 +129,17 @@ where
         }
         TAG_POLICY_RESPONSE => {
             let bytes = read_length_delimited(reader).await?;
-            let msg =
-                aa_proto::assembly::policy::v1::CheckActionResponse::decode(bytes.as_ref())?;
+            let msg = aa_proto::assembly::policy::v1::CheckActionResponse::decode(bytes.as_ref())?;
             Ok(RuntimeResponse::PolicyResponse(msg))
         }
         TAG_APPROVAL_DECISION => {
             let bytes = read_length_delimited(reader).await?;
-            let msg =
-                aa_proto::assembly::event::v1::ApprovalDecision::decode(bytes.as_ref())?;
+            let msg = aa_proto::assembly::event::v1::ApprovalDecision::decode(bytes.as_ref())?;
             Ok(RuntimeResponse::ApprovalDecision(msg))
         }
         TAG_VIOLATION_ALERT => {
             let bytes = read_length_delimited(reader).await?;
-            let msg =
-                aa_proto::assembly::audit::v1::PolicyViolation::decode(bytes.as_ref())?;
+            let msg = aa_proto::assembly::audit::v1::PolicyViolation::decode(bytes.as_ref())?;
             Ok(RuntimeResponse::ViolationAlert(msg))
         }
         other => Err(CodecError::UnknownTag(other)),

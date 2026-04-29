@@ -37,15 +37,13 @@ pub struct IpcHandle {
 pub fn spawn_ipc_thread(socket_path: PathBuf) -> Result<IpcHandle, std::io::Error> {
     let (cmd_tx, cmd_rx) = mpsc::channel::<IpcCommand>(256);
 
-    let thread = std::thread::Builder::new()
-        .name("aa-ipc".to_string())
-        .spawn(move || {
-            let rt = tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .expect("failed to build Tokio runtime for IPC thread");
-            rt.block_on(ipc_loop(socket_path, cmd_rx));
-        })?;
+    let thread = std::thread::Builder::new().name("aa-ipc".to_string()).spawn(move || {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("failed to build Tokio runtime for IPC thread");
+        rt.block_on(ipc_loop(socket_path, cmd_rx));
+    })?;
 
     Ok(IpcHandle {
         cmd_tx,
