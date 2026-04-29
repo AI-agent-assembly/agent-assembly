@@ -7,8 +7,8 @@
 use aa_core::identity::{AgentId, SessionId};
 use aa_core::time::Timestamp;
 use aa_core::{AgentContext, FileMode, GovernanceAction, PolicyResult};
-use aa_proto::assembly::approval::v1::{ApprovalEvent, PendingApproval};
-use aa_runtime::approval::ApprovalRequest;
+use aa_proto::assembly::approval::v1::{ApprovalDecisionType, ApprovalEvent, DecideRequest, PendingApproval};
+use aa_runtime::approval::{ApprovalDecision, ApprovalRequest, ApprovalRequestId};
 use aa_proto::assembly::common::v1::Decision;
 use aa_proto::assembly::policy::v1::action_context::Action;
 use aa_proto::assembly::policy::v1::{CheckActionRequest, CheckActionResponse, RedactInstructions, RedactRule};
@@ -236,4 +236,40 @@ pub enum ApprovalConvertError {
     /// REJECTED decision requires a non-empty reason.
     #[error("rejection reason is required")]
     MissingRejectionReason,
+}
+
+/// Convert a proto [`DecideRequest`] into the core types needed to call
+/// [`ApprovalQueue::decide`].
+pub fn decide_request_to_core(
+    req: &DecideRequest,
+) -> Result<(ApprovalRequestId, ApprovalDecision), ApprovalConvertError> {
+    let id: ApprovalRequestId = req.request_id.parse()?;
+
+    let decision_type = ApprovalDecisionType::try_from(req.decision)
+        .unwrap_or(ApprovalDecisionType::DecisionUnspecified);
+
+    let decision = match decision_type {
+        ApprovalDecisionType::Approved => ApprovalDecision::Approved {
+            by: req.decided_by.clone(),
+            reason: if req.reason.is_empty() {
+                None
+            } else {
+                Some(req.reason.clone())
+            },
+        },
+        ApprovalDecisionType::Rejected => {
+            if req.reason.is_empty() {
+                return Err(ApprovalConvertError::MissingRejectionReason);
+            }
+            ApprovalDecision::Rejected {
+                by: req.decided_by.clone(),
+                reason: req.reason.clone(),
+            }
+        }
+        ApprovalDecisionType::DecisionUnspecified => {
+            return Err(ApprovalConvertError::UnspecifiedDecision);
+        }
+    };
+
+    Ok((id, decision))
 }
