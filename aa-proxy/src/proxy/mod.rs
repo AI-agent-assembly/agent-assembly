@@ -171,8 +171,64 @@ impl ProxyServer {
 
             Ok(())
         } else {
-            // Plain HTTP — forwarding added in a subsequent commit.
-            tracing::debug!(method, target, "plain HTTP request");
+            // Plain HTTP request forwarding.
+            tracing::debug!(method = method, target = target, "plain HTTP request");
+
+            // Consume remaining request headers.
+            let mut headers = Vec::new();
+            let mut header_line = String::new();
+            loop {
+                header_line.clear();
+                reader.read_line(&mut header_line).await?;
+                if header_line.trim().is_empty() {
+                    break;
+                }
+                headers.push(header_line.clone());
+            }
+
+            // Parse host from the target URL or Host header.
+            let host = if let Some(url_host) = target.strip_prefix("http://") {
+                url_host.split('/').next().unwrap_or(url_host)
+            } else {
+                headers
+                    .iter()
+                    .find_map(|h| {
+                        let lower = h.to_ascii_lowercase();
+                        lower.starts_with("host:").then(|| h["host:".len()..].trim().to_string())
+                    })
+                    .unwrap_or_default()
+                    .leak()
+            };
+
+            // Connect to upstream via plain TCP.
+            let upstream_addr = if host.contains(':') {
+                host.to_string()
+            } else {
+                format!("{host}:80")
+            };
+            let mut upstream = TcpStream::connect(&upstream_addr).await?;
+
+            // Re-serialise and forward the original request.
+            upstream.write_all(request_line.as_bytes()).await?;
+            upstream.write_all(b"\r\n").await?;
+            for h in &headers {
+                upstream.write_all(h.as_bytes()).await?;
+            }
+            upstream.write_all(b"\r\n").await?;
+
+            // Bidirectional copy between client and upstream.
+            let stream = reader.into_inner();
+            let (mut client_read, mut client_write) = tokio::io::split(stream);
+            let (mut upstream_read, mut upstream_write) = tokio::io::split(upstream);
+
+            let c2u = tokio::io::copy(&mut client_read, &mut upstream_write);
+            let u2c = tokio::io::copy(&mut upstream_read, &mut client_write);
+
+            tokio::select! {
+                r = c2u => { r?; }
+                r = u2c => { r?; }
+            }
+
             Ok(())
         }
     }
