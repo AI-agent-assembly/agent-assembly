@@ -160,9 +160,10 @@ mod tests {
         let budget = PersistedBudget {
             per_agent: vec![PersistedAgentEntry {
                 agent_id_hex: "0102030405060708090a0b0c0d0e0f10".to_string(),
-                state: crate::budget::types::BudgetState {
-                    spent_usd: "12.345".parse().unwrap(),
-                    date: chrono::Utc::now().date_naive(),
+                state: {
+                    let mut s = crate::budget::types::BudgetState::new_for_date(chrono::Utc::now().date_naive());
+                    s.spent_usd = "12.345".parse().unwrap();
+                    s
                 },
             }],
             global: crate::budget::types::BudgetState::new_today(),

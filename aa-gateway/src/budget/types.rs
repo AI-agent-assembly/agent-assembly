@@ -1,5 +1,7 @@
 //! Core domain types for the budget tracking engine.
 
+use chrono::Datelike;
+
 /// LLM provider identifier.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -40,7 +42,7 @@ pub enum BudgetStatus {
     LimitExceeded,
 }
 
-/// Per-agent accumulated spend for a single UTC calendar day.
+/// Per-agent accumulated spend for daily and monthly windows.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct BudgetState {
     /// Total USD spent today using exact decimal arithmetic.
@@ -48,14 +50,28 @@ pub struct BudgetState {
     pub spent_usd: rust_decimal::Decimal,
     /// UTC calendar date this state is valid for.
     pub date: chrono::NaiveDate,
+    /// Current month as `YYYYMM` (e.g. `202604`). Used for monthly reset.
+    #[serde(default)]
+    pub month: u32,
+    /// Total USD spent this calendar month. `None` when monthly tracking is unused.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub monthly_spent_usd: Option<rust_decimal::Decimal>,
 }
 
 impl BudgetState {
+    /// Compute the `YYYYMM` month tag for a given date.
+    fn month_tag(date: chrono::NaiveDate) -> u32 {
+        date.year() as u32 * 100 + date.month()
+    }
+
     /// Create a fresh zero-spend state stamped with today's UTC date.
     pub fn new_today() -> Self {
+        let date = chrono::Utc::now().date_naive();
         Self {
             spent_usd: rust_decimal::Decimal::ZERO,
-            date: chrono::Utc::now().date_naive(),
+            date,
+            month: Self::month_tag(date),
+            monthly_spent_usd: None,
         }
     }
 
@@ -64,11 +80,18 @@ impl BudgetState {
         Self {
             spent_usd: rust_decimal::Decimal::ZERO,
             date,
+            month: Self::month_tag(date),
+            monthly_spent_usd: None,
         }
     }
 
-    /// Reset `spent_usd` to zero if `date` is before `today`. No-op if same day.
+    /// Reset daily spend if the day changed; reset monthly spend if the month changed.
     pub fn maybe_reset(&mut self, today: chrono::NaiveDate) {
+        let current_month = Self::month_tag(today);
+        if current_month != self.month {
+            self.monthly_spent_usd = self.monthly_spent_usd.map(|_| rust_decimal::Decimal::ZERO);
+            self.month = current_month;
+        }
         if self.date < today {
             self.spent_usd = rust_decimal::Decimal::ZERO;
             self.date = today;
@@ -147,9 +170,12 @@ mod tests {
     fn budget_state_maybe_reset_clears_old_date() {
         use chrono::Utc;
         use rust_decimal::Decimal;
+        let yesterday = Utc::now().date_naive() - chrono::Duration::days(1);
         let mut state = BudgetState {
             spent_usd: Decimal::new(500, 2), // 5.00
-            date: Utc::now().date_naive() - chrono::Duration::days(1),
+            date: yesterday,
+            month: BudgetState::month_tag(yesterday),
+            monthly_spent_usd: None,
         };
         state.maybe_reset(Utc::now().date_naive());
         assert_eq!(state.spent_usd, Decimal::ZERO);
@@ -161,9 +187,12 @@ mod tests {
         use chrono::Utc;
         use rust_decimal::Decimal;
         let amount = Decimal::new(500, 2); // 5.00
+        let today = Utc::now().date_naive();
         let mut state = BudgetState {
             spent_usd: amount,
-            date: Utc::now().date_naive(),
+            date: today,
+            month: BudgetState::month_tag(today),
+            monthly_spent_usd: None,
         };
         state.maybe_reset(Utc::now().date_naive());
         assert_eq!(state.spent_usd, amount);
@@ -173,9 +202,12 @@ mod tests {
     fn budget_state_maybe_reset_uses_injected_date() {
         use chrono::NaiveDate;
         use rust_decimal::Decimal;
+        let jan1 = NaiveDate::from_ymd_opt(2024, 1, 1).unwrap();
         let mut state = BudgetState {
             spent_usd: Decimal::new(500, 2), // 5.00
-            date: NaiveDate::from_ymd_opt(2024, 1, 1).unwrap(),
+            date: jan1,
+            month: BudgetState::month_tag(jan1),
+            monthly_spent_usd: None,
         };
         // Inject a specific "today" that is after state.date
         let injected_today = NaiveDate::from_ymd_opt(2024, 1, 2).unwrap();

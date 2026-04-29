@@ -297,11 +297,15 @@ mod tests {
 
     #[test]
     fn with_state_restores_per_agent_entries() {
+        use chrono::Datelike;
         use crate::budget::persistence::{agent_id_to_hex, PersistedAgentEntry, PersistedBudget};
         let id = AgentId::from_bytes([42u8; 16]);
+        let today = chrono::Utc::now().date_naive();
         let state = BudgetState {
             spent_usd: "5.00".parse::<Decimal>().unwrap(),
-            date: chrono::Utc::now().date_naive(),
+            date: today,
+            month: today.year() as u32 * 100 + today.month(),
+            monthly_spent_usd: None,
         };
         let persisted = PersistedBudget {
             per_agent: vec![PersistedAgentEntry {
