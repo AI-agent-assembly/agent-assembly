@@ -62,10 +62,7 @@ async fn setup_audit(
 /// return it wrapped in `Arc` alongside the budget file path.
 ///
 /// Falls back to an empty tracker if the file is missing or corrupt.
-fn setup_budget(
-    policy_path: &Path,
-    budget_alert_tx: broadcast::Sender<BudgetAlert>,
-) -> (Arc<BudgetTracker>, PathBuf) {
+fn setup_budget(policy_path: &Path, budget_alert_tx: broadcast::Sender<BudgetAlert>) -> (Arc<BudgetTracker>, PathBuf) {
     let budget_path = default_budget_path();
 
     let persisted = load_from_disk(&budget_path).unwrap_or_else(|e| {
@@ -79,24 +76,23 @@ fn setup_budget(
 
     // Extract limits from the policy YAML so the tracker enforces them.
     let yaml = std::fs::read_to_string(policy_path).unwrap_or_default();
-    let (daily_limit, monthly_limit) =
-        if let Ok(output) = crate::policy::PolicyValidator::from_yaml(&yaml) {
-            let daily = output
-                .document
-                .budget
-                .as_ref()
-                .and_then(|bp| bp.daily_limit_usd)
-                .and_then(|v| rust_decimal::Decimal::try_from(v).ok());
-            let monthly = output
-                .document
-                .budget
-                .as_ref()
-                .and_then(|bp| bp.monthly_limit_usd)
-                .and_then(|v| rust_decimal::Decimal::try_from(v).ok());
-            (daily, monthly)
-        } else {
-            (None, None)
-        };
+    let (daily_limit, monthly_limit) = if let Ok(output) = crate::policy::PolicyValidator::from_yaml(&yaml) {
+        let daily = output
+            .document
+            .budget
+            .as_ref()
+            .and_then(|bp| bp.daily_limit_usd)
+            .and_then(|v| rust_decimal::Decimal::try_from(v).ok());
+        let monthly = output
+            .document
+            .budget
+            .as_ref()
+            .and_then(|bp| bp.monthly_limit_usd)
+            .and_then(|v| rust_decimal::Decimal::try_from(v).ok());
+        (daily, monthly)
+    } else {
+        (None, None)
+    };
 
     let tracker = Arc::new(BudgetTracker::with_state_and_alert_sender(
         crate::budget::PricingTable::default_table(),
@@ -116,9 +112,8 @@ async fn shutdown_signal() {
     let ctrl_c = tokio::signal::ctrl_c();
     #[cfg(unix)]
     {
-        let mut sigterm =
-            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-                .expect("failed to register SIGTERM handler");
+        let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("failed to register SIGTERM handler");
         tokio::select! {
             _ = ctrl_c => tracing::info!("received SIGINT, shutting down"),
             _ = sigterm.recv() => tracing::info!("received SIGTERM, shutting down"),

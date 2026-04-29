@@ -51,7 +51,10 @@ fn round_trip_preserves_spend() {
     // 4. Verify the restored tracker kept the spend.
     let restored_snapshot = restored.snapshot();
     assert_eq!(restored_snapshot.per_agent.len(), 1);
-    assert_eq!(restored_snapshot.per_agent[0].state.spent_usd, Decimal::from_str("42.50").unwrap());
+    assert_eq!(
+        restored_snapshot.per_agent[0].state.spent_usd,
+        Decimal::from_str("42.50").unwrap()
+    );
     assert_eq!(restored_snapshot.global.spent_usd, Decimal::from_str("42.50").unwrap());
 }
 
@@ -89,7 +92,10 @@ fn restored_tracker_accumulates_further_spend() {
     restored.record_raw_spend(agent, Decimal::from_str("5.00").unwrap());
 
     let final_snapshot = restored.snapshot();
-    assert_eq!(final_snapshot.per_agent[0].state.spent_usd, Decimal::from_str("15.00").unwrap());
+    assert_eq!(
+        final_snapshot.per_agent[0].state.spent_usd,
+        Decimal::from_str("15.00").unwrap()
+    );
     assert_eq!(final_snapshot.global.spent_usd, Decimal::from_str("15.00").unwrap());
 }
 
@@ -118,13 +124,8 @@ fn corrupt_file_fallback_produces_empty_tracker() {
         timezone: chrono_tz::UTC,
     });
 
-    let tracker = BudgetTracker::with_state_and_alert_sender(
-        PricingTable::default_table(),
-        None,
-        None,
-        persisted,
-        alert_tx,
-    );
+    let tracker =
+        BudgetTracker::with_state_and_alert_sender(PricingTable::default_table(), None, None, persisted, alert_tx);
 
     let snapshot = tracker.snapshot();
     assert!(snapshot.per_agent.is_empty());

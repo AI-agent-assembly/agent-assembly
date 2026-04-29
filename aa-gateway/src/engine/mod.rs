@@ -139,6 +139,36 @@ impl PolicyEngine {
         })
     }
 
+    /// Load a policy from a YAML file using a pre-built budget tracker.
+    ///
+    /// Use this when restoring budget state from disk — the caller constructs
+    /// the tracker via [`BudgetTracker::with_state`] and passes it in.
+    pub fn load_from_file_with_budget(path: &Path, budget: Arc<BudgetTracker>) -> Result<Self, PolicyLoadError> {
+        let yaml = std::fs::read_to_string(path).map_err(PolicyLoadError::Io)?;
+        let output = PolicyValidator::from_yaml(&yaml).map_err(PolicyLoadError::Validation)?;
+        let compiled_patterns = output
+            .document
+            .data
+            .as_ref()
+            .map(|dp| {
+                dp.sensitive_patterns
+                    .iter()
+                    .filter_map(|p| regex::Regex::new(p).ok())
+                    .collect()
+            })
+            .unwrap_or_default();
+        let policy_arc = Arc::new(ArcSwap::new(Arc::new(output.document)));
+        let watcher = crate::engine::watcher::start_watcher(path, policy_arc.clone()).ok();
+        Ok(PolicyEngine {
+            policy: policy_arc,
+            scanner: aa_core::CredentialScanner::new(),
+            compiled_patterns,
+            rate_state: DashMap::new(),
+            budget,
+            _watcher: watcher,
+        })
+    }
+
     /// Apply a raw YAML policy string: validate, swap into the live slot, and
     /// persist a versioned snapshot to the history store.
     ///
