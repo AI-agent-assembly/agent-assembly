@@ -427,9 +427,16 @@ pub async fn run(config: RuntimeConfig) {
         }
     }
 
-    // Shared monotonic sequence counter — used by the pipeline and (later) the
+    // Shared monotonic sequence counter — used by the pipeline and the
     // eBPF bridge so all events share a single ordering.
     let seq = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+
+    // Spawn eBPF sub-layer tasks if the EBPF layer is active.
+    if active_layers.contains(crate::layer::LayerSet::EBPF) {
+        spawn_ebpf_tls(&tracker, &broadcast_tx, &mut degraded_layers);
+        spawn_ebpf_file_io(&tracker, &broadcast_tx, &seq, &config.agent_id, &mut degraded_layers);
+        spawn_ebpf_exec_tracepoints(&tracker, &broadcast_tx, &token, &mut degraded_layers);
+    }
 
     // Spawn the event aggregation pipeline task.
     {
