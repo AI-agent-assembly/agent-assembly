@@ -86,6 +86,39 @@ impl AnomalyDetector {
         }
     }
 
+    /// Detect unknown external connection: host not in the network allowlist.
+    ///
+    /// Returns `Some(AnomalyEvent)` with [`AnomalyResponse::Block`] when the
+    /// URL's host is not present in the provided allowlist. An empty allowlist
+    /// means all hosts are allowed (open policy).
+    pub fn check_unknown_connection(
+        &self,
+        agent_id: AgentId,
+        url: &str,
+        allowlist: &[String],
+    ) -> Option<AnomalyEvent> {
+        if allowlist.is_empty() {
+            return None;
+        }
+        let host = url
+            .split_once("://")
+            .map(|x| x.1)
+            .unwrap_or(url)
+            .split('/')
+            .next()
+            .unwrap_or("");
+        if allowlist.iter().any(|entry| entry == host) {
+            return None;
+        }
+        Some(AnomalyEvent {
+            anomaly_type: AnomalyType::UnknownExternalConnection,
+            response: AnomalyResponse::default_for(AnomalyType::UnknownExternalConnection),
+            agent_id,
+            description: format!("Connection to host '{host}' not in network allowlist"),
+            detected_at: chrono::Utc::now(),
+        })
+    }
+
     /// Compute a stable hash for a (tool_name, args) pair.
     fn hash_tool_call(tool_name: &str, args: &str) -> u64 {
         let mut hasher = Sha256::new();
