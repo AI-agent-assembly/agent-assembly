@@ -104,6 +104,82 @@ fn emit_ebpf_degradation(
     let _ = broadcast_tx.send(crate::pipeline::PipelineEvent::LayerDegradation(info));
 }
 
+/// Spawn the eBPF TLS uprobe sub-layer.
+///
+/// Loads the TLS BPF program, attaches uprobes to OpenSSL, and starts the
+/// ring-buffer reader loop. TLS capture events are logged at debug level
+/// (mapping to `AuditEvent` is a future task). On failure the `"ebpf/tls"`
+/// sub-layer degrades independently.
+#[cfg(target_os = "linux")]
+fn spawn_ebpf_tls(
+    tracker: &tokio_util::task::TaskTracker,
+    broadcast_tx: &tokio::sync::broadcast::Sender<crate::pipeline::PipelineEvent>,
+    degraded_layers: &mut Vec<String>,
+) {
+    let mut bpf = match aa_ebpf::EbpfLoader::load() {
+        Ok(b) => b,
+        Err(e) => {
+            let reason = format!("TLS BPF load failed: {e}");
+            tracing::warn!(%reason, "degrading ebpf/tls sub-layer");
+            emit_ebpf_degradation(broadcast_tx, "ebpf/tls", reason);
+            degraded_layers.push("ebpf/tls".to_string());
+            return;
+        }
+    };
+
+    let pid = std::process::id() as i32;
+    if let Err(e) = aa_ebpf::uprobe::UprobeManager::attach(&mut bpf, Some(pid)) {
+        let reason = format!("TLS uprobe attach failed: {e}");
+        tracing::warn!(%reason, "degrading ebpf/tls sub-layer");
+        emit_ebpf_degradation(broadcast_tx, "ebpf/tls", reason);
+        degraded_layers.push("ebpf/tls".to_string());
+        return;
+    }
+
+    let mut reader = match aa_ebpf::ringbuf::RingBufReader::new(bpf) {
+        Ok(r) => r,
+        Err(e) => {
+            let reason = format!("ring buffer init failed: {e}");
+            tracing::warn!(%reason, "degrading ebpf/tls sub-layer");
+            emit_ebpf_degradation(broadcast_tx, "ebpf/tls", reason);
+            degraded_layers.push("ebpf/tls".to_string());
+            return;
+        }
+    };
+
+    let tls_broadcast_tx = broadcast_tx.clone();
+    tracker.spawn(async move {
+        loop {
+            match reader.next().await {
+                Ok(Some(event)) => {
+                    tracing::debug!(?event, "TLS ring buffer event");
+                    let _ = &tls_broadcast_tx; // keep broadcast_tx alive for future forwarding
+                }
+                Ok(None) => {
+                    tracing::info!("TLS ring buffer closed");
+                    break;
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "TLS ring buffer read error");
+                    emit_ebpf_degradation(&tls_broadcast_tx, "ebpf/tls", format!("ring buffer error: {e}"));
+                    break;
+                }
+            }
+        }
+    });
+    tracing::info!("ebpf/tls sub-layer task spawned");
+}
+
+#[cfg(not(target_os = "linux"))]
+fn spawn_ebpf_tls(
+    _tracker: &tokio_util::task::TaskTracker,
+    broadcast_tx: &tokio::sync::broadcast::Sender<crate::pipeline::PipelineEvent>,
+    degraded_layers: &mut Vec<String>,
+) {
+    emit_ebpf_degradation(broadcast_tx, "ebpf/tls", "eBPF not supported on this platform".to_string());
+    degraded_layers.push("ebpf/tls".to_string());
+}
+
 /// Emit a [`PipelineEvent::LayerDegradation`] for the proxy layer.
 fn emit_proxy_degradation(
     broadcast_tx: &tokio::sync::broadcast::Sender<crate::pipeline::PipelineEvent>,
