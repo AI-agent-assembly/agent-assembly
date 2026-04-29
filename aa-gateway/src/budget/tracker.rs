@@ -146,6 +146,19 @@ impl BudgetTracker {
         }
     }
 
+    /// Record a pre-computed USD spend amount for an agent.
+    ///
+    /// Unlike [`record_usage`](Self::record_usage), this method bypasses the
+    /// `PricingTable` and accepts a raw USD amount directly. Used by
+    /// `PolicyEngine::record_spend()` which receives cost estimates from callers
+    /// rather than raw token counts.
+    ///
+    /// Fires 80%/95% threshold alerts on the broadcast channel and updates the
+    /// global spend accumulator.
+    pub fn record_raw_spend(&self, agent_id: AgentId, amount_usd: Decimal) {
+        self.record_cost(agent_id, amount_usd);
+    }
+
     /// Record token usage and return the resulting [`BudgetStatus`].
     pub fn record_usage(
         &self,
@@ -156,7 +169,12 @@ impl BudgetTracker {
         output_tokens: u64,
     ) -> BudgetStatus {
         let cost = self.pricing.cost_usd(provider, model, input_tokens, output_tokens);
+        self.record_cost(agent_id, cost)
+    }
 
+    /// Shared cost-recording logic used by both [`record_usage`](Self::record_usage)
+    /// and [`record_raw_spend`](Self::record_raw_spend).
+    fn record_cost(&self, agent_id: AgentId, cost: Decimal) -> BudgetStatus {
         let has_monthly = self.monthly_limit_usd.is_some();
 
         self.per_agent
