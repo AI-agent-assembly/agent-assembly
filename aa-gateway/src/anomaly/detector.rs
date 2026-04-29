@@ -119,6 +119,30 @@ impl AnomalyDetector {
         })
     }
 
+    /// Detect credential leak attempt: accumulated findings exceed threshold.
+    ///
+    /// Returns `Some(AnomalyEvent)` with [`AnomalyResponse::Alert`] when the
+    /// agent has accumulated more credential findings in the current window
+    /// than the configured threshold.
+    pub fn check_credential_leak(&self, agent_id: AgentId) -> Option<AnomalyEvent> {
+        let baseline = self.baselines.get(&agent_id)?;
+        let count = baseline.credential_findings_count();
+        if count >= self.config.credential_leak_threshold {
+            Some(AnomalyEvent {
+                anomaly_type: AnomalyType::CredentialLeakAttempt,
+                response: AnomalyResponse::default_for(AnomalyType::CredentialLeakAttempt),
+                agent_id,
+                description: format!(
+                    "Credential findings count {count} exceeds threshold {}",
+                    self.config.credential_leak_threshold
+                ),
+                detected_at: chrono::Utc::now(),
+            })
+        } else {
+            None
+        }
+    }
+
     /// Compute a stable hash for a (tool_name, args) pair.
     fn hash_tool_call(tool_name: &str, args: &str) -> u64 {
         let mut hasher = Sha256::new();
