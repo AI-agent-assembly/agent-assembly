@@ -1,6 +1,7 @@
 //! `aa-gateway` — Agent Assembly governance gateway gRPC server.
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use clap::Parser;
 use tracing_subscriber::EnvFilter;
@@ -32,9 +33,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     tracing::info!(policy = %cli.policy.display(), "loading policy");
 
+    let registry = Arc::new(aa_gateway::AgentRegistry::new());
+
     if let Some(socket_path) = &cli.socket {
-        aa_gateway::server::serve_uds(&cli.policy, socket_path).await
+        aa_gateway::server::serve_uds(&cli.policy, socket_path, registry).await
     } else {
-        aa_gateway::server::serve_tcp(&cli.policy, &cli.listen).await
+        aa_gateway::server::serve_tcp(&cli.policy, &cli.listen, registry).await
     }
 }
