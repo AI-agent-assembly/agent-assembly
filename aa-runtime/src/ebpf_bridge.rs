@@ -34,3 +34,47 @@ pub fn file_io_to_audit(event: &FileIoEvent) -> AuditEvent {
         ..AuditEvent::default()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_file_io(syscall: SyscallKind, path: &str) -> FileIoEvent {
+        FileIoEvent {
+            pid: 100,
+            tid: 101,
+            timestamp_ns: 5_000_000,
+            syscall,
+            path: path.to_string(),
+            flags: 0,
+            return_code: 0,
+            is_sensitive: false,
+        }
+    }
+
+    #[test]
+    fn file_io_to_audit_maps_all_syscall_kinds() {
+        let cases = [
+            (SyscallKind::Openat, "create"),
+            (SyscallKind::Read, "read"),
+            (SyscallKind::Write, "write"),
+            (SyscallKind::Unlink, "delete"),
+            (SyscallKind::Rename, "rename"),
+        ];
+        for (kind, expected_op) in cases {
+            let event = make_file_io(kind, "/tmp/test.txt");
+            let audit = file_io_to_audit(&event);
+
+            assert_eq!(audit.action_type, ActionType::FileOperation.into());
+            let detail = audit.detail.expect("detail should be set");
+            match detail {
+                Detail::FileOp(ref fop) => {
+                    assert_eq!(fop.operation, expected_op, "syscall {kind:?}");
+                    assert_eq!(fop.path, "/tmp/test.txt");
+                    assert_eq!(fop.source, "ebpf");
+                }
+                _ => panic!("expected FileOp detail, got {detail:?}"),
+            }
+        }
+    }
+}
