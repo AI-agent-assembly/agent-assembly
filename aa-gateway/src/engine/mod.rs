@@ -80,6 +80,13 @@ impl PolicyEngine {
                     .collect()
             })
             .unwrap_or_default();
+        let budget_tz = output
+            .document
+            .budget
+            .as_ref()
+            .and_then(|bp| bp.timezone.as_deref())
+            .and_then(|s| s.parse::<chrono_tz::Tz>().ok())
+            .unwrap_or(chrono_tz::UTC);
         let policy_arc = Arc::new(ArcSwap::new(Arc::new(output.document)));
         let watcher = crate::engine::watcher::start_watcher(path, policy_arc.clone()).ok();
         Ok(PolicyEngine {
@@ -87,7 +94,7 @@ impl PolicyEngine {
             scanner: aa_core::CredentialScanner::new(),
             compiled_patterns,
             rate_state: DashMap::new(),
-            budget: crate::engine::budget::BudgetTracker::new(),
+            budget: crate::engine::budget::BudgetTracker::new(budget_tz),
             _watcher: watcher,
         })
     }
@@ -367,7 +374,7 @@ mod tests {
             scanner: aa_core::CredentialScanner::new(),
             compiled_patterns,
             rate_state: DashMap::new(),
-            budget: budget::BudgetTracker::new(),
+            budget: budget::BudgetTracker::new(chrono_tz::UTC),
             _watcher: None,
         }
     }
@@ -580,6 +587,7 @@ mod tests {
         let mut doc = empty_doc();
         doc.budget = Some(BudgetPolicy {
             daily_limit_usd: Some(1.0),
+            timezone: None,
         });
         let engine = make_engine(doc);
         let ctx = make_ctx();
