@@ -180,4 +180,44 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn exit_event_to_audit_success_exit() {
+        let event = ProcessExitEvent {
+            timestamp_ns: 2_000_000,
+            pid: 42,
+            exit_code: 0,
+        };
+        let audit = exit_event_to_audit(&event);
+
+        assert_eq!(audit.action_type, ActionType::ProcessExec.into());
+        let detail = audit.detail.expect("detail should be set");
+        match detail {
+            Detail::Process(ref p) => {
+                assert!(p.succeeded);
+                assert_eq!(p.exit_code, 0);
+                assert!(p.command.is_empty());
+            }
+            _ => panic!("expected Process detail"),
+        }
+    }
+
+    #[test]
+    fn exit_event_to_audit_nonzero_exit() {
+        let event = ProcessExitEvent {
+            timestamp_ns: 3_000_000,
+            pid: 42,
+            exit_code: 137,
+        };
+        let audit = exit_event_to_audit(&event);
+
+        let detail = audit.detail.expect("detail should be set");
+        match detail {
+            Detail::Process(ref p) => {
+                assert!(!p.succeeded);
+                assert_eq!(p.exit_code, 137);
+            }
+            _ => panic!("expected Process detail"),
+        }
+    }
 }
