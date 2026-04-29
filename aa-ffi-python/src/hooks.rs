@@ -45,11 +45,7 @@ fn ensure_hooks_on_path(py: Python<'_>) -> PyResult<()> {
 ///
 /// Returns the list of framework names for which hooks were successfully installed.
 /// Never propagates Python exceptions — logs warnings and skips on failure.
-pub fn install_hooks(
-    py: Python<'_>,
-    handle: &Bound<'_, AssemblyHandle>,
-    detected: &[String],
-) -> Vec<String> {
+pub fn install_hooks(py: Python<'_>, handle: &Bound<'_, AssemblyHandle>, detected: &[String]) -> Vec<String> {
     // Add the in-tree Python hook package to sys.path.
     if let Err(e) = ensure_hooks_on_path(py) {
         tracing::warn!(error = %e, "failed to add aa_hooks to sys.path; hooks will not be installed");
@@ -64,21 +60,19 @@ pub fn install_hooks(
         }
 
         match py.import(module_path) {
-            Ok(module) => {
-                match module.call_method1("install", (handle,)) {
-                    Ok(_) => {
-                        tracing::info!(framework = %framework, module = %module_path, "hook installed");
-                        installed.push(framework.to_string());
-                    }
-                    Err(e) => {
-                        tracing::warn!(
-                            framework = %framework,
-                            error = %e,
-                            "hook install() failed; skipping"
-                        );
-                    }
+            Ok(module) => match module.call_method1("install", (handle,)) {
+                Ok(_) => {
+                    tracing::info!(framework = %framework, module = %module_path, "hook installed");
+                    installed.push(framework.to_string());
                 }
-            }
+                Err(e) => {
+                    tracing::warn!(
+                        framework = %framework,
+                        error = %e,
+                        "hook install() failed; skipping"
+                    );
+                }
+            },
             Err(e) => {
                 tracing::warn!(
                     framework = %framework,
@@ -113,7 +107,10 @@ mod tests {
     /// Helper: create a test handle for use in hook installation tests.
     fn test_handle() -> AssemblyHandle {
         let (tx, _rx) = tokio::sync::mpsc::channel(16);
-        let ipc = crate::ipc::IpcHandle { cmd_tx: tx, thread: None };
+        let ipc = crate::ipc::IpcHandle {
+            cmd_tx: tx,
+            thread: None,
+        };
         AssemblyHandle::new(ipc, vec!["openai".to_string()])
     }
 

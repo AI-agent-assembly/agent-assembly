@@ -226,13 +226,7 @@ mod tests {
         let (handle, mut rx) = test_handle();
 
         handle
-            .report_llm_call(
-                "gpt-4o".to_string(),
-                100,
-                50,
-                1234,
-                "openai",
-            )
+            .report_llm_call("gpt-4o".to_string(), 100, 50, 1234, "openai")
             .unwrap();
 
         let cmd = rx.try_recv().expect("should have received a command");
@@ -267,13 +261,7 @@ mod tests {
         Python::with_gil(|py| handle.shutdown(py).unwrap());
 
         // Now report_llm_call should fail.
-        let result = handle.report_llm_call(
-            "gpt-4o".to_string(),
-            0,
-            0,
-            0,
-            "openai",
-        );
+        let result = handle.report_llm_call("gpt-4o".to_string(), 0, 0, 0, "openai");
         let err = result.err().expect("should error on shutdown handle");
         assert!(err.to_string().contains("shut down"));
     }
