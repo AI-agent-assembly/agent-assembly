@@ -190,6 +190,7 @@ pub fn result_to_response(result: &PolicyResult, latency_us: i64, policy_rule: &
         decision: result.clone(),
         redacted_payload: None,
         credential_findings: Vec::new(),
+        deny_action: None,
     };
     eval_result_to_response(&eval, latency_us, policy_rule)
 }

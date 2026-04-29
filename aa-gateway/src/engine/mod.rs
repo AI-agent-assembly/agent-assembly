@@ -15,6 +15,15 @@ use std::{
 
 use crate::policy::{PolicyDocument, PolicyValidator};
 
+/// Side-effect action the service layer should take when a request is denied.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DenyAction {
+    /// Default: just deny this request, keep the agent active.
+    Block,
+    /// Deny this request and request that the caller suspend the agent.
+    SuspendAgent,
+}
+
 /// The outcome of a [`PolicyEngine::evaluate`] call.
 ///
 /// Carries the governance decision alongside any credential or PII findings
@@ -32,6 +41,9 @@ pub struct EvaluationResult {
     /// All credential and PII findings detected during the scanner pass.
     /// Empty when the payload was clean.
     pub credential_findings: Vec<aa_core::CredentialFinding>,
+    /// Optional side-effect action for the service layer when the decision is `Deny`.
+    /// `None` means no side-effect beyond denying the request.
+    pub deny_action: Option<DenyAction>,
 }
 
 /// Assembled policy engine that evaluates governance actions through a 7-step pipeline.
@@ -144,6 +156,7 @@ impl PolicyEngine {
                         },
                         redacted_payload: None,
                         credential_findings: vec![],
+                        deny_action: None,
                     };
                 }
             }
@@ -167,6 +180,7 @@ impl PolicyEngine {
                             },
                             redacted_payload: None,
                             credential_findings: vec![],
+                            deny_action: None,
                         };
                     }
                 }
@@ -183,6 +197,7 @@ impl PolicyEngine {
                         },
                         redacted_payload: None,
                         credential_findings: vec![],
+                        deny_action: None,
                     };
                 }
             }
@@ -204,6 +219,7 @@ impl PolicyEngine {
                             },
                             redacted_payload: None,
                             credential_findings: vec![],
+                            deny_action: None,
                         };
                     }
                 }
@@ -219,6 +235,7 @@ impl PolicyEngine {
                             decision: aa_core::PolicyResult::RequiresApproval { timeout_secs: 30 },
                             redacted_payload: None,
                             credential_findings: vec![],
+                            deny_action: None,
                         };
                     }
                 }
@@ -283,6 +300,7 @@ impl PolicyEngine {
                         },
                         redacted_payload,
                         credential_findings,
+                        deny_action: None,
                     };
                 }
             }
@@ -294,6 +312,7 @@ impl PolicyEngine {
                         },
                         redacted_payload,
                         credential_findings,
+                        deny_action: None,
                     };
                 }
             }
@@ -303,6 +322,7 @@ impl PolicyEngine {
             decision: aa_core::PolicyResult::Allow,
             redacted_payload,
             credential_findings,
+            deny_action: None,
         }
     }
 
