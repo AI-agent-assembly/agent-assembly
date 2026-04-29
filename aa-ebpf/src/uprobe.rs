@@ -60,7 +60,7 @@ impl UprobeManager {
         {
             let prog: &mut UProbe = bpf
                 .program_mut("ssl_write")
-                .ok_or_else(|| EbpfError::MapNotFound {
+                .ok_or_else(|| EbpfError::ProgramNotFound {
                     name: "ssl_write".into(),
                 })?
                 .try_into()?;
@@ -72,7 +72,7 @@ impl UprobeManager {
         {
             let prog: &mut UProbe = bpf
                 .program_mut("ssl_read_entry")
-                .ok_or_else(|| EbpfError::MapNotFound {
+                .ok_or_else(|| EbpfError::ProgramNotFound {
                     name: "ssl_read_entry".into(),
                 })?
                 .try_into()?;
@@ -84,7 +84,7 @@ impl UprobeManager {
         {
             let prog: &mut UProbe = bpf
                 .program_mut("ssl_read_exit")
-                .ok_or_else(|| EbpfError::MapNotFound {
+                .ok_or_else(|| EbpfError::ProgramNotFound {
                     name: "ssl_read_exit".into(),
                 })?
                 .try_into()?;
