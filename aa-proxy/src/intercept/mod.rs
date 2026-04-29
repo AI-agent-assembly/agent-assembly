@@ -84,10 +84,7 @@ impl Interceptor {
     }
 
     /// Build a [`PipelineEvent::Audit`] from a proxy event and optional extracted fields.
-    fn build_pipeline_event(
-        event: &event::ProxyEvent,
-        fields: Option<&LlmFields>,
-    ) -> PipelineEvent {
+    fn build_pipeline_event(event: &event::ProxyEvent, fields: Option<&LlmFields>) -> PipelineEvent {
         let now_ms = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
@@ -303,10 +300,7 @@ mod tests {
         interceptor.intercept(&event).await.unwrap();
 
         // Channel should be empty — Unknown pattern skips emission.
-        assert!(
-            rx.try_recv().is_err(),
-            "non-LLM traffic must not emit a pipeline event"
-        );
+        assert!(rx.try_recv().is_err(), "non-LLM traffic must not emit a pipeline event");
     }
 
     #[tokio::test]
