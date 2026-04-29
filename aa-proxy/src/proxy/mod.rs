@@ -53,16 +53,35 @@ impl ProxyServer {
         let listener = TcpListener::bind(self.config.bind_addr).await?;
         tracing::info!(addr = %self.config.bind_addr, "proxy listening");
 
+        let mut sigint = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())
+            .map_err(|e| ProxyError::Io(e))?;
+        let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .map_err(|e| ProxyError::Io(e))?;
+
         loop {
-            let (stream, peer) = listener.accept().await?;
-            tracing::debug!(%peer, "accepted connection");
-            let server = Arc::clone(self);
-            tokio::spawn(async move {
-                if let Err(e) = server.handle_connection(stream).await {
-                    tracing::warn!(%peer, error = %e, "connection error");
+            tokio::select! {
+                result = listener.accept() => {
+                    let (stream, peer) = result?;
+                    tracing::debug!(%peer, "accepted connection");
+                    let server = Arc::clone(self);
+                    tokio::spawn(async move {
+                        if let Err(e) = server.handle_connection(stream).await {
+                            tracing::warn!(%peer, error = %e, "connection error");
+                        }
+                    });
                 }
-            });
+                _ = sigint.recv() => {
+                    tracing::info!("received SIGINT, shutting down");
+                    break;
+                }
+                _ = sigterm.recv() => {
+                    tracing::info!("received SIGTERM, shutting down");
+                    break;
+                }
+            }
         }
+
+        Ok(())
     }
 
     /// Handle a single accepted TCP connection.
