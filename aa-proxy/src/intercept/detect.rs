@@ -29,3 +29,44 @@ pub fn detect_api(host: &str) -> LlmApiPattern {
         _ => LlmApiPattern::Unknown,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn detects_openai() {
+        assert_eq!(detect_api("api.openai.com"), LlmApiPattern::OpenAi);
+    }
+
+    #[test]
+    fn detects_anthropic() {
+        assert_eq!(detect_api("api.anthropic.com"), LlmApiPattern::Anthropic);
+    }
+
+    #[test]
+    fn detects_cohere() {
+        assert_eq!(detect_api("api.cohere.com"), LlmApiPattern::Cohere);
+    }
+
+    #[test]
+    fn unknown_host_returns_unknown() {
+        assert_eq!(detect_api("example.com"), LlmApiPattern::Unknown);
+    }
+
+    #[test]
+    fn strips_port_before_matching() {
+        assert_eq!(detect_api("api.openai.com:443"), LlmApiPattern::OpenAi);
+    }
+
+    #[test]
+    fn case_insensitive_matching() {
+        assert_eq!(detect_api("API.OPENAI.COM"), LlmApiPattern::OpenAi);
+        assert_eq!(detect_api("Api.Anthropic.Com"), LlmApiPattern::Anthropic);
+    }
+
+    #[test]
+    fn subdomain_does_not_match() {
+        assert_eq!(detect_api("cdn.api.openai.com"), LlmApiPattern::Unknown);
+    }
+}
