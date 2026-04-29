@@ -1074,14 +1074,20 @@ mod layer_integration {
         // Spawn eBPF exec tracepoints.
         super::spawn_ebpf_exec_tracepoints(&tracker, &tx, &token, &mut degraded);
 
-        // Trigger a file I/O event that the kprobes will capture.
-        let trigger_path = "/tmp/aa-integration-test-trigger";
-        std::fs::write(trigger_path, b"integration-test").expect("write trigger file");
-        let _ = std::fs::read_to_string(trigger_path);
-        let _ = std::fs::remove_file(trigger_path);
+        // Give the perf reader tasks time to start their polling loops.
+        // They are spawned via tokio::spawn inside start_event_reader and
+        // need at least one poll cycle before they can receive events.
+        tokio::time::sleep(Duration::from_secs(1)).await;
 
-        // Give the perf event reader time to deliver events.
-        tokio::time::sleep(Duration::from_millis(500)).await;
+        // Trigger file I/O events repeatedly so the kprobes capture at
+        // least one, even if the first trigger races with reader startup.
+        let trigger_path = "/tmp/aa-integration-test-trigger";
+        for _ in 0..5 {
+            std::fs::write(trigger_path, b"integration-test").expect("write trigger file");
+            let _ = std::fs::read_to_string(trigger_path);
+            tokio::time::sleep(Duration::from_millis(200)).await;
+        }
+        let _ = std::fs::remove_file(trigger_path);
 
         // Collect events.
         let events = collect_events(&mut rx, Duration::from_secs(3)).await;
