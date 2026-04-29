@@ -16,6 +16,7 @@ pub mod routes;
 pub mod server;
 pub mod shutdown;
 pub mod state;
+pub mod ws;
 
 pub use config::ApiConfig;
 pub use error::ProblemDetail;
