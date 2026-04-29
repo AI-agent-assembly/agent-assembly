@@ -5,8 +5,11 @@ use std::net::SocketAddr;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
 
+use tokio::sync::broadcast;
+
 use aa_proxy::config::ProxyConfig;
 use aa_proxy::tls::CaStore;
+use aa_runtime::pipeline::PipelineEvent;
 
 /// Helper: build a `ProxyConfig` bound to an ephemeral port on localhost.
 fn test_config(ca_dir: &std::path::Path) -> ProxyConfig {
@@ -33,7 +36,8 @@ async fn start_proxy(config: ProxyConfig, ca: CaStore) -> (SocketAddr, tokio::ta
         ..config
     };
 
-    let server = aa_proxy::proxy::ProxyServer::new(cfg, ca);
+    let (tx, _rx) = broadcast::channel::<PipelineEvent>(16);
+    let server = aa_proxy::proxy::ProxyServer::new(cfg, ca, tx);
     let handle = tokio::spawn(async move {
         let _ = server.run().await;
     });

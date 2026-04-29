@@ -4,18 +4,27 @@ pub mod detect;
 pub mod event;
 pub mod extract;
 
+use tokio::sync::broadcast;
+
+use aa_runtime::pipeline::PipelineEvent;
+
 use crate::error::ProxyError;
 use crate::intercept::detect::LlmApiPattern;
 use crate::intercept::extract::{extract_anthropic, extract_cohere, extract_openai, ExtractionError, LlmFields};
 
 /// Inspects a decrypted HTTP request/response pair, decides whether it is an
 /// LLM API call, and extracts audit-relevant fields from the body.
-pub struct Interceptor;
+///
+/// Holds a [`broadcast::Sender`] to emit [`PipelineEvent`]s for intercepted
+/// LLM calls into the runtime event pipeline.
+pub struct Interceptor {
+    event_tx: broadcast::Sender<PipelineEvent>,
+}
 
 impl Interceptor {
-    /// Create a new `Interceptor`.
-    pub fn new() -> Self {
-        Self
+    /// Create a new `Interceptor` that emits events on the given broadcast channel.
+    pub fn new(event_tx: broadcast::Sender<PipelineEvent>) -> Self {
+        Self { event_tx }
     }
 
     /// Inspect an intercepted exchange, extract LLM fields from the body
@@ -76,12 +85,6 @@ impl Interceptor {
     }
 }
 
-impl Default for Interceptor {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::time::SystemTime;
@@ -91,6 +94,14 @@ mod tests {
     use super::*;
     use crate::intercept::detect::LlmApiPattern;
     use crate::intercept::event::ProxyEvent;
+
+    /// Create a dummy `Interceptor` with a broadcast sender whose receiver is
+    /// dropped — sends silently fail, which is correct for unit tests that
+    /// only verify extraction logic.
+    fn make_interceptor() -> Interceptor {
+        let (tx, _rx) = broadcast::channel(16);
+        Interceptor::new(tx)
+    }
 
     fn make_event(pattern: LlmApiPattern) -> ProxyEvent {
         ProxyEvent {
@@ -106,21 +117,21 @@ mod tests {
 
     #[tokio::test]
     async fn intercept_openai_event_succeeds() {
-        let interceptor = Interceptor::new();
+        let interceptor = make_interceptor();
         let result = interceptor.intercept(&make_event(LlmApiPattern::OpenAi)).await;
         assert!(result.is_ok());
     }
 
     #[tokio::test]
     async fn intercept_anthropic_event_succeeds() {
-        let interceptor = Interceptor::new();
+        let interceptor = make_interceptor();
         let result = interceptor.intercept(&make_event(LlmApiPattern::Anthropic)).await;
         assert!(result.is_ok());
     }
 
     #[tokio::test]
     async fn intercept_unknown_returns_none() {
-        let interceptor = Interceptor::new();
+        let interceptor = make_interceptor();
         let result = interceptor
             .intercept(&make_event(LlmApiPattern::Unknown))
             .await
@@ -130,7 +141,7 @@ mod tests {
 
     #[tokio::test]
     async fn intercept_with_no_agent_id_succeeds() {
-        let interceptor = Interceptor::new();
+        let interceptor = make_interceptor();
         let mut event = make_event(LlmApiPattern::OpenAi);
         event.agent_id = None;
         assert!(interceptor.intercept(&event).await.is_ok());
@@ -138,7 +149,7 @@ mod tests {
 
     #[tokio::test]
     async fn intercept_openai_with_body_extracts_fields() {
-        let interceptor = Interceptor::new();
+        let interceptor = make_interceptor();
         let mut event = make_event(LlmApiPattern::OpenAi);
         event.response_body = Some(Bytes::from(
             r#"{"model":"gpt-4","usage":{"prompt_tokens":10,"completion_tokens":20}}"#,
@@ -151,7 +162,7 @@ mod tests {
 
     #[tokio::test]
     async fn intercept_anthropic_with_body_extracts_fields() {
-        let interceptor = Interceptor::new();
+        let interceptor = make_interceptor();
         let mut event = make_event(LlmApiPattern::Anthropic);
         event.response_body = Some(Bytes::from(
             r#"{"model":"claude-3-opus-20240229","usage":{"input_tokens":15,"output_tokens":30}}"#,
@@ -164,7 +175,7 @@ mod tests {
 
     #[tokio::test]
     async fn intercept_cohere_with_body_extracts_fields() {
-        let interceptor = Interceptor::new();
+        let interceptor = make_interceptor();
         let mut event = make_event(LlmApiPattern::Cohere);
         event.response_body = Some(Bytes::from(
             r#"{"model":"command-r-plus","message":"hello","meta":{"tokens":{"input_tokens":5,"output_tokens":12}}}"#,
@@ -178,7 +189,7 @@ mod tests {
 
     #[tokio::test]
     async fn intercept_prefers_response_body_over_request() {
-        let interceptor = Interceptor::new();
+        let interceptor = make_interceptor();
         let mut event = make_event(LlmApiPattern::OpenAi);
         event.request_body = Some(Bytes::from(
             r#"{"model":"gpt-4","messages":[{"role":"user","content":"hi"}]}"#,
@@ -195,7 +206,7 @@ mod tests {
 
     #[tokio::test]
     async fn intercept_falls_back_to_request_body() {
-        let interceptor = Interceptor::new();
+        let interceptor = make_interceptor();
         let mut event = make_event(LlmApiPattern::OpenAi);
         event.request_body = Some(Bytes::from(
             r#"{"model":"gpt-4","messages":[{"role":"user","content":"hi"}]}"#,
@@ -209,7 +220,7 @@ mod tests {
 
     #[tokio::test]
     async fn intercept_with_none_body_returns_none() {
-        let interceptor = Interceptor::new();
+        let interceptor = make_interceptor();
         let event = make_event(LlmApiPattern::OpenAi);
         // Both request_body and response_body are None
         let result = interceptor.intercept(&event).await.unwrap();
@@ -218,7 +229,7 @@ mod tests {
 
     #[tokio::test]
     async fn intercept_with_malformed_body_returns_none() {
-        let interceptor = Interceptor::new();
+        let interceptor = make_interceptor();
         let mut event = make_event(LlmApiPattern::OpenAi);
         event.response_body = Some(Bytes::from("not json"));
         // Malformed body logs a warning and returns None (not an error)
