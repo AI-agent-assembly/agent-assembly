@@ -96,6 +96,9 @@ jobs:
       - name: Run tests
         # aa-ebpf requires nightly (aya-build invokes rustup run nightly) and has no
         # unit tests. Validated by the dedicated ebpf-build job.
+        # Relax p99 SLA for shared CI runners; the Benchmark job enforces stricter thresholds.
+        env:
+          AA_BENCH_SLA_P99_MS: "25"
         run: cargo nextest run --workspace --no-tests=pass --exclude aa-ebpf
 
   coverage:
