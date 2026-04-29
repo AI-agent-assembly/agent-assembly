@@ -7,9 +7,11 @@
 pub mod budget;
 pub mod engine;
 pub mod policy;
+pub mod registry;
 pub mod server;
 pub mod service;
 pub mod simulation;
 
 pub use engine::{EvaluationResult, PolicyEngine, PolicyLoadError};
+pub use registry::{AgentRecord, AgentRegistry, AgentStatus};
 pub use service::PolicyServiceImpl;
