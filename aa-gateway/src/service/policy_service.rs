@@ -2,12 +2,14 @@
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Instant, SystemTime};
 
 use tokio::sync::mpsc;
 use tonic::{Request, Response, Status};
 
-use aa_core::AuditEntry;
+use aa_core::identity::{AgentId, SessionId};
+use aa_core::time::Timestamp;
+use aa_core::{AuditEntry, AuditEventType};
 use aa_proto::assembly::policy::v1::policy_service_server::PolicyService;
 use aa_proto::assembly::policy::v1::{BatchCheckRequest, BatchCheckResponse, CheckActionRequest, CheckActionResponse};
 
@@ -52,6 +54,77 @@ impl PolicyServiceImpl {
 
         Ok(convert::eval_result_to_response(&eval, latency_us, policy_rule))
     }
+
+    /// Map a `PolicyResult` to the corresponding `AuditEventType`.
+    fn decision_to_event_type(decision: &aa_core::PolicyResult) -> AuditEventType {
+        match decision {
+            aa_core::PolicyResult::Allow => AuditEventType::ToolCallIntercepted,
+            aa_core::PolicyResult::Deny { .. } => AuditEventType::PolicyViolation,
+            aa_core::PolicyResult::RequiresApproval { .. } => AuditEventType::ApprovalRequested,
+        }
+    }
+
+    /// Build an `AuditEntry` from a request and evaluation result, then fire-and-forget
+    /// via `try_send`. Never blocks the caller.
+    fn record_audit(
+        &self,
+        req: &CheckActionRequest,
+        response: &CheckActionResponse,
+        seq: u64,
+        previous_hash: [u8; 32],
+    ) {
+        let proto_agent = match req.agent_id.as_ref() {
+            Some(a) => a,
+            None => return, // No agent identity — cannot construct entry.
+        };
+        let agent_id = AgentId::from_bytes(convert::hash_to_16(&proto_agent.agent_id));
+        let session_id = SessionId::from_bytes(convert::hash_to_16(&req.trace_id));
+        let event_type = Self::decision_to_event_type_from_response(response.decision);
+        let timestamp_ns = Timestamp::from(SystemTime::now()).as_nanos();
+
+        let payload = serde_json::json!({
+            "action_type": req.action_type,
+            "decision": response.decision,
+            "reason": &response.reason,
+            "policy_rule": &response.policy_rule,
+            "latency_us": response.decision_latency_us,
+        })
+        .to_string();
+
+        let entry = AuditEntry::new(
+            seq,
+            timestamp_ns,
+            event_type,
+            agent_id,
+            session_id,
+            payload,
+            previous_hash,
+        );
+
+        if let Err(e) = self.audit_tx.try_send(entry) {
+            match e {
+                mpsc::error::TrySendError::Full(_) => {
+                    tracing::warn!(seq, "audit channel full — entry dropped");
+                    self.audit_drops.fetch_add(1, Ordering::Relaxed);
+                }
+                mpsc::error::TrySendError::Closed(_) => {
+                    tracing::error!("audit channel closed — AuditWriter task has exited");
+                }
+            }
+        }
+    }
+
+    /// Map a proto `Decision` i32 to `AuditEventType`.
+    fn decision_to_event_type_from_response(decision: i32) -> AuditEventType {
+        use aa_proto::assembly::common::v1::Decision;
+        match Decision::try_from(decision) {
+            Ok(Decision::Allow) => AuditEventType::ToolCallIntercepted,
+            Ok(Decision::Deny) => AuditEventType::PolicyViolation,
+            Ok(Decision::Redact) => AuditEventType::CredentialLeakBlocked,
+            Ok(Decision::Pending) => AuditEventType::ApprovalRequested,
+            _ => AuditEventType::PolicyViolation, // fallback for unknown
+        }
+    }
 }
 
 #[tonic::async_trait]
@@ -86,6 +159,9 @@ impl PolicyService for PolicyServiceImpl {
             );
         }
 
+        // Fire-and-forget audit entry — never blocks the response.
+        self.record_audit(&req, &response, 0, [0u8; 32]);
+
         Ok(Response::new(response))
     }
 
@@ -93,8 +169,10 @@ impl PolicyService for PolicyServiceImpl {
         let batch = request.into_inner();
         let mut responses = Vec::with_capacity(batch.requests.len());
 
-        for req in &batch.requests {
-            responses.push(self.evaluate_one(req)?);
+        for (i, req) in batch.requests.iter().enumerate() {
+            let resp = self.evaluate_one(req)?;
+            self.record_audit(req, &resp, i as u64, [0u8; 32]);
+            responses.push(resp);
         }
 
         Ok(Response::new(BatchCheckResponse { responses }))
