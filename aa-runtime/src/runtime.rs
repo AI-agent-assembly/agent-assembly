@@ -176,7 +176,11 @@ fn spawn_ebpf_tls(
     broadcast_tx: &tokio::sync::broadcast::Sender<crate::pipeline::PipelineEvent>,
     degraded_layers: &mut Vec<String>,
 ) {
-    emit_ebpf_degradation(broadcast_tx, "ebpf/tls", "eBPF not supported on this platform".to_string());
+    emit_ebpf_degradation(
+        broadcast_tx,
+        "ebpf/tls",
+        "eBPF not supported on this platform".to_string(),
+    );
     degraded_layers.push("ebpf/tls".to_string());
 }
 
@@ -246,7 +250,11 @@ fn spawn_ebpf_file_io(
     _agent_id: &str,
     degraded_layers: &mut Vec<String>,
 ) {
-    emit_ebpf_degradation(broadcast_tx, "ebpf/file_io", "eBPF not supported on this platform".to_string());
+    emit_ebpf_degradation(
+        broadcast_tx,
+        "ebpf/file_io",
+        "eBPF not supported on this platform".to_string(),
+    );
     degraded_layers.push("ebpf/file_io".to_string());
 }
 
@@ -299,7 +307,11 @@ fn spawn_ebpf_exec_tracepoints(
     _token: &tokio_util::sync::CancellationToken,
     degraded_layers: &mut Vec<String>,
 ) {
-    emit_ebpf_degradation(broadcast_tx, "ebpf/exec", "eBPF not supported on this platform".to_string());
+    emit_ebpf_degradation(
+        broadcast_tx,
+        "ebpf/exec",
+        "eBPF not supported on this platform".to_string(),
+    );
     degraded_layers.push("ebpf/exec".to_string());
 }
 

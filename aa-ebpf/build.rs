@@ -11,13 +11,20 @@
 //! `aa-ebpf-probes` is a standalone workspace so cargo cannot resolve it as a
 //! package from `aa-ebpf/`.  We invoke cargo directly with an explicit
 //! `current_dir` to avoid this limitation.
+//!
+//! ## Graceful fallback
+//!
+//! When the nightly toolchain is not installed (e.g. standard CI runners),
+//! the build script creates empty stub files so the crate still compiles.
+//! Loading these stubs at runtime will fail in `Ebpf::load()`, which the
+//! runtime handles via per-loader degradation.
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // BPF compilation is Linux-only. On macOS/Windows the build script is a no-op;
     // the userspace constants in lib.rs are gated with the same cfg predicate.
     #[cfg(target_os = "linux")]
     {
-        use std::{env, path::PathBuf, process::Command};
+        use std::{env, fs, path::PathBuf, process::Command};
 
         let manifest_dir = env::var("CARGO_MANIFEST_DIR")?;
         let probes_dir = PathBuf::from(&manifest_dir).join("../aa-ebpf-probes");
@@ -28,6 +35,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // Re-run this script whenever the probes source changes.
         println!("cargo:rerun-if-changed={}", probes_dir.display());
+
+        // The binary paths that lib.rs expects via include_bytes_aligned!
+        let release_dir = target_dir.join("bpfel-unknown-none/release");
+        let binaries = ["aa-file-io", "aa-exec-probes", "aa-tls-probes"];
 
         // Run `cargo build --release` inside the probes workspace.
         // aa-ebpf-probes/.cargo/config.toml sets:
@@ -43,10 +54,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             // the bare nightly rustc without the parent workspace overlay.
             .env_remove("RUSTC")
             .env_remove("RUSTC_WORKSPACE_WRAPPER")
-            .status()?;
+            .status();
 
-        if !status.success() {
-            return Err("BPF probe compilation failed — see cargo output above".into());
+        let build_ok = matches!(status, Ok(s) if s.success());
+
+        if !build_ok {
+            eprintln!(
+                "cargo:warning=BPF probe compilation failed (nightly toolchain missing?). \
+                 Creating empty stubs — eBPF loaders will degrade at runtime."
+            );
+            // Create empty stub files so include_bytes_aligned! has something to embed.
+            fs::create_dir_all(&release_dir)?;
+            for name in &binaries {
+                let path = release_dir.join(name);
+                if !path.exists() {
+                    fs::write(&path, b"")?;
+                }
+            }
         }
     }
 
