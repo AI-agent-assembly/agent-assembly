@@ -34,11 +34,17 @@ uuid         = { version = "1", features = ["v4"] }
 clap         = { version = "4", features = ["derive"] }
 
 [dev-dependencies]
+criterion    = { version = "0.5", features = ["async_tokio"] }
 tempfile     = "3"
+tokio-stream = "0.1"
 
 [[bin]]
 name = "aa-gateway"
 path = "src/main.rs"
+
+[[bench]]
+name    = "policy_check"
+harness = false
 
 [lints]
 workspace = true
