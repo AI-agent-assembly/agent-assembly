@@ -13,6 +13,15 @@ pub struct HealthResponse {
 }
 
 /// `GET /api/v1/health` — liveness probe.
+#[utoipa::path(
+    get,
+    path = "/api/v1/health",
+    tag = "health",
+    responses(
+        (status = 200, description = "Service is healthy", body = HealthResponse),
+        (status = 404, description = "Not found", body = crate::error::ProblemDetail)
+    )
+)]
 pub async fn health() -> impl IntoResponse {
     (
         StatusCode::OK,
