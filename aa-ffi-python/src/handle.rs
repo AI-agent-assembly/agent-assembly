@@ -70,6 +70,62 @@ impl AssemblyHandle {
         Ok(())
     }
 
+    /// Report an LLM call to the runtime with typed metadata.
+    ///
+    /// Builds an `AuditEvent` with `LlmCallDetail` and sends it through the
+    /// IPC command channel. Used by Python hook modules (e.g. `aa_hooks.openai`)
+    /// to report intercepted LLM API calls.
+    ///
+    /// Args:
+    ///     model: Model identifier (e.g. "gpt-4o", "claude-3-5-sonnet").
+    ///     prompt_tokens: Token count in the prompt (from usage metadata).
+    ///     completion_tokens: Token count in the completion (from usage metadata).
+    ///     latency_ms: End-to-end call latency in milliseconds.
+    ///     provider: Inference provider name (e.g. "openai", "anthropic").
+    #[pyo3(signature = (model, prompt_tokens=0, completion_tokens=0, latency_ms=0, provider="unknown"))]
+    pub fn report_llm_call(
+        &self,
+        model: String,
+        prompt_tokens: i32,
+        completion_tokens: i32,
+        latency_ms: i64,
+        provider: &str,
+    ) -> PyResult<()> {
+        let guard = self
+            .inner
+            .lock()
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("lock poisoned: {e}")))?;
+
+        let ipc = guard.as_ref().ok_or_else(|| {
+            pyo3::exceptions::PyRuntimeError::new_err("AssemblyHandle is shut down; cannot report events")
+        })?;
+
+        use aa_proto::assembly::audit::v1::{audit_event, AuditEvent, LlmCallDetail};
+        use aa_proto::assembly::common::v1::ActionType;
+
+        let detail = LlmCallDetail {
+            model,
+            prompt_tokens,
+            completion_tokens,
+            latency_ms,
+            provider: provider.to_string(),
+            ..Default::default()
+        };
+
+        let event = AuditEvent {
+            event_id: unique_event_id(),
+            action_type: ActionType::LlmCall.into(),
+            detail: Some(audit_event::Detail::LlmCall(detail)),
+            ..Default::default()
+        };
+
+        ipc.cmd_tx
+            .blocking_send(IpcCommand::SendEvent(Box::new(event)))
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("failed to enqueue event: {e}")))?;
+
+        Ok(())
+    }
+
     /// Shut down the IPC connection and join the background thread.
     ///
     /// Safe to call multiple times — subsequent calls are no-ops.
