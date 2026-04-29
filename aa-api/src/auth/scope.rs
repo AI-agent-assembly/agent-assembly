@@ -115,3 +115,54 @@ where
         Ok(Self(caller))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_scope_ordering() {
+        assert!(Scope::Admin > Scope::Write);
+        assert!(Scope::Write > Scope::Read);
+        assert!(Scope::Admin > Scope::Read);
+    }
+
+    #[test]
+    fn test_scope_contains_same_level() {
+        assert!(Scope::Write.is_satisfied_by(&[Scope::Write]));
+        assert!(Scope::Read.is_satisfied_by(&[Scope::Read]));
+        assert!(Scope::Admin.is_satisfied_by(&[Scope::Admin]));
+    }
+
+    #[test]
+    fn test_scope_contains_higher_level() {
+        assert!(Scope::Write.is_satisfied_by(&[Scope::Admin]));
+        assert!(Scope::Read.is_satisfied_by(&[Scope::Admin]));
+        assert!(Scope::Read.is_satisfied_by(&[Scope::Write]));
+    }
+
+    #[test]
+    fn test_scope_rejects_lower_level() {
+        assert!(!Scope::Write.is_satisfied_by(&[Scope::Read]));
+        assert!(!Scope::Admin.is_satisfied_by(&[Scope::Write]));
+        assert!(!Scope::Admin.is_satisfied_by(&[Scope::Read]));
+    }
+
+    #[test]
+    fn test_scope_empty_grants_rejects_all() {
+        assert!(!Scope::Read.is_satisfied_by(&[]));
+        assert!(!Scope::Write.is_satisfied_by(&[]));
+        assert!(!Scope::Admin.is_satisfied_by(&[]));
+    }
+
+    #[test]
+    fn test_scope_check_with_caller() {
+        let caller = AuthenticatedCaller {
+            key_id: "test".to_string(),
+            scopes: vec![Scope::Read, Scope::Write],
+        };
+        assert!(RequireScope::check(&caller, Scope::Read).is_ok());
+        assert!(RequireScope::check(&caller, Scope::Write).is_ok());
+        assert!(RequireScope::check(&caller, Scope::Admin).is_err());
+    }
+}
