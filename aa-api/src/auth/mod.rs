@@ -78,3 +78,15 @@ impl IntoResponse for AuthError {
         }
     }
 }
+
+/// The authenticated identity of a request caller.
+///
+/// Populated by the `FromRequestParts` implementation, which validates
+/// either an API key (`aa_…`) or a JWT bearer token.
+#[derive(Debug, Clone)]
+pub struct AuthenticatedCaller {
+    /// The API key ID or JWT subject that identifies this caller.
+    pub key_id: String,
+    /// Scopes granted to this caller.
+    pub scopes: Vec<Scope>,
+}
