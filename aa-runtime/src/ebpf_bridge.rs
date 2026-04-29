@@ -175,7 +175,7 @@ mod tests {
         let event = make_exec_event("/usr/bin/curl", "-s https://example.com");
         let audit = exec_event_to_audit(&event);
 
-        assert_eq!(audit.action_type, ActionType::ProcessExec.into());
+        assert_eq!(audit.action_type, i32::from(ActionType::ProcessExec));
         let detail = audit.detail.expect("detail should be set");
         match detail {
             Detail::Process(ref p) => {
@@ -216,7 +216,7 @@ mod tests {
             let event = make_file_io(kind, "/tmp/test.txt");
             let audit = file_io_to_audit(&event);
 
-            assert_eq!(audit.action_type, ActionType::FileOperation.into());
+            assert_eq!(audit.action_type, i32::from(ActionType::FileOperation));
             let detail = audit.detail.expect("detail should be set");
             match detail {
                 Detail::FileOp(ref fop) => {
@@ -238,7 +238,7 @@ mod tests {
         };
         let audit = exit_event_to_audit(&event);
 
-        assert_eq!(audit.action_type, ActionType::ProcessExec.into());
+        assert_eq!(audit.action_type, i32::from(ActionType::ProcessExec));
         let detail = audit.detail.expect("detail should be set");
         match detail {
             Detail::Process(ref p) => {

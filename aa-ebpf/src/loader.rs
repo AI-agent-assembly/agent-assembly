@@ -204,8 +204,7 @@ impl FileIoLoader {
                         }
                     };
 
-                    for i in 0..events.read {
-                        let buf = &buffers[i];
+                    for buf in buffers.iter().take(events.read) {
                         if buf.len() < core::mem::size_of::<FileIoEventRaw>() {
                             continue;
                         }
