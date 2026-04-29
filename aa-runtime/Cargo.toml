@@ -9,7 +9,6 @@ description = "Tokio async runtime wrapper and lifecycle management for Agent As
 [dependencies]
 aa-core                     = { path = "../aa-core" }
 aa-proto                    = { path = "../aa-proto" }
-aa-proxy                    = { path = "../aa-proxy" }
 axum                        = "0.7"
 bitflags                    = "2"
 dashmap                     = "6"
