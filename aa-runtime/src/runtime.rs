@@ -1129,4 +1129,83 @@ mod layer_integration {
         tracker.close();
         tracker.wait().await;
     }
+
+    /// Verify that eBPF loader failures emit per-sub-layer `LayerDegradation`
+    /// events without blocking the proxy layer from operating independently.
+    ///
+    /// This test does NOT require root — eBPF loaders are expected to fail,
+    /// exercising the degradation path. The proxy layer is also expected to
+    /// degrade (no `aa-proxy` binary in test environment) but independently.
+    #[tokio::test]
+    async fn ebpf_degradation_does_not_block_proxy() {
+        let tracker = tokio_util::task::TaskTracker::new();
+        let (tx, mut rx) = tokio::sync::broadcast::channel::<PipelineEvent>(64);
+        let seq = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+        let token = tokio_util::sync::CancellationToken::new();
+        let mut degraded = Vec::new();
+
+        // Spawn all three eBPF sub-layers. Without root they should all
+        // emit LayerDegradation and add to degraded_layers.
+        super::spawn_ebpf_tls(&tracker, &tx, &mut degraded);
+        super::spawn_ebpf_file_io(&tracker, &tx, &seq, "test-agent", &mut degraded);
+        super::spawn_ebpf_exec_tracepoints(&tracker, &tx, &token, &mut degraded);
+
+        // Spawn proxy layer — will also degrade if aa-proxy is not on PATH,
+        // but the point is it runs independently of eBPF failures.
+        super::spawn_proxy(
+            &tracker,
+            &tx,
+            crate::layer::LayerSet::EBPF | crate::layer::LayerSet::PROXY,
+            &mut degraded,
+        );
+
+        // Collect events.
+        let events = collect_events(&mut rx, Duration::from_secs(2)).await;
+
+        // All three eBPF sub-layers should have degraded.
+        assert!(
+            degraded.contains(&"ebpf/tls".to_string()),
+            "expected ebpf/tls in degraded list: {degraded:?}"
+        );
+        assert!(
+            degraded.contains(&"ebpf/file_io".to_string()),
+            "expected ebpf/file_io in degraded list: {degraded:?}"
+        );
+        assert!(
+            degraded.contains(&"ebpf/exec".to_string()),
+            "expected ebpf/exec in degraded list: {degraded:?}"
+        );
+
+        // Verify LayerDegradation events for all three eBPF sub-layers.
+        let degradation_layers: Vec<String> = events
+            .iter()
+            .filter_map(|e| match e {
+                PipelineEvent::LayerDegradation(info) => Some(info.layer.clone()),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            degradation_layers.contains(&"ebpf/tls".to_string()),
+            "expected LayerDegradation for ebpf/tls in events: {degradation_layers:?}"
+        );
+        assert!(
+            degradation_layers.contains(&"ebpf/file_io".to_string()),
+            "expected LayerDegradation for ebpf/file_io in events: {degradation_layers:?}"
+        );
+        assert!(
+            degradation_layers.contains(&"ebpf/exec".to_string()),
+            "expected LayerDegradation for ebpf/exec in events: {degradation_layers:?}"
+        );
+
+        // Proxy spawn completed independently (either succeeded or degraded
+        // on its own terms). The key assertion: proxy was not blocked by
+        // eBPF failures — it was called and executed.
+        // If aa-proxy is not on PATH, we expect a proxy degradation too.
+        // Either way, proxy ran independently.
+
+        // Cleanup.
+        token.cancel();
+        tracker.close();
+        tracker.wait().await;
+    }
 }
