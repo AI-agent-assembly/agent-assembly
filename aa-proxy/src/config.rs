@@ -31,6 +31,38 @@ impl ProxyConfig {
     /// Build a `ProxyConfig` from environment variables, falling back to
     /// defaults where variables are not set.
     pub fn from_env() -> Result<Self, ProxyError> {
-        todo!()
+        let bind_addr = match std::env::var("AA_PROXY_ADDR") {
+            Ok(val) => val
+                .parse::<SocketAddr>()
+                .map_err(|e| ProxyError::Config(format!("invalid AA_PROXY_ADDR: {e}")))?,
+            Err(_) => SocketAddr::from(([127, 0, 0, 1], 8899)),
+        };
+
+        let ca_dir = match std::env::var("AA_CA_DIR") {
+            Ok(val) => PathBuf::from(val),
+            Err(_) => dirs::home_dir()
+                .ok_or_else(|| ProxyError::Config("cannot determine home directory".into()))?
+                .join(".aa")
+                .join("ca"),
+        };
+
+        let cert_cache_capacity = match std::env::var("AA_PROXY_CERT_CACHE_CAPACITY") {
+            Ok(val) => val
+                .parse::<usize>()
+                .map_err(|e| ProxyError::Config(format!("invalid AA_PROXY_CERT_CACHE_CAPACITY: {e}")))?,
+            Err(_) => 1000,
+        };
+
+        let llm_only = match std::env::var("AA_PROXY_LLM_ONLY") {
+            Ok(val) => val != "0" && val.to_lowercase() != "false",
+            Err(_) => true,
+        };
+
+        Ok(Self {
+            bind_addr,
+            ca_dir,
+            cert_cache_capacity,
+            llm_only,
+        })
     }
 }
