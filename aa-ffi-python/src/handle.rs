@@ -380,4 +380,29 @@ mod tests {
             other => panic!("expected SendEvent, got {other:?}"),
         }
     }
+
+    #[test]
+    fn report_event_with_scanner_disabled_passes_details_through() {
+        let (tx, mut rx) = mpsc::channel(16);
+        let ipc = IpcHandle {
+            cmd_tx: tx,
+            thread: None,
+        };
+        let handle = AssemblyHandle::with_scanner(ipc, vec![], None);
+        let secret = "sk-proj-aBcDeFgHiJkLmNoPqRsT1234567890abcdef1234567890ab";
+        let details = format!("key is {secret}");
+
+        handle
+            .report_event("llm_call".into(), details.clone())
+            .unwrap();
+
+        let cmd = rx.try_recv().expect("should receive command");
+        match cmd {
+            IpcCommand::SendEvent(event) => {
+                // Scanner is disabled — raw credential passes through.
+                assert_eq!(event.labels.get("details").unwrap(), &details);
+            }
+            other => panic!("expected SendEvent, got {other:?}"),
+        }
+    }
 }
