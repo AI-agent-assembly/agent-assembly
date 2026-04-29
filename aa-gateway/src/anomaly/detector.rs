@@ -56,6 +56,36 @@ impl AnomalyDetector {
             .record_credential_finding();
     }
 
+    // ── Detection methods ─────────────────────────────────────────────
+
+    /// Detect behavior spike: current action rate exceeds baseline mean + N*stddev.
+    ///
+    /// Returns `Some(AnomalyEvent)` with [`AnomalyResponse::Pause`] when the
+    /// agent's recent action count significantly exceeds its historical baseline.
+    /// Requires at least 2 prior actions to establish a meaningful baseline.
+    pub fn check_behavior_spike(&self, agent_id: AgentId) -> Option<AnomalyEvent> {
+        let baseline = self.baselines.get(&agent_id)?;
+        let (mean, stddev) = baseline.action_mean_stddev();
+        if mean == 0.0 {
+            return None;
+        }
+        let threshold = mean + self.config.spike_stddev_multiplier * stddev;
+        let current = baseline.action_count() as f64;
+        if current > threshold && stddev > 0.0 {
+            Some(AnomalyEvent {
+                anomaly_type: AnomalyType::BehaviorSpike,
+                response: AnomalyResponse::default_for(AnomalyType::BehaviorSpike),
+                agent_id,
+                description: format!(
+                    "Action count {current} exceeds threshold {threshold:.1} (mean={mean:.1}, stddev={stddev:.1})"
+                ),
+                detected_at: chrono::Utc::now(),
+            })
+        } else {
+            None
+        }
+    }
+
     /// Compute a stable hash for a (tool_name, args) pair.
     fn hash_tool_call(tool_name: &str, args: &str) -> u64 {
         let mut hasher = Sha256::new();
