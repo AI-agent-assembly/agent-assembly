@@ -79,7 +79,14 @@ pub enum PolicyLoadError {
 
 impl PolicyEngine {
     /// Load a policy from a YAML file, parse it, validate it, and start the filesystem watcher.
-    pub fn load_from_file(path: &Path) -> Result<Self, PolicyLoadError> {
+    ///
+    /// `budget_alert_tx` is the broadcast sender for budget threshold alerts.
+    /// Pass the sender half of the channel created in `main.rs` so alerts
+    /// reach the webhook delivery loop.
+    pub fn load_from_file(
+        path: &Path,
+        budget_alert_tx: tokio::sync::broadcast::Sender<crate::budget::BudgetAlert>,
+    ) -> Result<Self, PolicyLoadError> {
         let yaml = std::fs::read_to_string(path).map_err(PolicyLoadError::Io)?;
         let output = PolicyValidator::from_yaml(&yaml).map_err(PolicyLoadError::Validation)?;
         let compiled_patterns = output
@@ -100,6 +107,25 @@ impl PolicyEngine {
             .and_then(|bp| bp.timezone.as_deref())
             .and_then(|s| s.parse::<chrono_tz::Tz>().ok())
             .unwrap_or(chrono_tz::UTC);
+        let daily_limit = output
+            .document
+            .budget
+            .as_ref()
+            .and_then(|bp| bp.daily_limit_usd)
+            .and_then(|v| rust_decimal::Decimal::try_from(v).ok());
+        let monthly_limit = output
+            .document
+            .budget
+            .as_ref()
+            .and_then(|bp| bp.monthly_limit_usd)
+            .and_then(|v| rust_decimal::Decimal::try_from(v).ok());
+        let budget = crate::budget::BudgetTracker::new_with_alert_sender(
+            crate::budget::PricingTable::default_table(),
+            daily_limit,
+            monthly_limit,
+            budget_tz,
+            budget_alert_tx,
+        );
         let policy_arc = Arc::new(ArcSwap::new(Arc::new(output.document)));
         let watcher = crate::engine::watcher::start_watcher(path, policy_arc.clone()).ok();
         Ok(PolicyEngine {
@@ -107,7 +133,7 @@ impl PolicyEngine {
             scanner: aa_core::CredentialScanner::new(),
             compiled_patterns,
             rate_state: DashMap::new(),
-            budget: crate::engine::budget::BudgetTracker::new(budget_tz),
+            budget,
             _watcher: watcher,
         })
     }
