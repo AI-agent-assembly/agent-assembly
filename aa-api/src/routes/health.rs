@@ -6,12 +6,25 @@ use axum::Json;
 use serde::Serialize;
 
 /// Response body for the health endpoint.
-#[derive(Serialize)]
+#[derive(Serialize, utoipa::ToSchema)]
 pub struct HealthResponse {
+    /// Liveness status string, always `"ok"` when the service is running.
     pub status: String,
 }
 
 /// `GET /api/v1/health` — liveness probe.
+///
+/// Returns a simple JSON body indicating the service is alive.
+/// Suitable for Kubernetes liveness probes.
+#[utoipa::path(
+    get,
+    path = "/api/v1/health",
+    tag = "health",
+    responses(
+        (status = 200, description = "Service is healthy", body = HealthResponse),
+        (status = 404, description = "Not found", body = ProblemDetail)
+    )
+)]
 pub async fn health() -> impl IntoResponse {
     (
         StatusCode::OK,
