@@ -17,3 +17,11 @@ message PendingApproval {
   // Seconds before the request auto-resolves as timed out.
   uint64 timeout_secs        = 6;
 }
+
+// ── ListPending ──────────────────────────────────────────────────────────────
+
+message ListPendingRequest {}
+
+message ListPendingResponse {
+  repeated PendingApproval requests = 1;
+}
