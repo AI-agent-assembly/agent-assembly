@@ -8,7 +8,7 @@
 use std::io;
 use std::path::{Path, PathBuf};
 
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 use tokio::sync::mpsc;
 
 use aa_core::AuditEntry;
@@ -47,6 +47,16 @@ impl AuditWriter {
         let file = tokio::io::BufWriter::new(file);
 
         Ok(Self { receiver, file, path })
+    }
+
+    /// Serialize one `AuditEntry` as a JSON line and append to the file.
+    async fn append(&mut self, entry: &AuditEntry) -> io::Result<()> {
+        let json = serde_json::to_string(entry)
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+        self.file.write_all(json.as_bytes()).await?;
+        self.file.write_all(b"\n").await?;
+        self.file.flush().await?;
+        Ok(())
     }
 
     /// Background consumption loop — call via `tokio::spawn(writer.run())`.
