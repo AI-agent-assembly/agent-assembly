@@ -336,6 +336,30 @@ impl PolicyEngine {
         self.budget.record(ctx.agent_id.as_bytes(), amount_usd);
         self.budget.record_monthly(ctx.agent_id.as_bytes(), amount_usd);
     }
+
+    /// Check whether an agent is within both daily and monthly budget limits.
+    ///
+    /// Returns `true` if the agent has not exceeded any configured budget limit
+    /// (or if no budget limits are configured). Used by the heartbeat handler to
+    /// determine whether a budget-suspended agent can be auto-resumed.
+    pub fn is_within_budget(&self, agent_id_bytes: &[u8; 16]) -> bool {
+        let policy = self.policy.load();
+        let bp = match &policy.budget {
+            Some(bp) => bp,
+            None => return true,
+        };
+        if let Some(limit) = bp.daily_limit_usd {
+            if self.budget.is_exceeded(agent_id_bytes, limit) {
+                return false;
+            }
+        }
+        if let Some(limit) = bp.monthly_limit_usd {
+            if self.budget.is_monthly_exceeded(agent_id_bytes, limit) {
+                return false;
+            }
+        }
+        true
+    }
 }
 
 /// Implement the `aa_core::PolicyEvaluator` trait so `PolicyEngine` can be used
