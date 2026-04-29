@@ -27,5 +27,4 @@ pub use models::{EventType, GovernanceEvent};
 pub use openapi::ApiDoc;
 pub use replay::ReplayBuffer;
 pub use server::{build_app, run_server};
-pub use openapi::ApiDoc;
 pub use state::AppState;
