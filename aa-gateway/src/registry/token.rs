@@ -23,14 +23,8 @@ pub fn generate_credential_token() -> String {
 }
 
 /// Validate that `token` matches the credential stored for `agent_id` in the registry.
-pub fn validate_token(
-    registry: &AgentRegistry,
-    agent_id: &[u8; 16],
-    token: &str,
-) -> Result<(), TokenError> {
-    let record = registry
-        .get(agent_id)
-        .ok_or(TokenError::AgentNotFound(*agent_id))?;
+pub fn validate_token(registry: &AgentRegistry, agent_id: &[u8; 16], token: &str) -> Result<(), TokenError> {
+    let record = registry.get(agent_id).ok_or(TokenError::AgentNotFound(*agent_id))?;
 
     if record.credential_token == token {
         Ok(())

@@ -47,9 +47,7 @@ pub struct AgentRegistry {
 impl AgentRegistry {
     /// Create an empty registry.
     pub fn new() -> Self {
-        Self {
-            agents: DashMap::new(),
-        }
+        Self { agents: DashMap::new() }
     }
 
     /// Insert a new agent record. Returns an error if the ID is already registered.

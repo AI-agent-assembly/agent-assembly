@@ -7,8 +7,8 @@ use tonic::{Request, Response, Status};
 
 use aa_proto::assembly::agent::v1::agent_lifecycle_service_server::AgentLifecycleService;
 use aa_proto::assembly::agent::v1::{
-    ControlCommand, ControlStreamRequest, DeregisterRequest, DeregisterResponse, HeartbeatRequest,
-    HeartbeatResponse, RegisterRequest, RegisterResponse,
+    ControlCommand, ControlStreamRequest, DeregisterRequest, DeregisterResponse, HeartbeatRequest, HeartbeatResponse,
+    RegisterRequest, RegisterResponse,
 };
 
 use crate::registry::AgentRegistry;
@@ -27,29 +27,19 @@ impl AgentLifecycleServiceImpl {
     }
 }
 
-type ControlStreamOutput =
-    Pin<Box<dyn tokio_stream::Stream<Item = Result<ControlCommand, Status>> + Send + 'static>>;
+type ControlStreamOutput = Pin<Box<dyn tokio_stream::Stream<Item = Result<ControlCommand, Status>> + Send + 'static>>;
 
 #[tonic::async_trait]
 impl AgentLifecycleService for AgentLifecycleServiceImpl {
-    async fn register(
-        &self,
-        _request: Request<RegisterRequest>,
-    ) -> Result<Response<RegisterResponse>, Status> {
+    async fn register(&self, _request: Request<RegisterRequest>) -> Result<Response<RegisterResponse>, Status> {
         todo!("AAASM-136: implement Register RPC")
     }
 
-    async fn heartbeat(
-        &self,
-        _request: Request<HeartbeatRequest>,
-    ) -> Result<Response<HeartbeatResponse>, Status> {
+    async fn heartbeat(&self, _request: Request<HeartbeatRequest>) -> Result<Response<HeartbeatResponse>, Status> {
         todo!("AAASM-136: implement Heartbeat RPC")
     }
 
-    async fn deregister(
-        &self,
-        _request: Request<DeregisterRequest>,
-    ) -> Result<Response<DeregisterResponse>, Status> {
+    async fn deregister(&self, _request: Request<DeregisterRequest>) -> Result<Response<DeregisterResponse>, Status> {
         todo!("AAASM-136: implement Deregister RPC")
     }
 
