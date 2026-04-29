@@ -1,0 +1,66 @@
+//! Tests that the generated OpenAPI spec is structurally correct.
+
+use utoipa::OpenApi;
+
+#[test]
+fn spec_version_is_3_0_3() {
+    let spec = aa_api::ApiDoc::openapi();
+    assert_eq!(spec.info.version, "0.0.1");
+    // utoipa 4.x generates OpenAPI 3.0.3
+    let yaml = serde_yaml::to_string(&spec).unwrap();
+    assert!(yaml.starts_with("openapi: 3.0.3"));
+}
+
+#[test]
+fn health_path_exists() {
+    let spec = aa_api::ApiDoc::openapi();
+    let paths = &spec.paths;
+    assert!(
+        paths.paths.contains_key("/api/v1/health"),
+        "expected /api/v1/health in paths, got: {:?}",
+        paths.paths.keys().collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn health_response_schema_exists() {
+    let spec = aa_api::ApiDoc::openapi();
+    let schemas = &spec
+        .components
+        .as_ref()
+        .expect("components should exist")
+        .schemas;
+    assert!(
+        schemas.contains_key("HealthResponse"),
+        "HealthResponse schema missing"
+    );
+    assert!(
+        schemas.contains_key("ProblemDetail"),
+        "ProblemDetail schema missing"
+    );
+}
+
+#[test]
+fn schemas_have_descriptions() {
+    let spec = aa_api::ApiDoc::openapi();
+    let yaml = serde_yaml::to_string(&spec).unwrap();
+    // Doc comments from Rust structs should appear as descriptions
+    assert!(
+        yaml.contains("Response body for the health endpoint"),
+        "HealthResponse description missing from spec"
+    );
+    assert!(
+        yaml.contains("RFC 7807 Problem Details JSON body"),
+        "ProblemDetail description missing from spec"
+    );
+}
+
+#[test]
+fn health_get_has_operation_id() {
+    let spec = aa_api::ApiDoc::openapi();
+    let yaml = serde_yaml::to_string(&spec).unwrap();
+    assert!(
+        yaml.contains("operationId: health"),
+        "health operationId missing from spec"
+    );
+}
