@@ -494,6 +494,8 @@ mod tests {
             metrics_addr: "0.0.0.0:8080".to_string(),
             policy_path: None,
             gateway_endpoint: None,
+            correlation_window_ms: 5_000,
+            correlation_interval_ms: 1_000,
         };
 
         let pipeline_config = PipelineConfig::from_runtime_config(&runtime_config);

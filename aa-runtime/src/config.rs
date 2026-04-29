@@ -76,6 +76,18 @@ pub struct RuntimeConfig {
     /// gateway via [`crate::gateway_client::GatewayClient`] instead of
     /// evaluating locally with [`crate::policy::PolicyRules`].
     pub gateway_endpoint: Option<String>,
+
+    /// Sliding window duration in milliseconds for the correlation engine.
+    ///
+    /// Read from `AA_CORRELATION_WINDOW_MS`. Defaults to `5_000`.
+    /// Zero falls back to the default.
+    pub correlation_window_ms: u64,
+
+    /// Interval in milliseconds between correlation and eviction runs.
+    ///
+    /// Read from `AA_CORRELATION_INTERVAL_MS`. Defaults to `1_000`.
+    /// Zero falls back to the default.
+    pub correlation_interval_ms: u64,
 }
 
 impl RuntimeConfig {
@@ -100,6 +112,8 @@ impl RuntimeConfig {
     /// | `AA_METRICS_ADDR` | `String` | `"0.0.0.0:8080"` |
     /// | `AA_POLICY_PATH` | `Option<PathBuf>` | `Some("/etc/aa/policy.toml")` |
     /// | `AA_GATEWAY_ENDPOINT` | `Option<String>` | `None` |
+    /// | `AA_CORRELATION_WINDOW_MS` | `u64` | `5_000` |
+    /// | `AA_CORRELATION_INTERVAL_MS` | `u64` | `1_000` |
     pub fn from_env() -> Result<Self, String> {
         let agent_id = std::env::var("AA_AGENT_ID").map_err(|_| "AA_AGENT_ID is required but not set".to_string())?;
 
@@ -161,6 +175,18 @@ impl RuntimeConfig {
 
         let gateway_endpoint = std::env::var("AA_GATEWAY_ENDPOINT").ok().filter(|v| !v.is_empty());
 
+        let correlation_window_ms = std::env::var("AA_CORRELATION_WINDOW_MS")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .filter(|&n| n > 0)
+            .unwrap_or(5_000);
+
+        let correlation_interval_ms = std::env::var("AA_CORRELATION_INTERVAL_MS")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .filter(|&n| n > 0)
+            .unwrap_or(1_000);
+
         Ok(Self {
             agent_id,
             worker_threads,
@@ -173,6 +199,8 @@ impl RuntimeConfig {
             metrics_addr,
             policy_path,
             gateway_endpoint,
+            correlation_window_ms,
+            correlation_interval_ms,
         })
     }
 }
@@ -564,5 +592,65 @@ mod tests {
 
         std::env::remove_var("AA_AGENT_ID");
         std::env::remove_var("AA_GATEWAY_ENDPOINT");
+    }
+
+    #[test]
+    fn correlation_defaults_when_env_vars_absent() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        std::env::set_var("AA_AGENT_ID", "agent-corr-defaults");
+        std::env::remove_var("AA_CORRELATION_WINDOW_MS");
+        std::env::remove_var("AA_CORRELATION_INTERVAL_MS");
+
+        let config = RuntimeConfig::from_env().unwrap();
+
+        assert_eq!(config.correlation_window_ms, 5_000);
+        assert_eq!(config.correlation_interval_ms, 1_000);
+
+        std::env::remove_var("AA_AGENT_ID");
+    }
+
+    #[test]
+    fn reads_correlation_window_ms_from_env() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        std::env::set_var("AA_AGENT_ID", "agent-corr-win");
+        std::env::set_var("AA_CORRELATION_WINDOW_MS", "10000");
+
+        let config = RuntimeConfig::from_env().unwrap();
+
+        assert_eq!(config.correlation_window_ms, 10_000);
+
+        std::env::remove_var("AA_AGENT_ID");
+        std::env::remove_var("AA_CORRELATION_WINDOW_MS");
+    }
+
+    #[test]
+    fn reads_correlation_interval_ms_from_env() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        std::env::set_var("AA_AGENT_ID", "agent-corr-int");
+        std::env::set_var("AA_CORRELATION_INTERVAL_MS", "2000");
+
+        let config = RuntimeConfig::from_env().unwrap();
+
+        assert_eq!(config.correlation_interval_ms, 2_000);
+
+        std::env::remove_var("AA_AGENT_ID");
+        std::env::remove_var("AA_CORRELATION_INTERVAL_MS");
+    }
+
+    #[test]
+    fn correlation_rejects_zero_values() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        std::env::set_var("AA_AGENT_ID", "agent-corr-zero");
+        std::env::set_var("AA_CORRELATION_WINDOW_MS", "0");
+        std::env::set_var("AA_CORRELATION_INTERVAL_MS", "0");
+
+        let config = RuntimeConfig::from_env().unwrap();
+
+        assert_eq!(config.correlation_window_ms, 5_000, "0 should fall back to default");
+        assert_eq!(config.correlation_interval_ms, 1_000, "0 should fall back to default");
+
+        std::env::remove_var("AA_AGENT_ID");
+        std::env::remove_var("AA_CORRELATION_WINDOW_MS");
+        std::env::remove_var("AA_CORRELATION_INTERVAL_MS");
     }
 }
