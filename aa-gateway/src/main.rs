@@ -35,6 +35,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let registry = Arc::new(aa_gateway::AgentRegistry::new());
 
+    // Create the approval queue — gateway-owned, shared with the runtime via gRPC.
+    let approval_queue = aa_runtime::approval::ApprovalQueue::new();
+
+    // Create a standalone budget alert broadcast for webhook delivery.
+    // The BudgetTracker in the policy engine will send alerts to this channel
+    // when spend thresholds are crossed.
+    let (budget_alert_tx, budget_alert_rx) = tokio::sync::broadcast::channel::<aa_gateway::budget::BudgetAlert>(64);
+    // Keep the sender alive for the lifetime of the process.
+    let _budget_alert_tx = budget_alert_tx;
+
+    // Optionally spawn the webhook delivery loop (reads AA_WEBHOOK_URL).
+    let _webhook_handle = aa_gateway::events::startup::maybe_spawn_webhook(&approval_queue, budget_alert_rx);
+
     if let Some(socket_path) = &cli.socket {
         aa_gateway::server::serve_uds(&cli.policy, socket_path, registry).await
     } else {
