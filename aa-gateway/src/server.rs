@@ -9,11 +9,13 @@ use tonic::transport::Server;
 use crate::audit::AuditWriter;
 use crate::engine::PolicyEngine;
 use crate::registry::AgentRegistry;
-use crate::service::{AgentLifecycleServiceImpl, AuditServiceImpl, PolicyServiceImpl};
+use crate::service::{AgentLifecycleServiceImpl, ApprovalServiceImpl, AuditServiceImpl, PolicyServiceImpl};
 use aa_core::AuditEntry;
 use aa_proto::assembly::agent::v1::agent_lifecycle_service_server::AgentLifecycleServiceServer;
+use aa_proto::assembly::approval::v1::approval_service_server::ApprovalServiceServer;
 use aa_proto::assembly::audit::v1::audit_service_server::AuditServiceServer;
 use aa_proto::assembly::policy::v1::policy_service_server::PolicyServiceServer;
+use aa_runtime::approval::ApprovalQueue;
 
 /// Default audit directory relative to the system data directory (`~/.aa/audit`).
 fn default_audit_dir() -> PathBuf {
