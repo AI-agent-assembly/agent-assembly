@@ -17,6 +17,7 @@ serde_json   = "1"
 serde_yaml   = "0.9"
 arc-swap     = "1"
 dashmap      = "6"
+ed25519-dalek = { version = "2", features = ["std"] }
 notify       = { version = "6", features = [] }
 chrono       = { version = "0.4", features = ["clock", "serde"] }
 chrono-tz    = { version = "0.9", features = ["serde"] }
