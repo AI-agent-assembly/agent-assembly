@@ -309,6 +309,20 @@ jobs:
             "RUSTUP_HOME=${RUNNER_RUSTUP}" \
             "CARGO_HOME=${RUNNER_CARGO}" \
             cargo +nightly test -p aa-ebpf --features integration-test --test load_hello -- --nocapture
+      - name: Integration test — multi-layer runtime (proxy + eBPF)
+        # Exercises both proxy and eBPF layers on a shared broadcast channel.
+        # The test uses the integration-test feature gate and requires root
+        # for eBPF loader attachment. Tests that require root but don't have
+        # it will gracefully skip with a log message.
+        working-directory: ${{ github.workspace }}
+        run: |
+          RUNNER_RUSTUP="${HOME}/.rustup"
+          RUNNER_CARGO="${HOME}/.cargo"
+          sudo env \
+            "PATH=$PATH" \
+            "RUSTUP_HOME=${RUNNER_RUSTUP}" \
+            "CARGO_HOME=${RUNNER_CARGO}" \
+            cargo test -p aa-runtime --features integration-test -- layer_integration --nocapture
 
   benchmark:
     name: Benchmark

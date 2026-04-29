@@ -1274,17 +1274,12 @@ mod layer_integration {
                 PipelineEvent::LayerDegradation(info) if info.layer == "proxy"
             )
         });
-        assert!(
-            has_proxy_degradation,
-            "expected LayerDegradation for proxy layer"
-        );
+        assert!(has_proxy_degradation, "expected LayerDegradation for proxy layer");
 
         // eBPF audit events should still have arrived despite proxy failure.
         let ebpf_count = events
             .iter()
-            .filter(|e| {
-                matches!(e, PipelineEvent::Audit(ref a) if a.source == EventSource::EBpf)
-            })
+            .filter(|e| matches!(e, PipelineEvent::Audit(ref a) if a.source == EventSource::EBpf))
             .count();
         assert!(
             ebpf_count > 0,
