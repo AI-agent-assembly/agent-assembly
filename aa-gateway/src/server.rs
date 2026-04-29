@@ -19,7 +19,8 @@ use tokio::sync::broadcast;
 
 use aa_runtime::approval::ApprovalQueue;
 
-use crate::budget::BudgetAlert;
+use crate::budget::persistence::{default_budget_path, load_from_disk};
+use crate::budget::{BudgetAlert, BudgetTracker};
 
 /// Default audit directory relative to the system data directory (`~/.aa/audit`).
 fn default_audit_dir() -> PathBuf {
@@ -56,6 +57,60 @@ async fn setup_audit(
     Ok((audit_tx, audit_drops, initial_hash))
 }
 
+/// Load persisted budget state from `~/.aa/budget.json`, construct a
+/// [`BudgetTracker`] pre-populated with the restored spend totals, and
+/// return it wrapped in `Arc` alongside the budget file path.
+///
+/// Falls back to an empty tracker if the file is missing or corrupt.
+fn setup_budget(
+    policy_path: &Path,
+    budget_alert_tx: broadcast::Sender<BudgetAlert>,
+) -> (Arc<BudgetTracker>, PathBuf) {
+    let budget_path = default_budget_path();
+
+    let persisted = load_from_disk(&budget_path).unwrap_or_else(|e| {
+        tracing::warn!(error = %e, "failed to load budget state, starting fresh");
+        crate::budget::persistence::PersistedBudget {
+            per_agent: vec![],
+            global: crate::budget::types::BudgetState::new_today(),
+            timezone: chrono_tz::UTC,
+        }
+    });
+
+    // Extract limits from the policy YAML so the tracker enforces them.
+    let yaml = std::fs::read_to_string(policy_path).unwrap_or_default();
+    let (daily_limit, monthly_limit) =
+        if let Ok(output) = crate::policy::PolicyValidator::from_yaml(&yaml) {
+            let daily = output
+                .document
+                .budget
+                .as_ref()
+                .and_then(|bp| bp.daily_limit_usd)
+                .and_then(|v| rust_decimal::Decimal::try_from(v).ok());
+            let monthly = output
+                .document
+                .budget
+                .as_ref()
+                .and_then(|bp| bp.monthly_limit_usd)
+                .and_then(|v| rust_decimal::Decimal::try_from(v).ok());
+            (daily, monthly)
+        } else {
+            (None, None)
+        };
+
+    let tracker = Arc::new(BudgetTracker::with_state_and_alert_sender(
+        crate::budget::PricingTable::default_table(),
+        daily_limit,
+        monthly_limit,
+        persisted,
+        budget_alert_tx,
+    ));
+
+    tracing::info!(path = %budget_path.display(), "budget state loaded");
+
+    (tracker, budget_path)
+}
+
 /// Start the gRPC server on a TCP address.
 ///
 /// Loads the policy from `policy_path`, wraps it in a `PolicyServiceImpl`, and
@@ -68,7 +123,8 @@ pub async fn serve_tcp(
     approval_queue: Arc<ApprovalQueue>,
     budget_alert_tx: broadcast::Sender<BudgetAlert>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let engine = PolicyEngine::load_from_file(policy_path, budget_alert_tx)
+    let (tracker, _budget_path) = setup_budget(policy_path, budget_alert_tx);
+    let engine = PolicyEngine::load_from_file_with_budget(policy_path, Arc::clone(&tracker))
         .map_err(|e| format!("failed to load policy: {e:?}"))?;
     let (audit_tx, audit_drops, initial_hash) = setup_audit("gateway", "default").await?;
     let policy_svc = PolicyServiceImpl::with_registry_and_approval(
@@ -109,7 +165,8 @@ pub async fn serve_uds(
     approval_queue: Arc<ApprovalQueue>,
     budget_alert_tx: broadcast::Sender<BudgetAlert>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let engine = PolicyEngine::load_from_file(policy_path, budget_alert_tx)
+    let (tracker, _budget_path) = setup_budget(policy_path, budget_alert_tx);
+    let engine = PolicyEngine::load_from_file_with_budget(policy_path, Arc::clone(&tracker))
         .map_err(|e| format!("failed to load policy: {e:?}"))?;
     let (audit_tx, audit_drops, initial_hash) = setup_audit("gateway", "default").await?;
     let policy_svc = PolicyServiceImpl::with_registry_and_approval(
