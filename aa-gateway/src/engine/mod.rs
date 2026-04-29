@@ -12,6 +12,8 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use crate::budget::BudgetTracker;
+
 use crate::policy::document::ActionOnExceed;
 use crate::policy::{PolicyDocument, PolicyValidator};
 
@@ -61,7 +63,7 @@ pub struct PolicyEngine {
     // construction time and will not update when the watcher swaps in a new policy document.
     compiled_patterns: Vec<regex::Regex>,
     rate_state: DashMap<String, Mutex<crate::engine::rate_limit::TokenBucket>>,
-    budget: crate::budget::BudgetTracker,
+    budget: Arc<BudgetTracker>,
     _watcher: Option<notify::RecommendedWatcher>,
 }
 
@@ -118,13 +120,13 @@ impl PolicyEngine {
             .as_ref()
             .and_then(|bp| bp.monthly_limit_usd)
             .and_then(|v| rust_decimal::Decimal::try_from(v).ok());
-        let budget = crate::budget::BudgetTracker::new_with_alert_sender(
+        let budget = Arc::new(BudgetTracker::new_with_alert_sender(
             crate::budget::PricingTable::default_table(),
             daily_limit,
             monthly_limit,
             budget_tz,
             budget_alert_tx,
-        );
+        ));
         let policy_arc = Arc::new(ArcSwap::new(Arc::new(output.document)));
         let watcher = crate::engine::watcher::start_watcher(path, policy_arc.clone()).ok();
         Ok(PolicyEngine {
@@ -487,12 +489,12 @@ mod tests {
             scanner: aa_core::CredentialScanner::new(),
             compiled_patterns,
             rate_state: DashMap::new(),
-            budget: crate::budget::BudgetTracker::new(
+            budget: Arc::new(BudgetTracker::new(
                 crate::budget::PricingTable::default_table(),
                 daily_limit,
                 monthly_limit,
                 chrono_tz::UTC,
-            ),
+            )),
             _watcher: None,
         }
     }
@@ -1156,13 +1158,13 @@ mod tests {
             scanner: aa_core::CredentialScanner::new(),
             compiled_patterns,
             rate_state: DashMap::new(),
-            budget: crate::budget::BudgetTracker::new_with_alert_sender(
+            budget: Arc::new(BudgetTracker::new_with_alert_sender(
                 crate::budget::PricingTable::default_table(),
                 daily_limit,
                 monthly_limit,
                 chrono_tz::UTC,
                 alert_tx,
-            ),
+            )),
             _watcher: None,
         }
     }
