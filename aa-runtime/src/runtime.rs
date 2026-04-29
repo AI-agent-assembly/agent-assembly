@@ -36,6 +36,58 @@ fn load_policy(policy_path: &Option<std::path::PathBuf>) -> std::sync::Arc<crate
     std::sync::Arc::new(rules)
 }
 
+/// Attempt to spawn the proxy subsystem on the given [`TaskTracker`].
+///
+/// If `ProxyConfig::from_env()` fails, the proxy layer is immediately degraded.
+/// If the proxy task exits with an error at runtime, a [`PipelineEvent::LayerDegradation`]
+/// is emitted on the broadcast channel.
+fn spawn_proxy(
+    tracker: &TaskTracker,
+    broadcast_tx: &tokio::sync::broadcast::Sender<crate::pipeline::PipelineEvent>,
+    active_layers: crate::layer::LayerSet,
+    degraded_layers: &mut Vec<String>,
+) {
+    match aa_proxy::ProxyConfig::from_env() {
+        Ok(proxy_config) => {
+            let proxy_broadcast_tx = broadcast_tx.clone();
+            tracker.spawn(async move {
+                if let Err(e) = aa_proxy::run(proxy_config).await {
+                    tracing::warn!(error = %e, "proxy subsystem exited with error");
+                    let remaining = active_layers
+                        .difference(crate::layer::LayerSet::PROXY)
+                        .names()
+                        .iter()
+                        .map(|s| (*s).to_string())
+                        .collect();
+                    let info = crate::pipeline::LayerDegradationInfo {
+                        layer: "proxy".to_string(),
+                        reason: format!("proxy exited: {e}"),
+                        remaining_layers: remaining,
+                    };
+                    let _ = proxy_broadcast_tx.send(crate::pipeline::PipelineEvent::LayerDegradation(info));
+                }
+            });
+            tracing::info!("proxy subsystem task spawned");
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "proxy config invalid — degrading proxy layer");
+            let remaining = active_layers
+                .difference(crate::layer::LayerSet::PROXY)
+                .names()
+                .iter()
+                .map(|s| (*s).to_string())
+                .collect();
+            let info = crate::pipeline::LayerDegradationInfo {
+                layer: "proxy".to_string(),
+                reason: format!("invalid config: {e}"),
+                remaining_layers: remaining,
+            };
+            let _ = broadcast_tx.send(crate::pipeline::PipelineEvent::LayerDegradation(info));
+            degraded_layers.push("proxy".to_string());
+        }
+    }
+}
+
 /// Start the runtime and block until graceful shutdown completes.
 ///
 /// This is the main async entry point called from `main()`. It creates the
@@ -99,46 +151,7 @@ pub async fn run(config: RuntimeConfig) {
 
     // Spawn the proxy subsystem if the PROXY layer is active.
     if active_layers.contains(crate::layer::LayerSet::PROXY) {
-        match aa_proxy::ProxyConfig::from_env() {
-            Ok(proxy_config) => {
-                let proxy_broadcast_tx = broadcast_tx.clone();
-                let proxy_active_layers = active_layers;
-                tracker.spawn(async move {
-                    if let Err(e) = aa_proxy::run(proxy_config).await {
-                        tracing::warn!(error = %e, "proxy subsystem exited with error");
-                        let remaining = proxy_active_layers
-                            .difference(crate::layer::LayerSet::PROXY)
-                            .names()
-                            .iter()
-                            .map(|s| (*s).to_string())
-                            .collect();
-                        let info = crate::pipeline::LayerDegradationInfo {
-                            layer: "proxy".to_string(),
-                            reason: format!("proxy exited: {e}"),
-                            remaining_layers: remaining,
-                        };
-                        let _ = proxy_broadcast_tx.send(crate::pipeline::PipelineEvent::LayerDegradation(info));
-                    }
-                });
-                tracing::info!("proxy subsystem task spawned");
-            }
-            Err(e) => {
-                tracing::warn!(error = %e, "proxy config invalid — degrading proxy layer");
-                let remaining = active_layers
-                    .difference(crate::layer::LayerSet::PROXY)
-                    .names()
-                    .iter()
-                    .map(|s| (*s).to_string())
-                    .collect();
-                let info = crate::pipeline::LayerDegradationInfo {
-                    layer: "proxy".to_string(),
-                    reason: format!("invalid config: {e}"),
-                    remaining_layers: remaining,
-                };
-                let _ = broadcast_tx.send(crate::pipeline::PipelineEvent::LayerDegradation(info));
-                degraded_layers.push("proxy".to_string());
-            }
-        }
+        spawn_proxy(&tracker, &broadcast_tx, active_layers, &mut degraded_layers);
     }
 
     // Shared metrics — future health/metrics endpoints will receive an Arc clone.
