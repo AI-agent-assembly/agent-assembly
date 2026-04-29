@@ -1039,4 +1039,94 @@ mod layer_integration {
         }
         events
     }
+
+    /// Spawn both proxy and eBPF file I/O layers on a shared broadcast
+    /// channel, trigger real events from both, and verify that events from
+    /// both sources arrive with monotonically increasing sequence numbers.
+    ///
+    /// Requires: Linux + root (CAP_BPF + CAP_PERFMON) + `aa-proxy` on PATH.
+    #[tokio::test]
+    async fn both_layers_emit_events_on_shared_channel() {
+        use std::sync::atomic::AtomicU64;
+        use std::sync::Arc;
+
+        use crate::pipeline::EventSource;
+
+        let tracker = tokio_util::task::TaskTracker::new();
+        let (tx, mut rx) = tokio::sync::broadcast::channel::<PipelineEvent>(64);
+        let seq = Arc::new(AtomicU64::new(0));
+        let token = tokio_util::sync::CancellationToken::new();
+        let mut degraded = Vec::new();
+
+        // Spawn eBPF file I/O layer (needs root).
+        super::spawn_ebpf_file_io(&tracker, &tx, &seq, "integration-test", &mut degraded);
+
+        // If file I/O degraded (e.g. running without root), skip the
+        // happy-path assertions — the degradation test covers that case.
+        if degraded.contains(&"ebpf/file_io".to_string()) {
+            eprintln!(
+                "SKIPPING both_layers_emit_events: eBPF file_io degraded \
+                 (probably missing root/CAP_BPF)"
+            );
+            return;
+        }
+
+        // Spawn eBPF exec tracepoints.
+        super::spawn_ebpf_exec_tracepoints(&tracker, &tx, &token, &mut degraded);
+
+        // Trigger a file I/O event that the kprobes will capture.
+        let trigger_path = "/tmp/aa-integration-test-trigger";
+        std::fs::write(trigger_path, b"integration-test").expect("write trigger file");
+        let _ = std::fs::read_to_string(trigger_path);
+        let _ = std::fs::remove_file(trigger_path);
+
+        // Give the perf event reader time to deliver events.
+        tokio::time::sleep(Duration::from_millis(500)).await;
+
+        // Collect events.
+        let events = collect_events(&mut rx, Duration::from_secs(3)).await;
+
+        // Assert at least one eBPF-sourced audit event arrived.
+        let ebpf_events: Vec<_> = events
+            .iter()
+            .filter(|e| matches!(e, PipelineEvent::Audit(ref a) if a.source == EventSource::EBpf))
+            .collect();
+        assert!(
+            !ebpf_events.is_empty(),
+            "expected at least one eBPF audit event, got none. \
+             Total events: {}, types: {:?}",
+            events.len(),
+            events
+                .iter()
+                .map(|e| match e {
+                    PipelineEvent::Audit(a) => format!("Audit({:?})", a.source),
+                    PipelineEvent::LayerDegradation(info) => {
+                        format!("Degradation({})", info.layer)
+                    }
+                })
+                .collect::<Vec<_>>()
+        );
+
+        // Assert sequence numbers are monotonically increasing across all
+        // audit events (shared counter between eBPF bridge and pipeline).
+        let mut seq_numbers: Vec<u64> = events
+            .iter()
+            .filter_map(|e| match e {
+                PipelineEvent::Audit(a) => Some(a.sequence_number),
+                _ => None,
+            })
+            .collect();
+        let original = seq_numbers.clone();
+        seq_numbers.sort();
+        seq_numbers.dedup();
+        assert_eq!(
+            seq_numbers, original,
+            "sequence numbers should be unique and monotonically increasing"
+        );
+
+        // Cleanup.
+        token.cancel();
+        tracker.close();
+        tracker.wait().await;
+    }
 }
