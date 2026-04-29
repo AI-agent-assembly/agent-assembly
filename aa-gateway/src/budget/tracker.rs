@@ -548,4 +548,85 @@ mod tests {
             s
         );
     }
+
+    // ── check_daily / check_monthly / record_raw_spend ──────────────────
+
+    #[test]
+    fn check_daily_returns_false_for_new_agent() {
+        let t = tracker_with_limit("10.00");
+        assert!(!t.check_daily(&agent(30), "10.00".parse().unwrap()));
+    }
+
+    #[test]
+    fn check_daily_returns_true_when_exceeded() {
+        let t = tracker_with_limit("1.00");
+        let id = agent(31);
+        t.record_raw_spend(id, "1.00".parse().unwrap());
+        assert!(t.check_daily(&id, "1.00".parse().unwrap()));
+    }
+
+    #[test]
+    fn check_monthly_returns_false_for_new_agent() {
+        let t = tracker_with_monthly_limit("100.00");
+        assert!(!t.check_monthly(&agent(32), "100.00".parse().unwrap()));
+    }
+
+    #[test]
+    fn check_monthly_returns_true_when_exceeded() {
+        let t = tracker_with_monthly_limit("5.00");
+        let id = agent(33);
+        t.record_raw_spend(id, "5.00".parse().unwrap());
+        assert!(t.check_monthly(&id, "5.00".parse().unwrap()));
+    }
+
+    #[test]
+    fn record_raw_spend_accumulates() {
+        let t = tracker_with_limit("10.00");
+        let id = agent(34);
+        t.record_raw_spend(id, "3.00".parse().unwrap());
+        t.record_raw_spend(id, "4.00".parse().unwrap());
+        // 7.00 >= 7.00
+        assert!(t.check_daily(&id, "7.00".parse().unwrap()));
+        // 7.00 < 8.00
+        assert!(!t.check_daily(&id, "8.00".parse().unwrap()));
+    }
+
+    #[test]
+    fn record_raw_spend_fires_80_pct_alert() {
+        let t = tracker_with_limit("10.00");
+        let mut rx = t.subscribe_alerts();
+        let id = agent(35);
+        // 8.00 / 10.00 = 80%
+        t.record_raw_spend(id, "8.00".parse().unwrap());
+        let alert = rx.try_recv().expect("expected 80% alert");
+        assert_eq!(alert.threshold_pct, 80);
+        assert_eq!(alert.agent_id, id);
+    }
+
+    #[test]
+    fn record_raw_spend_fires_95_pct_alert() {
+        let t = tracker_with_limit("10.00");
+        let mut rx = t.subscribe_alerts();
+        let id = agent(36);
+        // 9.50 / 10.00 = 95%
+        t.record_raw_spend(id, "9.50".parse().unwrap());
+        let alert = rx.try_recv().expect("expected 95% alert");
+        assert_eq!(alert.threshold_pct, 95);
+    }
+
+    #[test]
+    fn new_with_alert_sender_uses_external_channel() {
+        let (tx, mut rx) = broadcast::channel::<BudgetAlert>(64);
+        let t = BudgetTracker::new_with_alert_sender(
+            PricingTable::default_table(),
+            Some("10.00".parse().unwrap()),
+            None,
+            chrono_tz::UTC,
+            tx,
+        );
+        let id = agent(37);
+        t.record_raw_spend(id, "8.00".parse().unwrap());
+        let alert = rx.try_recv().expect("alert should arrive on external channel");
+        assert_eq!(alert.threshold_pct, 80);
+    }
 }
