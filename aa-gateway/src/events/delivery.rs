@@ -14,6 +14,8 @@ use super::publisher;
 use super::webhook::WebhookTarget;
 use crate::budget::BudgetAlert;
 
+// TODO(AAASM-75): Add DataLeakEvent match arm when EnrichedEvent::DataLeak variant lands.
+
 /// Run the webhook delivery loop until both broadcast channels close.
 ///
 /// This function is intended to be spawned as a background tokio task.
