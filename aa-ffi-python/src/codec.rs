@@ -68,6 +68,7 @@ impl From<prost::DecodeError> for CodecError {
 
 /// A response received from aa-runtime.
 #[derive(Debug)]
+#[allow(dead_code)] // Variants used as the protocol expands (AAASM-49+).
 pub enum RuntimeResponse {
     Ack,
     PolicyResponse(aa_proto::assembly::policy::v1::CheckActionResponse),
@@ -101,6 +102,7 @@ where
 }
 
 /// Write a policy query frame.
+#[allow(dead_code)] // Used when policy checks are wired up (AAASM-49+).
 pub async fn write_policy_query<W>(
     writer: &mut W,
     request: &aa_proto::assembly::policy::v1::CheckActionRequest,

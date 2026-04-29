@@ -15,7 +15,7 @@ use crate::codec;
 #[derive(Debug)]
 pub enum IpcCommand {
     /// Send an audit event to the runtime.
-    SendEvent(aa_proto::assembly::audit::v1::AuditEvent),
+    SendEvent(Box<aa_proto::assembly::audit::v1::AuditEvent>),
     /// Gracefully shut down the IPC connection.
     Shutdown,
 }
@@ -128,7 +128,7 @@ mod tests {
             event_id: "test".to_string(),
             ..Default::default()
         };
-        let cmd = IpcCommand::SendEvent(event);
+        let cmd = IpcCommand::SendEvent(Box::new(event));
         let debug = format!("{:?}", cmd);
         assert!(debug.contains("SendEvent"));
     }

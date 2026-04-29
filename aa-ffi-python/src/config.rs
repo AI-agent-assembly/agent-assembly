@@ -13,9 +13,6 @@ pub struct AssemblyConfig {
     pub agent_id: String,
     /// Explicit socket path override. When `None`, resolved from env or default.
     pub socket_path: Option<String>,
-    /// Operating mode. Currently only `"auto"` is supported.
-    /// `"embedded"` is reserved for future use.
-    pub mode: String,
 }
 
 impl AssemblyConfig {
@@ -48,7 +45,6 @@ mod tests {
         AssemblyConfig {
             agent_id: agent_id.to_string(),
             socket_path: socket_path.map(|s| s.to_string()),
-            mode: "auto".to_string(),
         }
     }
 

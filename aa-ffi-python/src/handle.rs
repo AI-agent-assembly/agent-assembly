@@ -64,7 +64,7 @@ impl AssemblyHandle {
         };
 
         ipc.cmd_tx
-            .blocking_send(IpcCommand::SendEvent(event))
+            .blocking_send(IpcCommand::SendEvent(Box::new(event)))
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("failed to enqueue event: {e}")))?;
 
         Ok(())

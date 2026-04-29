@@ -74,11 +74,7 @@ fn init_assembly(
     }
 
     // Build configuration.
-    let config = AssemblyConfig {
-        agent_id,
-        socket_path,
-        mode: mode.to_string(),
-    };
+    let config = AssemblyConfig { agent_id, socket_path };
 
     // Detect loaded AI frameworks.
     let detected_frameworks = detect::detect_frameworks(py)?;
