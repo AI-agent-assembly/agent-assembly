@@ -114,3 +114,88 @@ fn expand_tilde(path: &str) -> PathBuf {
 fn dirs_home() -> Option<PathBuf> {
     std::env::var("HOME").ok().map(PathBuf::from)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Mutex;
+
+    /// Guard to serialize env-var-dependent tests.
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    /// Helper: clear all auth-related env vars before a test.
+    fn clear_auth_env() {
+        std::env::remove_var("AA_AUTH");
+        std::env::remove_var("AA_JWT_SECRET");
+        std::env::remove_var("AA_API_KEYS_PATH");
+        std::env::remove_var("AA_RATE_LIMIT_RPM");
+    }
+
+    #[test]
+    fn test_config_auth_off_no_secret_required() {
+        let _lock = ENV_LOCK.lock().unwrap();
+        clear_auth_env();
+        std::env::set_var("AA_AUTH", "off");
+
+        let config = AuthConfig::from_env().expect("auth=off should succeed without secret");
+        assert_eq!(config.mode, AuthMode::Off);
+        assert!(config.jwt_secret.is_none());
+    }
+
+    #[test]
+    fn test_config_auth_on_missing_secret_fails() {
+        let _lock = ENV_LOCK.lock().unwrap();
+        clear_auth_env();
+        // AA_AUTH defaults to On when unset.
+
+        let result = AuthConfig::from_env();
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), AuthConfigError::MissingJwtSecret));
+    }
+
+    #[test]
+    fn test_config_auth_on_short_secret_fails() {
+        let _lock = ENV_LOCK.lock().unwrap();
+        clear_auth_env();
+        std::env::set_var("AA_JWT_SECRET", "too-short");
+
+        let result = AuthConfig::from_env();
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            AuthConfigError::JwtSecretTooShort { .. }
+        ));
+    }
+
+    #[test]
+    fn test_config_auth_on_valid_secret_succeeds() {
+        let _lock = ENV_LOCK.lock().unwrap();
+        clear_auth_env();
+        std::env::set_var("AA_JWT_SECRET", "a]secret-that-is-at-least-32-bytes-long!!");
+
+        let config = AuthConfig::from_env().expect("valid secret should succeed");
+        assert_eq!(config.mode, AuthMode::On);
+        assert!(config.jwt_secret.is_some());
+    }
+
+    #[test]
+    fn test_config_default_rate_limit() {
+        let _lock = ENV_LOCK.lock().unwrap();
+        clear_auth_env();
+        std::env::set_var("AA_AUTH", "off");
+
+        let config = AuthConfig::from_env().unwrap();
+        assert_eq!(config.rate_limit_rpm, 1000);
+    }
+
+    #[test]
+    fn test_config_custom_rate_limit() {
+        let _lock = ENV_LOCK.lock().unwrap();
+        clear_auth_env();
+        std::env::set_var("AA_AUTH", "off");
+        std::env::set_var("AA_RATE_LIMIT_RPM", "500");
+
+        let config = AuthConfig::from_env().unwrap();
+        assert_eq!(config.rate_limit_rpm, 500);
+    }
+}
