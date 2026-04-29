@@ -4,6 +4,10 @@ use std::collections::BTreeMap;
 
 use chrono::{DateTime, Utc};
 use dashmap::DashMap;
+use tokio::sync::mpsc;
+use tonic::Status;
+
+use aa_proto::assembly::agent::v1::ControlCommand;
 
 use super::{AgentStatus, RegistryError};
 
@@ -36,18 +40,29 @@ pub struct AgentRecord {
     pub status: AgentStatus,
 }
 
+/// Channel sender type for pushing [`ControlCommand`]s to an agent's control stream.
+pub type ControlSender = mpsc::Sender<Result<ControlCommand, Status>>;
+
+/// Channel receiver type returned to the gRPC `ControlStream` response.
+pub type ControlReceiver = mpsc::Receiver<Result<ControlCommand, Status>>;
+
 /// Thread-safe in-memory agent registry backed by [`DashMap`].
 ///
 /// Keyed by the raw 16-byte `agent_id` UUID. Concurrent reads and writes
 /// are safe without external locking.
 pub struct AgentRegistry {
     agents: DashMap<[u8; 16], AgentRecord>,
+    /// Per-agent control stream senders. Created when an agent opens a `ControlStream`.
+    control_senders: DashMap<[u8; 16], ControlSender>,
 }
 
 impl AgentRegistry {
     /// Create an empty registry.
     pub fn new() -> Self {
-        Self { agents: DashMap::new() }
+        Self {
+            agents: DashMap::new(),
+            control_senders: DashMap::new(),
+        }
     }
 
     /// Insert a new agent record. Returns an error if the ID is already registered.
@@ -68,7 +83,10 @@ impl AgentRegistry {
     }
 
     /// Remove an agent from the registry. Returns the removed record.
+    ///
+    /// Also removes any associated control stream sender.
     pub fn deregister(&self, agent_id: &[u8; 16]) -> Result<AgentRecord, RegistryError> {
+        self.control_senders.remove(agent_id);
         self.agents
             .remove(agent_id)
             .map(|(_, record)| record)
@@ -83,6 +101,34 @@ impl AgentRegistry {
             .ok_or(RegistryError::NotFound(*agent_id))?;
         entry.last_heartbeat = Utc::now();
         Ok(())
+    }
+
+    /// Open a control stream for a registered agent.
+    ///
+    /// Creates an `mpsc` channel, stores the sender side in the registry,
+    /// and returns the receiver to be used as the gRPC response stream.
+    /// Returns an error if the agent is not registered.
+    pub fn open_control_stream(&self, agent_id: &[u8; 16]) -> Result<ControlReceiver, RegistryError> {
+        if !self.agents.contains_key(agent_id) {
+            return Err(RegistryError::NotFound(*agent_id));
+        }
+        let (tx, rx) = mpsc::channel(32);
+        self.control_senders.insert(*agent_id, tx);
+        Ok(rx)
+    }
+
+    /// Send a [`ControlCommand`] to an agent's open control stream.
+    ///
+    /// Returns an error if the agent has no active control stream.
+    pub async fn send_command(&self, agent_id: &[u8; 16], cmd: ControlCommand) -> Result<(), RegistryError> {
+        let sender = self
+            .control_senders
+            .get(agent_id)
+            .ok_or(RegistryError::NotFound(*agent_id))?;
+        sender
+            .send(Ok(cmd))
+            .await
+            .map_err(|_| RegistryError::NotFound(*agent_id))
     }
 
     /// Return a snapshot of all currently registered agents.
