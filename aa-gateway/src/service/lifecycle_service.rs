@@ -112,8 +112,25 @@ impl AgentLifecycleService for AgentLifecycleServiceImpl {
         }))
     }
 
-    async fn deregister(&self, _request: Request<DeregisterRequest>) -> Result<Response<DeregisterResponse>, Status> {
-        todo!("AAASM-136: implement Deregister RPC")
+    async fn deregister(&self, request: Request<DeregisterRequest>) -> Result<Response<DeregisterResponse>, Status> {
+        let req = request.into_inner();
+
+        let proto_id = req.agent_id.as_ref().ok_or_else(|| Status::invalid_argument("missing agent_id"))?;
+        let agent_key = proto_agent_id_to_key(proto_id);
+
+        validate_token(&self.registry, &agent_key, &req.credential_token)
+            .map_err(|_| Status::unauthenticated("invalid credential token"))?;
+
+        self.registry
+            .deregister(&agent_key)
+            .map_err(|e| Status::not_found(e.to_string()))?;
+
+        tracing::info!(agent_id = ?proto_id.agent_id, reason = %req.reason, "agent deregistered");
+
+        Ok(Response::new(DeregisterResponse {
+            success: true,
+            agent_id: proto_id.agent_id.clone(),
+        }))
     }
 
     type ControlStreamStream = ControlStreamOutput;
