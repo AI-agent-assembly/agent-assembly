@@ -55,7 +55,7 @@ fn init_assembly(
     agent_id: String,
     socket_path: Option<String>,
     mode: &str,
-) -> PyResult<AssemblyHandle> {
+) -> PyResult<Py<AssemblyHandle>> {
     // Validate agent_id.
     if agent_id.is_empty() {
         return Err(pyo3::exceptions::PyValueError::new_err("agent_id must not be empty"));
@@ -85,7 +85,13 @@ fn init_assembly(
     let ipc_handle = ipc::spawn_ipc_thread(resolved_path)
         .map_err(|e| pyo3::exceptions::PyOSError::new_err(format!("failed to spawn IPC thread: {e}")))?;
 
-    Ok(AssemblyHandle::new(ipc_handle, detected_frameworks))
+    // Create the Python handle object so we can pass it to hook installers.
+    let handle = Py::new(py, AssemblyHandle::new(ipc_handle, detected_frameworks.clone()))?;
+
+    // Install framework-specific hooks for each detected framework.
+    let _installed = hooks::install_hooks(py, handle.bind(py), &detected_frameworks);
+
+    Ok(handle)
 }
 
 /// Python module definition for `agent_assembly`.
@@ -146,7 +152,7 @@ mod tests {
             assert!(result.is_ok());
             let handle = result.unwrap();
             // Clean up the background thread.
-            handle.shutdown(py).unwrap();
+            handle.bind(py).borrow().shutdown(py).unwrap();
         });
     }
 }
