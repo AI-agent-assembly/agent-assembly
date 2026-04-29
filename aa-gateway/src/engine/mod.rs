@@ -233,7 +233,9 @@ impl PolicyEngine {
                 if let Some(expr) = &tp.requires_approval_if {
                     if !expr.is_empty() && crate::policy::expr::evaluate(expr, action) {
                         return EvaluationResult {
-                            decision: aa_core::PolicyResult::RequiresApproval { timeout_secs: 30 },
+                            decision: aa_core::PolicyResult::RequiresApproval {
+                                timeout_secs: policy.approval_timeout_secs,
+                            },
                             redacted_payload: None,
                             credential_findings: vec![],
                             deny_action: None,
@@ -416,6 +418,7 @@ mod tests {
             schedule: None,
             budget: None,
             data: None,
+            approval_timeout_secs: 300,
             tools: HashMap::new(),
         }
     }
@@ -620,7 +623,28 @@ mod tests {
         let action = tool_call("search", "");
         assert_eq!(
             engine.evaluate(&ctx, &action).decision,
-            PolicyResult::RequiresApproval { timeout_secs: 30 }
+            PolicyResult::RequiresApproval { timeout_secs: 300 }
+        );
+    }
+
+    #[test]
+    fn approval_condition_uses_custom_timeout() {
+        let mut doc = empty_doc();
+        doc.approval_timeout_secs = 600;
+        doc.tools.insert(
+            "deploy".to_string(),
+            ToolPolicy {
+                allow: true,
+                limit_per_hour: None,
+                requires_approval_if: Some(r#"tool == "deploy""#.to_string()),
+            },
+        );
+        let engine = make_engine(doc);
+        let ctx = make_ctx();
+        let action = tool_call("deploy", "");
+        assert_eq!(
+            engine.evaluate(&ctx, &action).decision,
+            PolicyResult::RequiresApproval { timeout_secs: 600 }
         );
     }
 

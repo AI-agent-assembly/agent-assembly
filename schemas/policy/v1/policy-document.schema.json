@@ -7,6 +7,12 @@
   "additionalProperties": false,
   "required": [],
   "properties": {
+    "approval_timeout_secs": {
+      "description": "Seconds before an approval request times out and the fallback policy applies. Defaults to 300 (5 minutes) when omitted.",
+      "type": "integer",
+      "minimum": 1,
+      "default": 300
+    },
     "network": {
       "description": "Network access controls for the agent.",
       "type": "object",

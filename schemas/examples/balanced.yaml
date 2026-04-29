@@ -4,6 +4,9 @@
 # Most tools are allowed with rate limits; high-cost or sensitive operations
 # require human approval. Broad network access, moderate budget, 24/7 schedule.
 
+# Seconds before an approval request times out (default: 300)
+approval_timeout_secs: 300
+
 network:
   allowlist:
     - "*.openai.com"
