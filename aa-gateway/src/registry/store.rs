@@ -7,7 +7,8 @@ use dashmap::DashMap;
 use tokio::sync::mpsc;
 use tonic::Status;
 
-use aa_proto::assembly::agent::v1::ControlCommand;
+use aa_proto::assembly::agent::v1::control_command::Command;
+use aa_proto::assembly::agent::v1::{ControlCommand, SuspendCommand};
 
 use super::{AgentStatus, RegistryError};
 
@@ -147,6 +148,30 @@ impl AgentRegistry {
             .get_mut(agent_id)
             .ok_or(RegistryError::NotFound(*agent_id))?;
         entry.status = AgentStatus::Suspended(reason);
+        Ok(())
+    }
+
+    /// Suspend an agent and send a [`SuspendCommand`] via the control stream.
+    ///
+    /// Sets the agent status to `Suspended(reason)` and, if a control stream
+    /// is open, pushes a `SuspendCommand` with the given reason string.
+    /// The control stream send is best-effort: if the stream is closed or full,
+    /// the suspension still takes effect.
+    pub async fn suspend_and_notify(
+        &self,
+        agent_id: &[u8; 16],
+        reason: super::SuspendReason,
+        reason_text: &str,
+    ) -> Result<(), RegistryError> {
+        self.suspend_agent(agent_id, reason)?;
+
+        let cmd = ControlCommand {
+            command: Some(Command::Suspend(SuspendCommand {
+                reason: reason_text.to_string(),
+            })),
+        };
+        // Best-effort: ignore errors if the stream is not open.
+        let _ = self.send_command(agent_id, cmd).await;
         Ok(())
     }
 

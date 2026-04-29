@@ -258,3 +258,28 @@ fn suspend_agent_not_found_returns_error() {
     let result = reg.suspend_agent(&key(99), SuspendReason::Manual);
     assert!(result.is_err());
 }
+
+#[tokio::test]
+async fn suspend_and_notify_sends_command_on_control_stream() {
+    use aa_gateway::registry::SuspendReason;
+    use aa_proto::assembly::agent::v1::control_command::Command;
+
+    let reg = AgentRegistry::new();
+    reg.register(make_record(key(1))).unwrap();
+    let mut rx = reg.open_control_stream(&key(1)).unwrap();
+
+    reg.suspend_and_notify(&key(1), SuspendReason::BudgetExceeded, "budget limit exceeded")
+        .await
+        .unwrap();
+
+    // Status should be Suspended
+    let status = reg.agent_status(&key(1)).unwrap();
+    assert_eq!(status, AgentStatus::Suspended(SuspendReason::BudgetExceeded));
+
+    // SuspendCommand should have been delivered
+    let received = rx.recv().await.unwrap().unwrap();
+    match received.command {
+        Some(Command::Suspend(s)) => assert_eq!(s.reason, "budget limit exceeded"),
+        other => panic!("expected Suspend command, got {other:?}"),
+    }
+}
