@@ -171,8 +171,8 @@ message LayerDegradationEvent {
   string layer            = 4;
   // Human-readable reason for the degradation.
   string reason           = 5;
-  // Remaining active layers after degradation (e.g. "proxy+sdk").
-  string remaining_layers = 6;
+  // Remaining active layers after degradation (e.g. ["proxy", "sdk"]).
+  repeated string remaining_layers = 6;
 }
 
 // ── Batch upload ──────────────────────────────────────────────────────────────

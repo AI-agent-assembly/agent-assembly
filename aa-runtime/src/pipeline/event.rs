@@ -52,8 +52,8 @@ pub struct LayerDegradationInfo {
     pub layer: String,
     /// Human-readable reason for the degradation.
     pub reason: String,
-    /// Remaining active layers after degradation (e.g. `"proxy+sdk"`).
-    pub remaining_layers: String,
+    /// Remaining active layers after degradation (e.g. `["proxy", "sdk"]`).
+    pub remaining_layers: Vec<String>,
 }
 
 #[cfg(test)]
@@ -114,11 +114,11 @@ mod tests {
         let info = LayerDegradationInfo {
             layer: "ebpf".to_string(),
             reason: "kernel version 4.18 < 5.8".to_string(),
-            remaining_layers: "proxy+sdk".to_string(),
+            remaining_layers: vec!["proxy".to_string(), "sdk".to_string()],
         };
         assert_eq!(info.layer, "ebpf");
         assert_eq!(info.reason, "kernel version 4.18 < 5.8");
-        assert_eq!(info.remaining_layers, "proxy+sdk");
+        assert_eq!(info.remaining_layers, vec!["proxy", "sdk"]);
     }
 
     #[test]
@@ -126,7 +126,7 @@ mod tests {
         let original = LayerDegradationInfo {
             layer: "proxy".to_string(),
             reason: "aa-proxy not in PATH".to_string(),
-            remaining_layers: "sdk".to_string(),
+            remaining_layers: vec!["sdk".to_string()],
         };
         let cloned = original.clone();
         assert_eq!(cloned.layer, original.layer);
