@@ -177,3 +177,24 @@ async fn decide_unknown_id_returns_failure() {
     assert!(!resp.success);
     assert!(!resp.error_message.is_empty());
 }
+
+#[tokio::test]
+async fn decide_invalid_uuid_returns_error() {
+    let (addr, _queue) = start_server().await;
+    let mut client = ApprovalServiceClient::connect(format!("http://{addr}"))
+        .await
+        .unwrap();
+
+    let result = client
+        .decide(DecideRequest {
+            request_id: "not-a-uuid".to_string(),
+            decision: ApprovalDecisionType::Approved as i32,
+            decided_by: "alice".to_string(),
+            reason: String::new(),
+        })
+        .await;
+
+    assert!(result.is_err());
+    let status = result.unwrap_err();
+    assert_eq!(status.code(), tonic::Code::InvalidArgument);
+}
