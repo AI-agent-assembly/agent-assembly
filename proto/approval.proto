@@ -2,6 +2,21 @@ syntax = "proto3";
 
 package assembly.approval.v1;
 
+// ApprovalService exposes the human-in-the-loop approval queue over gRPC.
+//
+// Consumed by: CLI (future), dashboard WebSocket handler (future), grpcurl (testing)
+// Backed by:   aa-runtime/src/approval.rs (ApprovalQueue)
+service ApprovalService {
+  // ListPending returns a snapshot of all currently pending approval requests.
+  rpc ListPending(ListPendingRequest) returns (ListPendingResponse);
+
+  // Decide settles a pending approval request (approve or reject).
+  rpc Decide(DecideRequest) returns (DecideResponse);
+
+  // WatchApprovals streams new approval requests as they arrive in real-time.
+  rpc WatchApprovals(WatchApprovalsRequest) returns (stream ApprovalEvent);
+}
+
 // PendingApproval is the outward-facing snapshot of one pending request.
 message PendingApproval {
   // UUID v4 string identifying the request.
