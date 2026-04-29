@@ -181,6 +181,83 @@ impl PolicyServiceImpl {
         }
     }
 
+    /// Submit a `RequiresApproval` evaluation to the approval queue, await
+    /// the human decision (with timeout), and return the final response.
+    ///
+    /// Returns `Some(response)` when the evaluation was `RequiresApproval` and
+    /// the queue was available. Returns `None` when the evaluation is not
+    /// `RequiresApproval` or the queue is absent (degraded mode — caller falls
+    /// through to the normal conversion path).
+    async fn maybe_submit_approval(
+        &self,
+        req: &CheckActionRequest,
+        eval: &EvaluationResult,
+        latency_us: i64,
+        policy_rule: &str,
+    ) -> Option<CheckActionResponse> {
+        let timeout_secs = match &eval.decision {
+            aa_core::PolicyResult::RequiresApproval { timeout_secs } => *timeout_secs,
+            _ => return None,
+        };
+
+        let queue = match &self.approval_queue {
+            Some(q) => q,
+            None => {
+                tracing::warn!(
+                    "RequiresApproval decision but no approval_queue attached — \
+                     returning Pending without queue submission (degraded mode)"
+                );
+                return None;
+            }
+        };
+
+        let approval_req = Self::build_approval_request(req, timeout_secs);
+        let approval_id = approval_req.request_id;
+
+        tracing::info!(
+            approval_id = %approval_id,
+            agent_id = %approval_req.agent_id,
+            action = %approval_req.action,
+            timeout_secs,
+            "submitting to approval queue"
+        );
+
+        let (_id, future) = queue.submit(approval_req);
+
+        // Await the operator's decision with a timeout guard.
+        // The ApprovalQueue also spawns its own timeout task, so both race;
+        // whichever fires first wins (the queue's resolve is idempotent).
+        let timeout_duration = std::time::Duration::from_secs(u64::from(timeout_secs));
+        let decision = match tokio::time::timeout(timeout_duration, future).await {
+            Ok(Ok(decision)) => decision,
+            Ok(Err(_recv_err)) => {
+                // Oneshot sender was dropped — the queue entry was removed
+                // externally (should not happen in normal operation).
+                tracing::warn!(approval_id = %approval_id, "approval channel closed unexpectedly");
+                aa_runtime::approval::ApprovalDecision::Rejected {
+                    by: "system".to_string(),
+                    reason: "approval channel closed".to_string(),
+                }
+            }
+            Err(_elapsed) => {
+                // Our timeout fired before the queue's timeout task.
+                tracing::info!(approval_id = %approval_id, "approval timed out");
+                aa_runtime::approval::ApprovalDecision::TimedOut {
+                    fallback: aa_core::PolicyResult::Deny {
+                        reason: "approval timed out".to_string(),
+                    },
+                }
+            }
+        };
+
+        Some(convert::approval_decision_to_response(
+            &decision,
+            &approval_id,
+            latency_us,
+            policy_rule,
+        ))
+    }
+
     /// Build an `AuditEntry` from a request and evaluation result, then fire-and-forget
     /// via `try_send`. Maintains the hash chain by reading and updating `last_hash`.
     /// Never blocks the caller beyond the brief mutex acquisition.
