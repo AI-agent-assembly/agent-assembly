@@ -60,9 +60,25 @@ impl AuditWriter {
     }
 
     /// Background consumption loop — call via `tokio::spawn(writer.run())`.
-    pub async fn run(self) {
-        let _ = self;
-        todo!("AuditWriter::run")
+    ///
+    /// Drains the channel until the sender is dropped (server shutdown).
+    /// Individual write failures are logged but do not kill the pipeline.
+    pub async fn run(mut self) {
+        tracing::info!(path = %self.path.display(), "audit writer started");
+        while let Some(entry) = self.receiver.recv().await {
+            if let Err(e) = self.append(&entry).await {
+                tracing::error!(
+                    error = %e,
+                    seq = entry.seq(),
+                    "audit write failed"
+                );
+            }
+        }
+        // Channel closed — sender dropped during shutdown. Flush remaining data.
+        if let Err(e) = self.file.flush().await {
+            tracing::error!(error = %e, "audit writer final flush failed");
+        }
+        tracing::info!(path = %self.path.display(), "audit writer stopped");
     }
 
     /// Verify the hash chain of a JSONL audit file.
