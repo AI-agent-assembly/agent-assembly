@@ -6,7 +6,7 @@
 
 use std::collections::BTreeMap;
 
-use super::event::CorrelationEvent;
+use super::event::{ActionEvent, CorrelationEvent, IntentEvent};
 
 /// A time-ordered sliding window of correlation events.
 ///
@@ -60,6 +60,30 @@ impl SlidingWindow {
     /// Returns the configured maximum capacity.
     pub fn max_size(&self) -> usize {
         self.max_size
+    }
+
+    /// Returns all intent events in the window, ordered by timestamp.
+    pub fn intents(&self) -> Vec<&IntentEvent> {
+        self.events
+            .values()
+            .flat_map(|bucket| bucket.iter())
+            .filter_map(|e| match e {
+                CorrelationEvent::Intent(intent) => Some(intent),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Returns all action events in the window, ordered by timestamp.
+    pub fn actions(&self) -> Vec<&ActionEvent> {
+        self.events
+            .values()
+            .flat_map(|bucket| bucket.iter())
+            .filter_map(|e| match e {
+                CorrelationEvent::Action(action) => Some(action),
+                _ => None,
+            })
+            .collect()
     }
 }
 
@@ -129,5 +153,43 @@ mod tests {
     fn max_size_returns_configured_value() {
         let w = SlidingWindow::new(5000, 42);
         assert_eq!(w.max_size(), 42);
+    }
+
+    #[test]
+    fn intents_returns_only_intent_events() {
+        let mut w = SlidingWindow::new(5000, 100);
+        w.insert(make_intent_event(1000));
+        w.insert(make_action_event(2000));
+        w.insert(make_intent_event(3000));
+        let intents = w.intents();
+        assert_eq!(intents.len(), 2);
+        assert_eq!(intents[0].timestamp_ms, 1000);
+        assert_eq!(intents[1].timestamp_ms, 3000);
+    }
+
+    #[test]
+    fn actions_returns_only_action_events() {
+        let mut w = SlidingWindow::new(5000, 100);
+        w.insert(make_intent_event(1000));
+        w.insert(make_action_event(2000));
+        w.insert(make_action_event(3000));
+        let actions = w.actions();
+        assert_eq!(actions.len(), 2);
+        assert_eq!(actions[0].timestamp_ms, 2000);
+        assert_eq!(actions[1].timestamp_ms, 3000);
+    }
+
+    #[test]
+    fn intents_empty_when_only_actions() {
+        let mut w = SlidingWindow::new(5000, 100);
+        w.insert(make_action_event(1000));
+        assert!(w.intents().is_empty());
+    }
+
+    #[test]
+    fn actions_empty_when_only_intents() {
+        let mut w = SlidingWindow::new(5000, 100);
+        w.insert(make_intent_event(1000));
+        assert!(w.actions().is_empty());
     }
 }
