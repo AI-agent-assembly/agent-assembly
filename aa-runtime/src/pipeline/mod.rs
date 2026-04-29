@@ -3,7 +3,7 @@
 pub mod event;
 pub mod metrics;
 
-pub use event::{EnrichedEvent, EventSource};
+pub use event::{EnrichedEvent, EventSource, LayerDegradationInfo};
 pub use metrics::PipelineMetrics;
 
 use crate::approval::{ApprovalDecision as RuntimeApprovalDecision, ApprovalQueue, ApprovalRequest};

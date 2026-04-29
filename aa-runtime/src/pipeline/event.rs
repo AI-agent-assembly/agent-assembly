@@ -40,6 +40,22 @@ pub struct EnrichedEvent {
     pub sequence_number: u64,
 }
 
+/// Runtime-side representation of a layer degradation event.
+///
+/// Created when an interception layer is unavailable at startup or degrades
+/// at runtime. Emitted via `tracing::warn!` and exposed through the `/health`
+/// endpoint. The corresponding proto message (`LayerDegradationEvent`) is used
+/// for gateway forwarding.
+#[derive(Debug, Clone)]
+pub struct LayerDegradationInfo {
+    /// Name of the degraded layer (e.g. `"ebpf"`, `"proxy"`).
+    pub layer: String,
+    /// Human-readable reason for the degradation.
+    pub reason: String,
+    /// Remaining active layers after degradation (e.g. `"proxy+sdk"`).
+    pub remaining_layers: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
