@@ -2,6 +2,7 @@
 
 pub mod detect;
 pub mod event;
+pub mod extract;
 
 use crate::error::ProxyError;
 
