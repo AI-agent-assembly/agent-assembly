@@ -11,12 +11,15 @@ use std::time::SystemTime;
 
 use dashmap::DashMap;
 use sha2::{Digest, Sha256};
-use tokio::sync::{mpsc, oneshot, Mutex};
+use tokio::sync::{broadcast, mpsc, oneshot, Mutex};
 use uuid::Uuid;
 
 use aa_core::identity::{AgentId, SessionId};
 use aa_core::time::Timestamp;
 use aa_core::{AuditEntry, AuditEventType};
+
+/// Capacity of the internal approval event broadcast channel.
+const APPROVAL_EVENT_CHANNEL_CAPACITY: usize = 64;
 
 // ---------------------------------------------------------------------------
 // Public type aliases
@@ -139,6 +142,7 @@ pub struct ApprovalQueue {
     audit_tx: Option<mpsc::Sender<AuditEntry>>,
     audit_seq: AtomicU64,
     audit_last_hash: Mutex<[u8; 32]>,
+    event_tx: broadcast::Sender<ApprovalRequest>,
 }
 
 /// Hash a string into a 16-byte identifier using SHA-256 truncation.
@@ -152,11 +156,13 @@ fn hash_to_16(s: &str) -> [u8; 16] {
 impl ApprovalQueue {
     /// Creates a new, empty queue wrapped in an [`Arc`].
     pub fn new() -> Arc<Self> {
+        let (event_tx, _) = broadcast::channel(APPROVAL_EVENT_CHANNEL_CAPACITY);
         Arc::new(Self {
             pending: DashMap::new(),
             audit_tx: None,
             audit_seq: AtomicU64::new(0),
             audit_last_hash: Mutex::new([0u8; 32]),
+            event_tx,
         })
     }
 
@@ -165,12 +171,24 @@ impl ApprovalQueue {
     /// Approval decisions (Approved, Rejected, TimedOut) will be recorded
     /// as `AuditEntry` values on the given channel.
     pub fn with_audit(audit_tx: mpsc::Sender<AuditEntry>, initial_hash: [u8; 32]) -> Arc<Self> {
+        let (event_tx, _) = broadcast::channel(APPROVAL_EVENT_CHANNEL_CAPACITY);
         Arc::new(Self {
             pending: DashMap::new(),
             audit_tx: Some(audit_tx),
             audit_seq: AtomicU64::new(0),
             audit_last_hash: Mutex::new(initial_hash),
+            event_tx,
         })
+    }
+
+    /// Subscribe to approval request events.
+    ///
+    /// Each call to [`submit`](Self::submit) broadcasts a clone of the
+    /// [`ApprovalRequest`] to all active subscribers. Subscribers that fall
+    /// behind receive a `RecvError::Lagged` indicating how many events were
+    /// dropped.
+    pub fn subscribe_events(&self) -> broadcast::Receiver<ApprovalRequest> {
+        self.event_tx.subscribe()
     }
 
     /// Returns a snapshot of all currently pending requests.
@@ -362,6 +380,9 @@ impl ApprovalQueue {
         }
 
         let (tx, rx) = oneshot::channel();
+        // Broadcast the request to event subscribers (webhook delivery, etc.).
+        // Ignore send errors — no subscribers means no delivery needed.
+        let _ = self.event_tx.send(request.clone());
         self.pending.insert(id, (request, tx));
 
         // Spawn the timeout enforcer.  The Arc clone keeps the queue alive
@@ -626,6 +647,20 @@ mod tests {
         .expect("decide should succeed");
 
         assert!(q.list().is_empty());
+    }
+
+    #[tokio::test]
+    async fn subscribe_events_receives_submitted_request() {
+        let q = ApprovalQueue::new();
+        let mut rx = q.subscribe_events();
+
+        let req = make_request(60);
+        let expected_id = req.request_id;
+        let (_rid, _fut) = q.submit(req);
+
+        let received = rx.recv().await.expect("should receive approval event");
+        assert_eq!(received.request_id, expected_id);
+        assert_eq!(received.agent_id, "agent-1");
     }
 
     #[tokio::test]
