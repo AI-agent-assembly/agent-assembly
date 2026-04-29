@@ -182,7 +182,7 @@ impl ProxyServer {
                     response_body: None,
                     timestamp: SystemTime::now(),
                 };
-                self.interceptor.intercept(event).await?;
+                self.interceptor.intercept(&event).await?;
             }
 
             // Bidirectional copy between client and upstream.
