@@ -237,6 +237,74 @@ impl AnomalyDetector {
         })
     }
 
+    /// Run all applicable anomaly checks for the given action and return the
+    /// first detected anomaly (short-circuit, highest severity first).
+    ///
+    /// Checks are ordered by severity: Block responses before Pause before Alert.
+    ///
+    /// # Arguments
+    ///
+    /// * `agent_id` — the agent performing the action
+    /// * `action` — the governance action being evaluated
+    /// * `has_pii` — whether PII/credential findings were detected in the payload
+    /// * `network_allowlist` — the agent's network allowlist from policy
+    /// * `credential_owner_id` — if known, the agent ID that owns the credential
+    pub fn detect(
+        &self,
+        agent_id: AgentId,
+        action: &aa_core::GovernanceAction,
+        has_pii: bool,
+        network_allowlist: &[String],
+        credential_owner_id: Option<AgentId>,
+    ) -> Option<AnomalyEvent> {
+        // 1. Child process execution (Block) — highest priority
+        if let aa_core::GovernanceAction::ProcessExec { command } = action {
+            if let Some(event) = self.check_child_process(agent_id, command) {
+                return Some(event);
+            }
+        }
+
+        // 2. Unknown external connection (Block)
+        if let aa_core::GovernanceAction::NetworkRequest { url, .. } = action {
+            if let Some(event) = self.check_unknown_connection(agent_id, url, network_allowlist) {
+                return Some(event);
+            }
+        }
+
+        // 3. Data exfiltration attempt (Block)
+        if let aa_core::GovernanceAction::NetworkRequest { url, .. } = action {
+            if let Some(event) = self.check_data_exfiltration(agent_id, has_pii, url) {
+                return Some(event);
+            }
+        }
+
+        // 4. Loop runaway (Pause)
+        if let aa_core::GovernanceAction::ToolCall { name, args } = action {
+            if let Some(event) = self.check_loop_runaway(agent_id, name, args) {
+                return Some(event);
+            }
+        }
+
+        // 5. Behavior spike (Pause)
+        if let Some(event) = self.check_behavior_spike(agent_id) {
+            return Some(event);
+        }
+
+        // 6. Credential leak attempt (Alert)
+        if let Some(event) = self.check_credential_leak(agent_id) {
+            return Some(event);
+        }
+
+        // 7. Identity spoofing (Alert)
+        if let Some(owner_id) = credential_owner_id {
+            if let Some(event) = self.check_identity_spoofing(agent_id, owner_id) {
+                return Some(event);
+            }
+        }
+
+        None
+    }
+
     /// Compute a stable hash for a (tool_name, args) pair.
     fn hash_tool_call(tool_name: &str, args: &str) -> u64 {
         let mut hasher = Sha256::new();
