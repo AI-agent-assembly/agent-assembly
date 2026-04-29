@@ -404,4 +404,73 @@ mod tests {
             s
         );
     }
+
+    fn tracker_with_monthly_limit(monthly: &str) -> BudgetTracker {
+        BudgetTracker::new(
+            PricingTable::default_table(),
+            None,
+            Some(monthly.parse().unwrap()),
+            chrono_tz::UTC,
+        )
+    }
+
+    #[test]
+    fn monthly_limit_exceeded_blocks_usage() {
+        use crate::budget::types::{BudgetStatus, Model, Provider};
+        // Monthly limit $1.00. GPT-4o: 100k input=$0.50 + 40k output=$0.60 = $1.10 > $1.00
+        let t = tracker_with_monthly_limit("1.00");
+        let s = t.record_usage(agent(20), Provider::OpenAi, Model::Gpt4o, 100_000, 40_000);
+        assert_eq!(s, BudgetStatus::LimitExceeded);
+    }
+
+    #[test]
+    fn monthly_within_budget_returns_within_budget() {
+        use crate::budget::types::{BudgetStatus, Model, Provider};
+        // Monthly limit $10.00. Small usage should be within budget.
+        let t = tracker_with_monthly_limit("10.00");
+        let s = t.record_usage(agent(21), Provider::OpenAi, Model::Gpt4o, 1_000, 0);
+        assert!(matches!(s, BudgetStatus::WithinBudget { .. }));
+    }
+
+    #[test]
+    fn monthly_accumulates_across_daily_resets() {
+        use crate::budget::types::{BudgetStatus, Model, Provider};
+        // Monthly limit $1.00. Record $0.50 on day 1, backdate, then another $0.60 on day 2.
+        let t = tracker_with_monthly_limit("1.00");
+        let id = agent(22);
+        // Day 1: $0.50 (100k input)
+        t.record_usage(id, Provider::OpenAi, Model::Gpt4o, 100_000, 0);
+        // Backdate the entry by 1 day — daily resets, monthly stays
+        t.per_agent.alter(&id, |_, mut s| {
+            s.date = chrono::Utc::now().date_naive() - chrono::Duration::days(1);
+            s
+        });
+        // Day 2: another $0.60 (40k output) — total monthly $1.10 > $1.00
+        let s = t.record_usage(id, Provider::OpenAi, Model::Gpt4o, 0, 40_000);
+        assert_eq!(s, BudgetStatus::LimitExceeded);
+    }
+
+    #[test]
+    fn monthly_resets_on_month_change() {
+        use chrono::Datelike;
+        use crate::budget::types::{BudgetStatus, Model, Provider};
+        let t = tracker_with_monthly_limit("1.00");
+        let id = agent(23);
+        // Record $0.95
+        t.record_usage(id, Provider::OpenAi, Model::Gpt4o, 100_000, 30_000);
+        // Backdate to last month — both daily and monthly should reset
+        let last_month = chrono::Utc::now().date_naive() - chrono::Duration::days(32);
+        t.per_agent.alter(&id, |_, mut s| {
+            s.date = last_month;
+            s.month = last_month.year() as u32 * 100 + last_month.month();
+            s
+        });
+        // New usage should start fresh — well within budget
+        let s = t.record_usage(id, Provider::OpenAi, Model::Gpt4o, 100, 0);
+        assert!(
+            matches!(s, BudgetStatus::WithinBudget { .. }),
+            "Expected within budget after monthly reset, got: {:?}",
+            s
+        );
+    }
 }
