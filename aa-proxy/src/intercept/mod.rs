@@ -293,4 +293,51 @@ mod tests {
         let result = interceptor.intercept(&event).await.unwrap();
         assert!(result.is_none());
     }
+
+    #[tokio::test]
+    async fn non_llm_traffic_emits_no_pipeline_event() {
+        let (tx, mut rx) = broadcast::channel(16);
+        let interceptor = Interceptor::new(tx);
+        let event = make_event(LlmApiPattern::Unknown);
+
+        interceptor.intercept(&event).await.unwrap();
+
+        // Channel should be empty — Unknown pattern skips emission.
+        assert!(
+            rx.try_recv().is_err(),
+            "non-LLM traffic must not emit a pipeline event"
+        );
+    }
+
+    #[tokio::test]
+    async fn llm_traffic_emits_pipeline_event_with_correct_fields() {
+        let (tx, mut rx) = broadcast::channel(16);
+        let interceptor = Interceptor::new(tx);
+        let mut event = make_event(LlmApiPattern::OpenAi);
+        event.response_body = Some(Bytes::from(
+            r#"{"model":"gpt-4","usage":{"prompt_tokens":10,"completion_tokens":20}}"#,
+        ));
+
+        interceptor.intercept(&event).await.unwrap();
+
+        let pipeline_event = rx.try_recv().expect("should have received a pipeline event");
+        match pipeline_event {
+            PipelineEvent::Audit(enriched) => {
+                assert_eq!(enriched.source, EventSource::Proxy);
+                assert_eq!(enriched.agent_id, "test-agent");
+                // Verify the LlmCallDetail inside the AuditEvent.
+                let detail = enriched.inner.detail.expect("detail must be set");
+                match detail {
+                    aa_proto::assembly::audit::v1::audit_event::Detail::LlmCall(llm) => {
+                        assert_eq!(llm.model, "gpt-4");
+                        assert_eq!(llm.prompt_tokens, 10);
+                        assert_eq!(llm.completion_tokens, 20);
+                        assert_eq!(llm.provider, "openai");
+                    }
+                    other => panic!("expected LlmCall detail, got {other:?}"),
+                }
+            }
+            other => panic!("expected Audit event, got {other:?}"),
+        }
+    }
 }
