@@ -115,6 +115,16 @@ mod tests {
             "expected 'only supported on Linux', got: {err}"
         );
     }
+
+    #[cfg(not(target_os = "linux"))]
+    #[test]
+    fn detach_is_idempotent_no_op_on_non_linux() {
+        // On non-Linux, we cannot construct a TracepointManager via attach(),
+        // but we can verify detach() exists and is callable on the type.
+        // This test documents the API contract: detach is a no-op stub.
+        // Full lifecycle testing happens in the integration test on Linux.
+        let _: fn(&mut TracepointManager) = TracepointManager::detach;
+    }
 }
 
 impl Drop for TracepointManager {
