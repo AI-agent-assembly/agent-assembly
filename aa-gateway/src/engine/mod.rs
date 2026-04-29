@@ -13,6 +13,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use crate::policy::document::ActionOnExceed;
 use crate::policy::{PolicyDocument, PolicyValidator};
 
 /// Side-effect action the service layer should take when a request is denied.
@@ -292,6 +293,10 @@ impl PolicyEngine {
 
         // Stage 7 — Budget check (monthly first, then daily).
         if let Some(bp) = &policy.budget {
+            let deny_action = match bp.action_on_exceed {
+                ActionOnExceed::Suspend => Some(DenyAction::SuspendAgent),
+                ActionOnExceed::Deny => None,
+            };
             if let Some(limit) = bp.monthly_limit_usd {
                 if self.budget.is_monthly_exceeded(ctx.agent_id.as_bytes(), limit) {
                     return EvaluationResult {
@@ -300,7 +305,7 @@ impl PolicyEngine {
                         },
                         redacted_payload,
                         credential_findings,
-                        deny_action: None,
+                        deny_action,
                     };
                 }
             }
@@ -312,7 +317,7 @@ impl PolicyEngine {
                         },
                         redacted_payload,
                         credential_findings,
-                        deny_action: None,
+                        deny_action,
                     };
                 }
             }
@@ -701,6 +706,52 @@ mod tests {
                 reason: "monthly budget exceeded".into()
             }
         );
+    }
+
+    #[test]
+    fn budget_exceed_with_action_deny_returns_no_deny_action() {
+        let mut doc = empty_doc();
+        doc.budget = Some(BudgetPolicy {
+            daily_limit_usd: Some(1.0),
+            monthly_limit_usd: None,
+            timezone: None,
+            action_on_exceed: ActionOnExceed::Deny,
+        });
+        let engine = make_engine(doc);
+        let ctx = make_ctx();
+        engine.record_spend(&ctx, 1.0);
+
+        let result = engine.evaluate(&ctx, &tool_call("any", ""));
+        assert_eq!(
+            result.decision,
+            PolicyResult::Deny {
+                reason: "daily budget exceeded".into()
+            }
+        );
+        assert_eq!(result.deny_action, None);
+    }
+
+    #[test]
+    fn budget_exceed_with_action_suspend_returns_suspend_agent() {
+        let mut doc = empty_doc();
+        doc.budget = Some(BudgetPolicy {
+            daily_limit_usd: Some(1.0),
+            monthly_limit_usd: None,
+            timezone: None,
+            action_on_exceed: ActionOnExceed::Suspend,
+        });
+        let engine = make_engine(doc);
+        let ctx = make_ctx();
+        engine.record_spend(&ctx, 1.0);
+
+        let result = engine.evaluate(&ctx, &tool_call("any", ""));
+        assert_eq!(
+            result.decision,
+            PolicyResult::Deny {
+                reason: "daily budget exceeded".into()
+            }
+        );
+        assert_eq!(result.deny_action, Some(DenyAction::SuspendAgent));
     }
 
     #[test]
