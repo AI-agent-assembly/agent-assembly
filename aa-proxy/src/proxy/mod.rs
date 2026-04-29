@@ -51,10 +51,10 @@ impl ProxyServer {
         let listener = TcpListener::bind(self.config.bind_addr).await?;
         tracing::info!(addr = %self.config.bind_addr, "proxy listening");
 
-        let mut sigint = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())
-            .map_err(ProxyError::Io)?;
-        let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-            .map_err(ProxyError::Io)?;
+        let mut sigint =
+            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt()).map_err(ProxyError::Io)?;
+        let mut sigterm =
+            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()).map_err(ProxyError::Io)?;
 
         loop {
             tokio::select! {
@@ -116,9 +116,7 @@ impl ProxyServer {
             // Send 200 Connection Established to tell the client the tunnel is open.
             let inner = reader.into_inner();
             let mut stream = inner;
-            stream
-                .write_all(b"HTTP/1.1 200 Connection Established\r\n\r\n")
-                .await?;
+            stream.write_all(b"HTTP/1.1 200 Connection Established\r\n\r\n").await?;
 
             tracing::debug!(host = target, "CONNECT tunnel established");
 
@@ -164,8 +162,7 @@ impl ProxyServer {
                 .with_root_certificates(root_store)
                 .with_no_client_auth();
             let connector = TlsConnector::from(Arc::new(client_config));
-            let server_name = ServerName::try_from(host.to_string())
-                .map_err(|e| ProxyError::Tls(e.to_string()))?;
+            let server_name = ServerName::try_from(host.to_string()).map_err(|e| ProxyError::Tls(e.to_string()))?;
             let upstream_tls = connector
                 .connect(server_name, upstream_tcp)
                 .await
@@ -225,7 +222,9 @@ impl ProxyServer {
                     .iter()
                     .find_map(|h| {
                         let lower = h.to_ascii_lowercase();
-                        lower.starts_with("host:").then(|| h["host:".len()..].trim().to_string())
+                        lower
+                            .starts_with("host:")
+                            .then(|| h["host:".len()..].trim().to_string())
                     })
                     .unwrap_or_default()
                     .leak()

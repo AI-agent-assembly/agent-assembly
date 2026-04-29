@@ -22,10 +22,7 @@ fn test_config(ca_dir: &std::path::Path) -> ProxyConfig {
 ///
 /// The proxy runs in a background task; the returned `JoinHandle` can be
 /// used to verify it didn't panic.
-async fn start_proxy(
-    config: ProxyConfig,
-    ca: CaStore,
-) -> (SocketAddr, tokio::task::JoinHandle<()>) {
+async fn start_proxy(config: ProxyConfig, ca: CaStore) -> (SocketAddr, tokio::task::JoinHandle<()>) {
     // We need the actual bound address, so we bind ourselves and pass it.
     let listener = tokio::net::TcpListener::bind(config.bind_addr).await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -145,27 +142,18 @@ async fn plain_http_request_is_forwarded_to_upstream() {
 
     // Send a plain HTTP request through the proxy targeting our mock upstream.
     let mut stream = TcpStream::connect(proxy_addr).await.unwrap();
-    let request = format!(
-        "GET http://{upstream_addr}/ HTTP/1.1\r\nHost: {upstream_addr}\r\n\r\n"
-    );
+    let request = format!("GET http://{upstream_addr}/ HTTP/1.1\r\nHost: {upstream_addr}\r\n\r\n");
     stream.write_all(request.as_bytes()).await.unwrap();
 
     // Read the forwarded response.
     let mut response = String::new();
     let mut reader = BufReader::new(stream);
     reader.read_line(&mut response).await.unwrap();
-    assert!(
-        response.contains("200"),
-        "expected 200 from upstream, got: {response}"
-    );
+    assert!(response.contains("200"), "expected 200 from upstream, got: {response}");
 
     // Read remaining headers + body.
     let mut full = String::new();
-    let _ = tokio::time::timeout(
-        std::time::Duration::from_secs(2),
-        reader.read_to_string(&mut full),
-    )
-    .await;
+    let _ = tokio::time::timeout(std::time::Duration::from_secs(2), reader.read_to_string(&mut full)).await;
     assert!(
         full.contains("hello from upstream"),
         "response body should contain upstream content"
@@ -191,13 +179,13 @@ async fn connect_to_llm_host_triggers_interception_without_crash() {
     let mut reader = BufReader::new(stream);
     let mut line = String::new();
     reader.read_line(&mut line).await.unwrap();
-    assert!(
-        line.contains("200"),
-        "expected 200 for LLM host CONNECT, got: {line}"
-    );
+    assert!(line.contains("200"), "expected 200 for LLM host CONNECT, got: {line}");
 
     // Drop the connection and verify the server didn't crash.
     drop(reader);
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-    assert!(!handle.is_finished(), "server should still be running after LLM host CONNECT");
+    assert!(
+        !handle.is_finished(),
+        "server should still be running after LLM host CONNECT"
+    );
 }
