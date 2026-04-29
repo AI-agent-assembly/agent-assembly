@@ -100,6 +100,23 @@ impl TracepointManager {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[cfg(not(target_os = "linux"))]
+    #[test]
+    fn attach_returns_error_on_non_linux() {
+        let result = TracepointManager::attach(&mut ());
+        assert!(result.is_err());
+        let err = result.err().unwrap();
+        assert!(
+            err.to_string().contains("only supported on Linux"),
+            "expected 'only supported on Linux', got: {err}"
+        );
+    }
+}
+
 impl Drop for TracepointManager {
     fn drop(&mut self) {
         #[cfg(target_os = "linux")]
