@@ -375,7 +375,13 @@ impl PolicyService for PolicyServiceImpl {
         for req in &batch.requests {
             let (eval, latency_us, policy_rule) = self.evaluate_one(req)?;
             let deny_action = eval.deny_action;
-            let resp = convert::eval_result_to_response(&eval, latency_us, &policy_rule);
+            let resp = if let Some(approval_response) =
+                self.maybe_submit_approval(req, &eval, latency_us, &policy_rule).await
+            {
+                approval_response
+            } else {
+                convert::eval_result_to_response(&eval, latency_us, &policy_rule)
+            };
             self.maybe_suspend_agent(req, deny_action).await;
             self.record_audit(req, &resp).await;
             responses.push(resp);
