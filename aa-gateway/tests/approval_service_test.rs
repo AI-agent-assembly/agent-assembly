@@ -51,3 +51,19 @@ fn make_test_request() -> ApprovalRequest {
         },
     }
 }
+
+#[tokio::test]
+async fn list_pending_returns_empty_initially() {
+    let (addr, _queue) = start_server().await;
+    let mut client = ApprovalServiceClient::connect(format!("http://{addr}"))
+        .await
+        .unwrap();
+
+    let resp = client
+        .list_pending(ListPendingRequest {})
+        .await
+        .unwrap()
+        .into_inner();
+
+    assert!(resp.requests.is_empty());
+}
