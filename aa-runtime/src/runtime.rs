@@ -941,4 +941,40 @@ mod tests {
             }
         }
     }
+
+    // ── spawn_ebpf_exec_tracepoints tests ───────────────────────────────
+
+    #[test]
+    fn spawn_ebpf_exec_tracepoints_degrades_on_non_linux() {
+        let tracker = tokio_util::task::TaskTracker::new();
+        let (tx, mut rx) = tokio::sync::broadcast::channel::<crate::pipeline::PipelineEvent>(16);
+        let token = tokio_util::sync::CancellationToken::new();
+        let mut degraded = Vec::new();
+
+        super::spawn_ebpf_exec_tracepoints(&tracker, &tx, &token, &mut degraded);
+
+        #[cfg(not(target_os = "linux"))]
+        {
+            assert!(degraded.contains(&"ebpf/exec".to_string()));
+            let event = rx.try_recv().unwrap();
+            match event {
+                crate::pipeline::PipelineEvent::LayerDegradation(info) => {
+                    assert_eq!(info.layer, "ebpf/exec");
+                }
+                _ => panic!("expected LayerDegradation event"),
+            }
+        }
+
+        #[cfg(target_os = "linux")]
+        {
+            assert!(degraded.contains(&"ebpf/exec".to_string()));
+            let event = rx.try_recv().unwrap();
+            match event {
+                crate::pipeline::PipelineEvent::LayerDegradation(info) => {
+                    assert_eq!(info.layer, "ebpf/exec");
+                }
+                _ => panic!("expected LayerDegradation event"),
+            }
+        }
+    }
 }
