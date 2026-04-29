@@ -91,8 +91,25 @@ impl AgentLifecycleService for AgentLifecycleServiceImpl {
         }))
     }
 
-    async fn heartbeat(&self, _request: Request<HeartbeatRequest>) -> Result<Response<HeartbeatResponse>, Status> {
-        todo!("AAASM-136: implement Heartbeat RPC")
+    async fn heartbeat(&self, request: Request<HeartbeatRequest>) -> Result<Response<HeartbeatResponse>, Status> {
+        let req = request.into_inner();
+
+        let proto_id = req.agent_id.as_ref().ok_or_else(|| Status::invalid_argument("missing agent_id"))?;
+        let agent_key = proto_agent_id_to_key(proto_id);
+
+        validate_token(&self.registry, &agent_key, &req.credential_token)
+            .map_err(|_| Status::unauthenticated("invalid credential token"))?;
+
+        self.registry
+            .update_heartbeat(&agent_key)
+            .map_err(|e| Status::not_found(e.to_string()))?;
+
+        tracing::debug!(agent_id = ?proto_id.agent_id, "heartbeat received");
+
+        Ok(Response::new(HeartbeatResponse {
+            policy_updated: false,
+            should_suspend: false,
+        }))
     }
 
     async fn deregister(&self, _request: Request<DeregisterRequest>) -> Result<Response<DeregisterResponse>, Status> {
