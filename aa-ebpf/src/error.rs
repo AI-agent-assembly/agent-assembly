@@ -45,6 +45,13 @@ pub enum EbpfError {
         name: String,
     },
 
+    /// A required eBPF program was not found in the loaded object.
+    #[error("eBPF program `{name}` not found in object")]
+    ProgramNotFound {
+        /// Name of the missing program.
+        name: String,
+    },
+
     /// OpenSSL shared library could not be located for the target process.
     #[error("could not find OpenSSL library for pid {pid:?}")]
     OpenSslNotFound {
