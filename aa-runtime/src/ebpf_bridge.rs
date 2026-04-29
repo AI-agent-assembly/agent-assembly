@@ -3,11 +3,17 @@
 //! Maps raw eBPF event types from `aa_ebpf` into `AuditEvent` proto messages
 //! and enriches them for the broadcast channel.
 
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
 use aa_ebpf::events::{ExecEvent, FileIoEvent, ProcessExitEvent};
 use aa_ebpf::syscall::SyscallKind;
 use aa_proto::assembly::audit::v1::audit_event::Detail;
 use aa_proto::assembly::audit::v1::{AuditEvent, FileOpDetail, ProcessExecDetail};
 use aa_proto::assembly::common::v1::ActionType;
+
+use crate::pipeline::{EnrichedEvent, EventSource};
 
 /// Convert a file I/O eBPF event into an [`AuditEvent`] proto message.
 ///
@@ -84,6 +90,26 @@ pub fn exit_event_to_audit(event: &ProcessExitEvent) -> AuditEvent {
             succeeded: event.exit_code == 0,
         })),
         ..AuditEvent::default()
+    }
+}
+
+/// Wrap an [`AuditEvent`] into an [`EnrichedEvent`] with eBPF-specific metadata.
+///
+/// Uses the shared sequence counter for unified ordering with SDK events
+/// and sets `connection_id = 0` (eBPF events have no IPC connection).
+pub fn enrich_ebpf(event: AuditEvent, agent_id: &str, seq: &Arc<AtomicU64>) -> EnrichedEvent {
+    let received_at_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or(Duration::ZERO)
+        .as_millis() as i64;
+    let sequence_number = seq.fetch_add(1, Ordering::Relaxed);
+    EnrichedEvent {
+        inner: event,
+        received_at_ms,
+        source: EventSource::EBpf,
+        agent_id: agent_id.to_string(),
+        connection_id: 0,
+        sequence_number,
     }
 }
 
