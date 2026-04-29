@@ -7,11 +7,22 @@ repository.workspace = true
 description = "Python FFI bindings for Agent Assembly via PyO3"
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "lib"]
 
 [dependencies]
 aa-core = { path = "../aa-core" }
-pyo3 = { version = "0.24", features = ["extension-module"] }
+aa-proto = { path = "../aa-proto" }
+prost = "0.13"
+pyo3 = "0.24"
+tokio = { version = "1", features = ["net", "rt", "sync", "time", "io-util", "macros"] }
+tracing = "0.1"
+
+[dev-dependencies]
+pyo3 = { version = "0.24", features = ["auto-initialize"] }
+tokio = { version = "1", features = ["test-util"] }
+
+[features]
+extension-module = ["pyo3/extension-module"]
 
 [lints]
 workspace = true
