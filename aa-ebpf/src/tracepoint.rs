@@ -14,6 +14,12 @@ use crate::error::EbpfError;
 /// Create via [`TracepointManager::attach`]. The tracepoints stay active
 /// until the `TracepointManager` is dropped.
 pub struct TracepointManager {
+    /// Live tracepoint link handles. Stored as type-erased `Box<dyn Any>`
+    /// to avoid depending on aya's internal link-id type name. Dropping
+    /// them detaches the tracepoints from the kernel.
+    #[cfg(target_os = "linux")]
+    _links: Vec<Box<dyn std::any::Any>>,
+    #[cfg(not(target_os = "linux"))]
     _private: (),
 }
 
@@ -59,7 +65,7 @@ impl TracepointManager {
             tracing::info!(program = prog_name, tracepoint = %format!("{category}/{tp_name}"), "tracepoint attached");
         }
 
-        Ok(Self { _private: () })
+        Ok(Self { _links: Vec::new() })
     }
 
     /// Attach tracepoints — non-Linux stub.
