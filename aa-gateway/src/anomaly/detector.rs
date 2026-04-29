@@ -318,9 +318,11 @@ mod tests {
 
     #[test]
     fn behavior_spike_detected_when_rate_exceeds_baseline() {
-        let mut config = AnomalyConfig::default();
-        config.baseline_window_secs = 60;
-        config.spike_stddev_multiplier = 2.0;
+        let config = AnomalyConfig {
+            baseline_window_secs: 60,
+            spike_stddev_multiplier: 2.0,
+            ..AnomalyConfig::default()
+        };
         let detector = AnomalyDetector::new(config);
         let id = agent(1);
 
@@ -394,8 +396,10 @@ mod tests {
 
     #[test]
     fn credential_leak_detected_when_threshold_exceeded() {
-        let mut config = AnomalyConfig::default();
-        config.credential_leak_threshold = 3;
+        let config = AnomalyConfig {
+            credential_leak_threshold: 3,
+            ..AnomalyConfig::default()
+        };
         let detector = AnomalyDetector::new(config);
         let id = agent(6);
 
@@ -453,8 +457,10 @@ mod tests {
 
     #[test]
     fn loop_runaway_detected_when_threshold_exceeded() {
-        let mut config = AnomalyConfig::default();
-        config.loop_threshold = 5; // low threshold for testing
+        let config = AnomalyConfig {
+            loop_threshold: 5, // low threshold for testing
+            ..AnomalyConfig::default()
+        };
         let detector = AnomalyDetector::new(config);
         let id = agent(10);
 
@@ -471,8 +477,10 @@ mod tests {
 
     #[test]
     fn loop_runaway_not_detected_below_threshold() {
-        let mut config = AnomalyConfig::default();
-        config.loop_threshold = 5;
+        let config = AnomalyConfig {
+            loop_threshold: 5,
+            ..AnomalyConfig::default()
+        };
         let detector = AnomalyDetector::new(config);
         let id = agent(11);
 
@@ -485,8 +493,10 @@ mod tests {
 
     #[test]
     fn loop_runaway_different_args_not_counted_together() {
-        let mut config = AnomalyConfig::default();
-        config.loop_threshold = 5;
+        let config = AnomalyConfig {
+            loop_threshold: 5,
+            ..AnomalyConfig::default()
+        };
         let detector = AnomalyDetector::new(config);
         let id = agent(12);
 
