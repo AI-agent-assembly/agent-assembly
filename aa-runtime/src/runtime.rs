@@ -94,9 +94,7 @@ pub async fn run(config: RuntimeConfig) {
         tokio::sync::mpsc::channel::<(u64, crate::ipc::IpcFrame)>(pipeline_config.input_buffer);
 
     // Create the broadcast channel for fan-out to downstream subscribers.
-    // The leading `_broadcast_rx` keeps the channel alive until real subscribers
-    // are wired in AAASM-32+.
-    let (broadcast_tx, _broadcast_rx) =
+    let (broadcast_tx, correlation_rx) =
         tokio::sync::broadcast::channel::<crate::pipeline::PipelineEvent>(pipeline_config.broadcast_capacity);
 
     // Shared metrics — future health/metrics endpoints will receive an Arc clone.
@@ -159,6 +157,79 @@ pub async fn run(config: RuntimeConfig) {
             .await;
         });
         tracing::info!("pipeline task spawned");
+    }
+
+    // Spawn the correlation engine subscriber task.
+    {
+        let corr_config = crate::correlation::CorrelationConfig::from_runtime_config(&config);
+        let corr_interval = Duration::from_millis(corr_config.eviction_interval_ms);
+        let mut engine = crate::correlation::CorrelationEngine::new(corr_config);
+        let corr_token = token.clone();
+        let mut corr_rx = correlation_rx;
+        tracker.spawn(async move {
+            let mut ticker = tokio::time::interval(corr_interval);
+            loop {
+                tokio::select! {
+                    _ = corr_token.cancelled() => {
+                        tracing::info!("correlation subscriber shutting down");
+                        break;
+                    }
+                    _ = ticker.tick() => {
+                        let now_ms = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_millis() as u64;
+                        let outcomes = engine.correlate();
+                        for outcome in &outcomes {
+                            match outcome {
+                                crate::correlation::CorrelationOutcome::Matched(c) => {
+                                    tracing::info!(
+                                        intent = %c.intent_event_id,
+                                        action = %c.action_event_id,
+                                        strength = c.correlation_strength,
+                                        delta_ms = c.time_delta_ms,
+                                        "correlation matched"
+                                    );
+                                }
+                                crate::correlation::CorrelationOutcome::UnexpectedAction { action_event_id } => {
+                                    tracing::warn!(
+                                        action = %action_event_id,
+                                        "unexpected action — no matching intent"
+                                    );
+                                }
+                                crate::correlation::CorrelationOutcome::IntentWithoutAction { intent_event_id } => {
+                                    tracing::info!(
+                                        intent = %intent_event_id,
+                                        "intent without observed action"
+                                    );
+                                }
+                            }
+                        }
+                        engine.evict(now_ms);
+                    }
+                    result = corr_rx.recv() => {
+                        match result {
+                            Ok(crate::pipeline::PipelineEvent::Audit(enriched)) => {
+                                if let Some(corr_event) = crate::correlation::try_from_enriched(&enriched) {
+                                    engine.ingest(corr_event);
+                                }
+                            }
+                            Ok(crate::pipeline::PipelineEvent::LayerDegradation(_)) => {
+                                // Layer degradation events are not correlated.
+                            }
+                            Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                                tracing::warn!(dropped = n, "correlation subscriber lagged — events lost");
+                            }
+                            Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                                tracing::info!("broadcast channel closed — correlation subscriber exiting");
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        tracing::info!("correlation subscriber task spawned");
     }
 
     // Spawn the health/metrics HTTP server task.
@@ -304,5 +375,100 @@ mod tests {
         // Drain with a very short timeout — must expire.
         let result = tokio::time::timeout(Duration::from_millis(100), tracker.wait()).await;
         assert!(result.is_err(), "expected timeout but tasks completed");
+    }
+
+    /// End-to-end integration test: feed events through a broadcast channel into
+    /// the correlation engine and verify that correlate() produces outcomes.
+    #[tokio::test]
+    async fn correlation_subscriber_ingests_and_correlates() {
+        use crate::correlation::{CorrelationConfig, CorrelationEngine};
+        use crate::pipeline::event::{EnrichedEvent, EventSource};
+        use aa_proto::assembly::audit::v1::AuditEvent;
+        use aa_proto::assembly::common::v1::ActionType;
+
+        // Short window and interval for fast test execution.
+        let config = CorrelationConfig {
+            window_ms: 500,
+            max_window_size: 100,
+            eviction_interval_ms: 50,
+        };
+        let mut engine = CorrelationEngine::new(config);
+
+        // Build an SDK/TOOL_CALL intent event.
+        let intent_enriched = EnrichedEvent {
+            inner: AuditEvent {
+                event_id: "550e8400-e29b-41d4-a716-446655440001".to_string(),
+                action_type: ActionType::ToolCall as i32,
+                ..AuditEvent::default()
+            },
+            received_at_ms: 1000,
+            source: EventSource::Sdk,
+            agent_id: "test".to_string(),
+            connection_id: 1,
+            sequence_number: 0,
+        };
+
+        // Build an eBPF/FILE_OPERATION action event.
+        let action_enriched = EnrichedEvent {
+            inner: AuditEvent {
+                event_id: "550e8400-e29b-41d4-a716-446655440002".to_string(),
+                action_type: ActionType::FileOperation as i32,
+                ..AuditEvent::default()
+            },
+            received_at_ms: 1050,
+            source: EventSource::EBpf,
+            agent_id: "test".to_string(),
+            connection_id: 1,
+            sequence_number: 1,
+        };
+
+        // Simulate the subscriber loop: convert and ingest.
+        let intent_event = crate::correlation::try_from_enriched(&intent_enriched);
+        assert!(intent_event.is_some(), "SDK/TOOL_CALL should produce Intent");
+        engine.ingest(intent_event.unwrap());
+
+        let action_event = crate::correlation::try_from_enriched(&action_enriched);
+        assert!(action_event.is_some(), "eBPF/FILE_OPERATION should produce Action");
+        engine.ingest(action_event.unwrap());
+
+        // Run correlation — should produce at least one outcome.
+        let outcomes = engine.correlate();
+        assert!(!outcomes.is_empty(), "expected at least one correlation outcome");
+    }
+
+    /// Verify the broadcast channel integration: send a PipelineEvent through
+    /// the channel and confirm the correlation subscriber can receive and
+    /// convert it.
+    #[tokio::test]
+    async fn broadcast_channel_delivers_to_correlation() {
+        use crate::pipeline::event::{EnrichedEvent, EventSource, PipelineEvent};
+        use aa_proto::assembly::audit::v1::AuditEvent;
+        use aa_proto::assembly::common::v1::ActionType;
+
+        let (tx, mut rx) = tokio::sync::broadcast::channel::<PipelineEvent>(16);
+
+        let enriched = EnrichedEvent {
+            inner: AuditEvent {
+                event_id: "550e8400-e29b-41d4-a716-446655440003".to_string(),
+                action_type: ActionType::ToolCall as i32,
+                ..AuditEvent::default()
+            },
+            received_at_ms: 2000,
+            source: EventSource::Sdk,
+            agent_id: "test".to_string(),
+            connection_id: 1,
+            sequence_number: 0,
+        };
+
+        tx.send(PipelineEvent::Audit(Box::new(enriched))).unwrap();
+
+        let received = rx.recv().await.unwrap();
+        match received {
+            PipelineEvent::Audit(e) => {
+                let corr = crate::correlation::try_from_enriched(&e);
+                assert!(corr.is_some());
+            }
+            _ => panic!("expected Audit event"),
+        }
     }
 }
