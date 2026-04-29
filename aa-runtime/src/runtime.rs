@@ -493,6 +493,95 @@ mod tests {
         assert!(!outcomes.is_empty(), "expected at least one correlation outcome");
     }
 
+    // ── spawn_proxy tests ────────────────────────────────────────────────
+
+    use std::sync::Mutex;
+
+    /// Serialise env-var-mutating spawn_proxy tests.
+    static PROXY_ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    fn clear_proxy_env() {
+        std::env::remove_var("AA_PROXY_ADDR");
+        std::env::remove_var("AA_CA_DIR");
+        std::env::remove_var("AA_PROXY_CERT_CACHE_CAPACITY");
+        std::env::remove_var("AA_PROXY_LLM_ONLY");
+    }
+
+    #[tokio::test]
+    async fn spawn_proxy_with_invalid_config_emits_degradation() {
+        let _lock = PROXY_ENV_LOCK.lock().unwrap();
+        clear_proxy_env();
+        std::env::set_var("AA_PROXY_ADDR", "not-a-valid-address");
+
+        let tracker = TaskTracker::new();
+        let (tx, mut rx) = tokio::sync::broadcast::channel::<crate::pipeline::PipelineEvent>(16);
+        let active_layers = crate::layer::LayerSet::PROXY | crate::layer::LayerSet::SDK;
+        let mut degraded = Vec::new();
+
+        super::spawn_proxy(&tracker, &tx, active_layers, &mut degraded);
+
+        // Config failure should immediately degrade — no task spawned.
+        assert!(degraded.contains(&"proxy".to_string()));
+
+        // A LayerDegradation event should be on the broadcast channel.
+        let event = rx.try_recv().unwrap();
+        match event {
+            crate::pipeline::PipelineEvent::LayerDegradation(info) => {
+                assert_eq!(info.layer, "proxy");
+                assert!(info.reason.contains("AA_PROXY_ADDR"));
+                assert_eq!(info.remaining_layers, vec!["sdk"]);
+            }
+            _ => panic!("expected LayerDegradation event"),
+        }
+
+        clear_proxy_env();
+    }
+
+    #[tokio::test]
+    async fn spawn_proxy_with_occupied_port_emits_degradation() {
+        let _lock = PROXY_ENV_LOCK.lock().unwrap();
+        clear_proxy_env();
+
+        // Bind a port so the proxy will fail to bind the same one.
+        let blocker = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = blocker.local_addr().unwrap();
+        std::env::set_var("AA_PROXY_ADDR", addr.to_string());
+
+        // Use a tempdir for the CA so the proxy doesn't touch the real one.
+        let ca_dir = tempfile::tempdir().unwrap();
+        std::env::set_var("AA_CA_DIR", ca_dir.path().to_str().unwrap());
+
+        let tracker = TaskTracker::new();
+        let (tx, mut rx) = tokio::sync::broadcast::channel::<crate::pipeline::PipelineEvent>(16);
+        let active_layers = crate::layer::LayerSet::PROXY | crate::layer::LayerSet::SDK;
+        let mut degraded = Vec::new();
+
+        super::spawn_proxy(&tracker, &tx, active_layers, &mut degraded);
+
+        // Config is valid, so no immediate degradation.
+        assert!(!degraded.contains(&"proxy".to_string()));
+
+        // Wait for the proxy task to fail (port already bound).
+        tracker.close();
+        tokio::time::timeout(Duration::from_secs(5), tracker.wait())
+            .await
+            .expect("proxy task did not exit within timeout");
+
+        // The proxy should have emitted a LayerDegradation on the broadcast.
+        let event = rx.try_recv().unwrap();
+        match event {
+            crate::pipeline::PipelineEvent::LayerDegradation(info) => {
+                assert_eq!(info.layer, "proxy");
+                assert!(info.reason.contains("proxy exited"));
+                assert_eq!(info.remaining_layers, vec!["sdk"]);
+            }
+            _ => panic!("expected LayerDegradation event"),
+        }
+
+        drop(blocker);
+        clear_proxy_env();
+    }
+
     /// Verify the broadcast channel integration: send a PipelineEvent through
     /// the channel and confirm the correlation subscriber can receive and
     /// convert it.
