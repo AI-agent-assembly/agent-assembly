@@ -9,4 +9,5 @@ pub mod config;
 pub mod error;
 pub mod events;
 pub mod middleware;
+pub mod routes;
 pub mod state;
