@@ -17,6 +17,15 @@ pub enum LlmApiPattern {
 }
 
 /// Classify `host` (the CONNECT tunnel target hostname) as an [`LlmApiPattern`].
-pub fn detect_api(_host: &str) -> LlmApiPattern {
-    todo!()
+///
+/// Comparison is case-insensitive. A host like `api.openai.com:443` is
+/// normalised by stripping the port before matching.
+pub fn detect_api(host: &str) -> LlmApiPattern {
+    let hostname = host.split(':').next().unwrap_or(host);
+    match hostname.to_ascii_lowercase().as_str() {
+        "api.openai.com" => LlmApiPattern::OpenAi,
+        "api.anthropic.com" => LlmApiPattern::Anthropic,
+        "api.cohere.com" => LlmApiPattern::Cohere,
+        _ => LlmApiPattern::Unknown,
+    }
 }
