@@ -52,6 +52,13 @@ pub enum EbpfError {
         name: String,
     },
 
+    /// Insufficient permissions to load or attach eBPF programs.
+    #[error("permission denied: {detail}")]
+    PermissionDenied {
+        /// Human-readable description of the required capability.
+        detail: String,
+    },
+
     /// OpenSSL shared library could not be located for the target process.
     #[error("could not find OpenSSL library for pid {pid:?}")]
     OpenSslNotFound {
