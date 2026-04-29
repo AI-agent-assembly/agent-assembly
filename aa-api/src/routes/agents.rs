@@ -125,3 +125,29 @@ pub async fn get_agent(
 
     Ok((StatusCode::OK, Json(record_to_response(record))))
 }
+
+/// `DELETE /api/v1/agents/:id` — deregister (kill) an agent.
+#[utoipa::path(
+    delete,
+    path = "/api/v1/agents/{id}",
+    params(("id" = String, Path, description = "Hex-encoded agent UUID")),
+    responses(
+        (status = 204, description = "Agent deregistered"),
+        (status = 400, description = "Invalid agent ID format"),
+        (status = 404, description = "Agent not found")
+    ),
+    tag = "agents"
+)]
+pub async fn delete_agent(
+    Extension(state): Extension<AppState>,
+    axum::extract::Path(id): axum::extract::Path<String>,
+) -> Result<StatusCode, ProblemDetail> {
+    let agent_id = parse_agent_id(&id)?;
+
+    state.agent_registry.deregister(&agent_id).map_err(|_| {
+        ProblemDetail::from_status(StatusCode::NOT_FOUND)
+            .with_detail(format!("Agent not found: {id}"))
+    })?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
