@@ -45,6 +45,20 @@ pub enum EbpfError {
         name: String,
     },
 
+    /// A required eBPF program was not found in the loaded object.
+    #[error("eBPF program `{name}` not found in object")]
+    ProgramNotFound {
+        /// Name of the missing program.
+        name: String,
+    },
+
+    /// Insufficient permissions to load or attach eBPF programs.
+    #[error("permission denied: {detail}")]
+    PermissionDenied {
+        /// Human-readable description of the required capability.
+        detail: String,
+    },
+
     /// OpenSSL shared library could not be located for the target process.
     #[error("could not find OpenSSL library for pid {pid:?}")]
     OpenSslNotFound {
@@ -108,6 +122,28 @@ mod tests {
             name: "PID_FILTER".into(),
         };
         assert_eq!(err.to_string(), "eBPF map `PID_FILTER` not found in object");
+    }
+
+    #[test]
+    fn display_program_not_found() {
+        let err = EbpfError::ProgramNotFound {
+            name: "ssl_write".into(),
+        };
+        assert_eq!(err.to_string(), "eBPF program `ssl_write` not found in object");
+    }
+
+    #[test]
+    fn display_permission_denied() {
+        let err = EbpfError::PermissionDenied {
+            detail: "requires CAP_BPF".into(),
+        };
+        assert_eq!(err.to_string(), "permission denied: requires CAP_BPF");
+    }
+
+    #[test]
+    fn display_openssl_not_found() {
+        let err = EbpfError::OpenSslNotFound { pid: Some(1234) };
+        assert_eq!(err.to_string(), "could not find OpenSSL library for pid Some(1234)");
     }
 
     #[test]

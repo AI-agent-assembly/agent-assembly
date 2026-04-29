@@ -60,11 +60,11 @@ impl UprobeManager {
         {
             let prog: &mut UProbe = bpf
                 .program_mut("ssl_write")
-                .ok_or_else(|| EbpfError::MapNotFound {
+                .ok_or_else(|| EbpfError::ProgramNotFound {
                     name: "ssl_write".into(),
                 })?
                 .try_into()?;
-            prog.load()?;
+            load_program(prog, "ssl_write")?;
             links.push(Box::new(prog.attach(Some("SSL_write"), 0, &ssl_path, target_pid)?));
         }
 
@@ -72,11 +72,11 @@ impl UprobeManager {
         {
             let prog: &mut UProbe = bpf
                 .program_mut("ssl_read_entry")
-                .ok_or_else(|| EbpfError::MapNotFound {
+                .ok_or_else(|| EbpfError::ProgramNotFound {
                     name: "ssl_read_entry".into(),
                 })?
                 .try_into()?;
-            prog.load()?;
+            load_program(prog, "ssl_read_entry")?;
             links.push(Box::new(prog.attach(Some("SSL_read"), 0, &ssl_path, target_pid)?));
         }
 
@@ -84,11 +84,11 @@ impl UprobeManager {
         {
             let prog: &mut UProbe = bpf
                 .program_mut("ssl_read_exit")
-                .ok_or_else(|| EbpfError::MapNotFound {
+                .ok_or_else(|| EbpfError::ProgramNotFound {
                     name: "ssl_read_exit".into(),
                 })?
                 .try_into()?;
-            prog.load()?;
+            load_program(prog, "ssl_read_exit")?;
             links.push(Box::new(prog.attach(Some("SSL_read"), 0, &ssl_path, target_pid)?));
         }
 
@@ -101,10 +101,45 @@ impl UprobeManager {
     /// Stub for non-Linux platforms — uprobe attachment requires Linux.
     #[cfg(not(target_os = "linux"))]
     pub fn attach(_bpf: &mut (), _target_pid: Option<i32>) -> Result<Self, EbpfError> {
-        Err(EbpfError::MapNotFound {
+        Err(EbpfError::ProgramNotFound {
             name: "uprobe attachment requires Linux".into(),
         })
     }
+}
+
+impl Drop for UprobeManager {
+    fn drop(&mut self) {
+        #[cfg(target_os = "linux")]
+        let count = self._links.len();
+        #[cfg(not(target_os = "linux"))]
+        let count = 0_usize;
+
+        tracing::debug!(
+            target_pid = ?self.target_pid,
+            probe_count = count,
+            "detaching uprobe links",
+        );
+    }
+}
+
+/// Load a BPF program, converting EPERM to [`EbpfError::PermissionDenied`].
+///
+/// `prog.load()` returns `aya::programs::ProgramError` on failure.  When the
+/// kernel rejects the load with EPERM the error string contains "EPERM" or
+/// "Operation not permitted".  This wrapper detects that pattern and returns a
+/// more actionable [`EbpfError::PermissionDenied`] instead.
+#[cfg(target_os = "linux")]
+fn load_program(prog: &mut UProbe, name: &str) -> Result<(), EbpfError> {
+    prog.load().map_err(|e| {
+        let msg = e.to_string();
+        if msg.contains("EPERM") || msg.contains("Operation not permitted") {
+            EbpfError::PermissionDenied {
+                detail: format!("loading program `{name}` requires CAP_BPF + CAP_PERFMON (or root)"),
+            }
+        } else {
+            EbpfError::Program(e)
+        }
+    })
 }
 
 /// Target well-known `libssl.so` filesystem paths tried when the library is
@@ -178,4 +213,36 @@ fn find_openssl_path(target_pid: Option<i32>) -> Result<String, EbpfError> {
     }
 
     Err(EbpfError::OpenSslNotFound { pid: target_pid })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// On Linux: reading /proc/maps for a nonexistent PID returns an Io error.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn find_openssl_path_nonexistent_pid_returns_io_error() {
+        // PID 2^22 - 1 is extremely unlikely to exist.
+        let result = find_openssl_path(Some(4_194_303));
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(err, EbpfError::Io(_)), "expected Io error, got: {err}",);
+    }
+
+    /// On Linux: system-wide search with no libssl installed returns OpenSslNotFound.
+    /// This test only fails on systems that actually have libssl — which is
+    /// acceptable; it validates the error path on minimal CI containers.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn find_openssl_path_system_wide_falls_through_to_filesystem() {
+        // We cannot guarantee libssl is absent, so just verify the function
+        // returns Ok (found) or OpenSslNotFound (not found) — never panics.
+        let result = find_openssl_path(None);
+        match &result {
+            Ok(path) => assert!(path.contains("libssl.so"), "unexpected path: {path}"),
+            Err(EbpfError::OpenSslNotFound { .. }) => { /* expected on minimal systems */ }
+            Err(e) => panic!("unexpected error variant: {e}"),
+        }
+    }
 }
