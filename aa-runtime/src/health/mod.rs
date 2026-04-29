@@ -292,4 +292,65 @@ mod tests {
         let response2 = app2.oneshot(req2).await.unwrap();
         assert_eq!(response2.status(), StatusCode::OK);
     }
+
+    #[tokio::test]
+    async fn health_response_includes_active_layers() {
+        let (_, ready_rx) = tokio::sync::watch::channel(false);
+        let (inbound_tx, _) = tokio::sync::mpsc::channel(1);
+        let pipeline_metrics = Arc::new(crate::pipeline::PipelineMetrics::default());
+
+        let state = HealthState {
+            start_time: std::time::Instant::now(),
+            pipeline_metrics,
+            ready_rx,
+            prometheus_handle: make_prometheus_handle(),
+            active_connections: Arc::new(AtomicI64::new(0)),
+            inbound_tx,
+            active_layers: crate::layer::LayerSet::SDK,
+        };
+
+        let app = router(state);
+        let req = Request::builder().uri("/health").body(Body::empty()).unwrap();
+
+        let response = app.oneshot(req).await.unwrap();
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+        let layers = json["active_layers"].as_array().expect("active_layers should be an array");
+        assert_eq!(layers.len(), 1);
+        assert_eq!(layers[0], "sdk");
+    }
+
+    #[tokio::test]
+    async fn health_active_layers_matches_all_layers() {
+        let (_, ready_rx) = tokio::sync::watch::channel(false);
+        let (inbound_tx, _) = tokio::sync::mpsc::channel(1);
+        let pipeline_metrics = Arc::new(crate::pipeline::PipelineMetrics::default());
+
+        let all_layers =
+            crate::layer::LayerSet::EBPF | crate::layer::LayerSet::PROXY | crate::layer::LayerSet::SDK;
+
+        let state = HealthState {
+            start_time: std::time::Instant::now(),
+            pipeline_metrics,
+            ready_rx,
+            prometheus_handle: make_prometheus_handle(),
+            active_connections: Arc::new(AtomicI64::new(0)),
+            inbound_tx,
+            active_layers: all_layers,
+        };
+
+        let app = router(state);
+        let req = Request::builder().uri("/health").body(Body::empty()).unwrap();
+
+        let response = app.oneshot(req).await.unwrap();
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+        let layers = json["active_layers"].as_array().expect("active_layers should be an array");
+        assert_eq!(layers.len(), 3);
+        assert_eq!(layers[0], "ebpf");
+        assert_eq!(layers[1], "proxy");
+        assert_eq!(layers[2], "sdk");
+    }
 }
