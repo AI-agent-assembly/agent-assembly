@@ -198,3 +198,28 @@ async fn decide_invalid_uuid_returns_error() {
     let status = result.unwrap_err();
     assert_eq!(status.code(), tonic::Code::InvalidArgument);
 }
+
+#[tokio::test]
+async fn reject_without_reason_returns_error() {
+    let (addr, queue) = start_server().await;
+    let mut client = ApprovalServiceClient::connect(format!("http://{addr}"))
+        .await
+        .unwrap();
+
+    let req = make_test_request();
+    let request_id = req.request_id.to_string();
+    let (_rid, _fut) = queue.submit(req);
+
+    let result = client
+        .decide(DecideRequest {
+            request_id,
+            decision: ApprovalDecisionType::Rejected as i32,
+            decided_by: "bob".to_string(),
+            reason: String::new(),
+        })
+        .await;
+
+    assert!(result.is_err());
+    let status = result.unwrap_err();
+    assert_eq!(status.code(), tonic::Code::InvalidArgument);
+}
