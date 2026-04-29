@@ -4,6 +4,11 @@
 //! credential tokens, and heartbeat state. It is the server-side backing store
 //! for the `AgentLifecycleService` gRPC service defined in `proto/agent.proto`.
 
+pub mod store;
+pub mod token;
+
+pub use store::{AgentRecord, AgentRegistry};
+
 /// Errors returned by [`AgentRegistry`](store::AgentRegistry) operations.
 #[derive(Debug, thiserror::Error)]
 pub enum RegistryError {
