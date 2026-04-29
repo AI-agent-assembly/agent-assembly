@@ -139,9 +139,18 @@ impl ProxyServer {
 
             tracing::debug!(%host, "TLS MitM handshake complete");
 
-            // Bidirectional forwarding and interception added in next commit.
-            drop(client_tls);
-            drop(upstream_tls);
+            // Bidirectional copy between client and upstream.
+            let (mut client_read, mut client_write) = tokio::io::split(client_tls);
+            let (mut upstream_read, mut upstream_write) = tokio::io::split(upstream_tls);
+
+            let client_to_upstream = tokio::io::copy(&mut client_read, &mut upstream_write);
+            let upstream_to_client = tokio::io::copy(&mut upstream_read, &mut client_write);
+
+            tokio::select! {
+                r = client_to_upstream => { r?; }
+                r = upstream_to_client => { r?; }
+            }
+
             Ok(())
         } else {
             // Plain HTTP — forwarding added in a subsequent commit.
