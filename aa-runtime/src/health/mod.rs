@@ -29,6 +29,7 @@ pub struct HealthResponse {
     pub status: &'static str,
     pub uptime_secs: u64,
     pub events_processed: u64,
+    pub active_layers: Vec<&'static str>,
 }
 
 /// Build the axum router with all three routes.
@@ -47,6 +48,7 @@ async fn health_handler(axum::extract::State(state): axum::extract::State<Health
         status: "healthy",
         uptime_secs: state.start_time.elapsed().as_secs(),
         events_processed: state.pipeline_metrics.processed(),
+        active_layers: state.active_layers.names(),
     })
 }
 
@@ -97,11 +99,13 @@ mod tests {
             status: "healthy",
             uptime_secs: 42,
             events_processed: 100,
+            active_layers: vec!["sdk"],
         };
         let json = serde_json::to_string(&resp).expect("serialization failed");
         assert!(json.contains("\"status\":\"healthy\""));
         assert!(json.contains("\"uptime_secs\":42"));
         assert!(json.contains("\"events_processed\":100"));
+        assert!(json.contains("\"active_layers\":[\"sdk\"]"));
     }
 
     #[tokio::test]
