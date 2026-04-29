@@ -7,7 +7,7 @@ repository.workspace = true
 description = "Control plane — policy enforcement engine and agent registry for Agent Assembly"
 
 [dependencies]
-aa-core      = { path = "../aa-core" }
+aa-core      = { path = "../aa-core", features = ["serde"] }
 aa-proto     = { path = "../aa-proto" }
 aa-runtime   = { path = "../aa-runtime" }
 tokio        = { version = "1", features = ["full"] }
