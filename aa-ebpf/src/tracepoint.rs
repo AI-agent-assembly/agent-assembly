@@ -48,6 +48,8 @@ impl TracepointManager {
             ("handle_sched_process_exit", "sched", "sched_process_exit"),
         ];
 
+        let mut links: Vec<Box<dyn std::any::Any>> = Vec::with_capacity(tracepoints.len());
+
         for (prog_name, category, tp_name) in tracepoints {
             let program: &mut TracePoint = bpf
                 .program_mut(prog_name)
@@ -58,14 +60,15 @@ impl TracepointManager {
             program
                 .load()
                 .map_err(|e| EbpfError::ProbeAttach(format!("{prog_name} load failed: {e}")))?;
-            program.attach(category, tp_name).map_err(|e| {
+            let link = program.attach(category, tp_name).map_err(|e| {
                 EbpfError::ProbeAttach(format!("{prog_name} attach to {category}/{tp_name} failed: {e}"))
             })?;
+            links.push(Box::new(link));
 
             tracing::info!(program = prog_name, tracepoint = %format!("{category}/{tp_name}"), "tracepoint attached");
         }
 
-        Ok(Self { _links: Vec::new() })
+        Ok(Self { _links: links })
     }
 
     /// Attach tracepoints — non-Linux stub.
