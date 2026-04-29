@@ -6,6 +6,13 @@ license.workspace = true
 repository.workspace = true
 description = "Tokio async runtime wrapper and lifecycle management for Agent Assembly"
 
+[features]
+default = []
+# Enables integration tests that exercise both proxy and eBPF layers together.
+# Requires Linux + root (CAP_BPF + CAP_PERFMON). Not included in default features.
+# Usage: sudo cargo test -p aa-runtime --features integration-test --test layer_integration
+integration-test = []
+
 [dependencies]
 aa-core                     = { path = "../aa-core" }
 aa-proto                    = { path = "../aa-proto" }
