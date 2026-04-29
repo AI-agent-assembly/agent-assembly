@@ -4,6 +4,9 @@
 # Most tools are denied; only read-only file access is permitted.
 # Tight network allowlist, low daily budget, restricted to business hours.
 
+# Seconds before an approval request times out (default: 300)
+approval_timeout_secs: 600
+
 network:
   allowlist:
     - api.openai.com
