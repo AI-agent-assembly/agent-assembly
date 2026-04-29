@@ -5,6 +5,7 @@
 //! [`EnvelopedEvent`](aa_proto::assembly::event::v1::EnvelopedEvent) envelopes,
 //! and delivers them as JSON via HTTP POST to a configured webhook URL.
 
+pub mod delivery;
 pub mod publisher;
 pub mod webhook;
 
