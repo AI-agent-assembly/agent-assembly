@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use chrono::{DateTime, Utc};
 use dashmap::DashMap;
 
-use super::AgentStatus;
+use super::{AgentStatus, RegistryError};
 
 /// Identity and runtime state record for a single registered agent.
 #[derive(Debug, Clone)]
@@ -50,6 +50,46 @@ impl AgentRegistry {
         Self {
             agents: DashMap::new(),
         }
+    }
+
+    /// Insert a new agent record. Returns an error if the ID is already registered.
+    pub fn register(&self, record: AgentRecord) -> Result<(), RegistryError> {
+        use dashmap::mapref::entry::Entry;
+        match self.agents.entry(record.agent_id) {
+            Entry::Occupied(_) => Err(RegistryError::AlreadyRegistered(record.agent_id)),
+            Entry::Vacant(v) => {
+                v.insert(record);
+                Ok(())
+            }
+        }
+    }
+
+    /// Look up an agent by ID. Returns `None` if not found.
+    pub fn get(&self, agent_id: &[u8; 16]) -> Option<AgentRecord> {
+        self.agents.get(agent_id).map(|r| r.clone())
+    }
+
+    /// Remove an agent from the registry. Returns the removed record.
+    pub fn deregister(&self, agent_id: &[u8; 16]) -> Result<AgentRecord, RegistryError> {
+        self.agents
+            .remove(agent_id)
+            .map(|(_, record)| record)
+            .ok_or(RegistryError::NotFound(*agent_id))
+    }
+
+    /// Update the `last_heartbeat` timestamp for an agent to now.
+    pub fn update_heartbeat(&self, agent_id: &[u8; 16]) -> Result<(), RegistryError> {
+        let mut entry = self
+            .agents
+            .get_mut(agent_id)
+            .ok_or(RegistryError::NotFound(*agent_id))?;
+        entry.last_heartbeat = Utc::now();
+        Ok(())
+    }
+
+    /// Return a snapshot of all currently registered agents.
+    pub fn list(&self) -> Vec<AgentRecord> {
+        self.agents.iter().map(|r| r.value().clone()).collect()
     }
 }
 
