@@ -26,16 +26,27 @@ use crate::intercept::extract::{extract_anthropic, extract_cohere, extract_opena
 /// LLM calls into the runtime event pipeline.
 pub struct Interceptor {
     event_tx: broadcast::Sender<PipelineEvent>,
-    scanner: CredentialScanner,
+    scanner: Option<CredentialScanner>,
 }
 
 impl Interceptor {
-    /// Create a new `Interceptor` that emits events on the given broadcast channel.
+    /// Create a new `Interceptor` with default credential scanning enabled.
     pub fn new(event_tx: broadcast::Sender<PipelineEvent>) -> Self {
         Self {
             event_tx,
-            scanner: CredentialScanner::new(),
+            scanner: Some(CredentialScanner::new()),
         }
+    }
+
+    /// Create a new `Interceptor` with an explicit scanner configuration.
+    ///
+    /// Pass `None` to disable credential scanning entirely, or `Some(scanner)`
+    /// to use a custom-configured [`CredentialScanner`].
+    pub fn with_scanner(
+        event_tx: broadcast::Sender<PipelineEvent>,
+        scanner: Option<CredentialScanner>,
+    ) -> Self {
+        Self { event_tx, scanner }
     }
 
     /// Inspect an intercepted exchange, extract LLM fields from the body,
@@ -57,17 +68,21 @@ impl Interceptor {
         // Scan for credentials and redact before any further processing so
         // that secrets never appear in audit events or log output.
         let body: Option<bytes::Bytes> = raw_body.map(|b| {
-            let text = String::from_utf8_lossy(b);
-            let result = self.scanner.scan(&text);
-            if result.is_clean() {
-                b.clone()
+            if let Some(scanner) = &self.scanner {
+                let text = String::from_utf8_lossy(b);
+                let result = scanner.scan(&text);
+                if result.is_clean() {
+                    b.clone()
+                } else {
+                    tracing::warn!(
+                        findings = result.findings.len(),
+                        agent_id = event.agent_id.as_deref().unwrap_or("<unknown>"),
+                        "credentials detected in LLM body, redacting before audit"
+                    );
+                    bytes::Bytes::from(result.redact(&text))
+                }
             } else {
-                tracing::warn!(
-                    findings = result.findings.len(),
-                    agent_id = event.agent_id.as_deref().unwrap_or("<unknown>"),
-                    "credentials detected in LLM body, redacting before audit"
-                );
-                bytes::Bytes::from(result.redact(&text))
+                b.clone()
             }
         });
 
