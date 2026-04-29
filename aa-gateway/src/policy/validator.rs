@@ -208,6 +208,7 @@ impl PolicyValidator {
 
         Some(BudgetPolicy {
             daily_limit_usd: raw.daily_limit_usd,
+            monthly_limit_usd: raw.monthly_limit_usd,
             timezone: raw.timezone,
         })
     }

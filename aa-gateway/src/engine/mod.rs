@@ -587,6 +587,7 @@ mod tests {
         let mut doc = empty_doc();
         doc.budget = Some(BudgetPolicy {
             daily_limit_usd: Some(1.0),
+            monthly_limit_usd: None,
             timezone: None,
         });
         let engine = make_engine(doc);
