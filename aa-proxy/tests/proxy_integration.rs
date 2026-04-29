@@ -171,3 +171,33 @@ async fn plain_http_request_is_forwarded_to_upstream() {
         "response body should contain upstream content"
     );
 }
+
+#[tokio::test]
+async fn connect_to_llm_host_triggers_interception_without_crash() {
+    // This test verifies that a CONNECT to a known LLM API host
+    // (api.openai.com) goes through the detect_api → Interceptor path
+    // without panicking or erroring at the proxy level.
+    let dir = tempfile::TempDir::new().unwrap();
+    let ca = CaStore::load_or_create(dir.path()).await.unwrap();
+    let config = test_config(dir.path());
+    let (addr, handle) = start_proxy(config, ca).await;
+
+    let mut stream = TcpStream::connect(addr).await.unwrap();
+    stream
+        .write_all(b"CONNECT api.openai.com:443 HTTP/1.1\r\nHost: api.openai.com:443\r\n\r\n")
+        .await
+        .unwrap();
+
+    let mut reader = BufReader::new(stream);
+    let mut line = String::new();
+    reader.read_line(&mut line).await.unwrap();
+    assert!(
+        line.contains("200"),
+        "expected 200 for LLM host CONNECT, got: {line}"
+    );
+
+    // Drop the connection and verify the server didn't crash.
+    drop(reader);
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    assert!(!handle.is_finished(), "server should still be running after LLM host CONNECT");
+}
