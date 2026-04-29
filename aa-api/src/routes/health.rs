@@ -5,6 +5,8 @@ use axum::response::IntoResponse;
 use axum::Json;
 use serde::Serialize;
 
+use crate::error::ProblemDetail;
+
 /// Response body for the health endpoint.
 #[derive(Serialize, utoipa::ToSchema)]
 pub struct HealthResponse {
@@ -19,7 +21,7 @@ pub struct HealthResponse {
     tag = "health",
     responses(
         (status = 200, description = "Service is healthy", body = HealthResponse),
-        (status = 404, description = "Not found", body = crate::error::ProblemDetail)
+        (status = 404, description = "Not found", body = ProblemDetail)
     )
 )]
 pub async fn health() -> impl IntoResponse {
