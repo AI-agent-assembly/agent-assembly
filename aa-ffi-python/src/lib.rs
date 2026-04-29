@@ -19,6 +19,7 @@ mod codec;
 mod config;
 mod detect;
 mod handle;
+mod hooks;
 mod ipc;
 
 use pyo3::prelude::*;
