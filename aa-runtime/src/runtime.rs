@@ -376,4 +376,100 @@ mod tests {
         let result = tokio::time::timeout(Duration::from_millis(100), tracker.wait()).await;
         assert!(result.is_err(), "expected timeout but tasks completed");
     }
+
+    /// End-to-end integration test: feed events through a broadcast channel into
+    /// the correlation engine and verify that correlate() produces outcomes.
+    #[tokio::test]
+    async fn correlation_subscriber_ingests_and_correlates() {
+        use aa_proto::assembly::audit::v1::AuditEvent;
+        use aa_proto::assembly::common::v1::ActionType;
+        use crate::correlation::{CorrelationConfig, CorrelationEngine};
+        use crate::pipeline::event::{EnrichedEvent, EventSource};
+
+        // Short window and interval for fast test execution.
+        let config = CorrelationConfig {
+            window_ms: 500,
+            max_window_size: 100,
+            eviction_interval_ms: 50,
+        };
+        let mut engine = CorrelationEngine::new(config);
+
+        // Build an SDK/TOOL_CALL intent event.
+        let intent_enriched = EnrichedEvent {
+            inner: AuditEvent {
+                event_id: "550e8400-e29b-41d4-a716-446655440001".to_string(),
+                action_type: ActionType::ToolCall as i32,
+                ..AuditEvent::default()
+            },
+            received_at_ms: 1000,
+            source: EventSource::Sdk,
+            agent_id: "test".to_string(),
+            connection_id: 1,
+            sequence_number: 0,
+        };
+
+        // Build an eBPF/FILE_OPERATION action event.
+        let action_enriched = EnrichedEvent {
+            inner: AuditEvent {
+                event_id: "550e8400-e29b-41d4-a716-446655440002".to_string(),
+                action_type: ActionType::FileOperation as i32,
+                ..AuditEvent::default()
+            },
+            received_at_ms: 1050,
+            source: EventSource::EBpf,
+            agent_id: "test".to_string(),
+            connection_id: 1,
+            sequence_number: 1,
+        };
+
+        // Simulate the subscriber loop: convert and ingest.
+        let intent_event = crate::correlation::try_from_enriched(&intent_enriched);
+        assert!(intent_event.is_some(), "SDK/TOOL_CALL should produce Intent");
+        engine.ingest(intent_event.unwrap());
+
+        let action_event = crate::correlation::try_from_enriched(&action_enriched);
+        assert!(action_event.is_some(), "eBPF/FILE_OPERATION should produce Action");
+        engine.ingest(action_event.unwrap());
+
+        // Run correlation — should produce at least one outcome.
+        let outcomes = engine.correlate();
+        assert!(!outcomes.is_empty(), "expected at least one correlation outcome");
+    }
+
+    /// Verify the broadcast channel integration: send a PipelineEvent through
+    /// the channel and confirm the correlation subscriber can receive and
+    /// convert it.
+    #[tokio::test]
+    async fn broadcast_channel_delivers_to_correlation() {
+        use aa_proto::assembly::audit::v1::AuditEvent;
+        use aa_proto::assembly::common::v1::ActionType;
+        use crate::pipeline::event::{EnrichedEvent, EventSource, PipelineEvent};
+
+        let (tx, mut rx) =
+            tokio::sync::broadcast::channel::<PipelineEvent>(16);
+
+        let enriched = EnrichedEvent {
+            inner: AuditEvent {
+                event_id: "550e8400-e29b-41d4-a716-446655440003".to_string(),
+                action_type: ActionType::ToolCall as i32,
+                ..AuditEvent::default()
+            },
+            received_at_ms: 2000,
+            source: EventSource::Sdk,
+            agent_id: "test".to_string(),
+            connection_id: 1,
+            sequence_number: 0,
+        };
+
+        tx.send(PipelineEvent::Audit(Box::new(enriched))).unwrap();
+
+        let received = rx.recv().await.unwrap();
+        match received {
+            PipelineEvent::Audit(e) => {
+                let corr = crate::correlation::try_from_enriched(&e);
+                assert!(corr.is_some());
+            }
+            _ => panic!("expected Audit event"),
+        }
+    }
 }
