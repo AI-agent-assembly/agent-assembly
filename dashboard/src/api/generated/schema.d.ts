@@ -320,6 +320,13 @@ export interface components {
             /** @description Raw YAML content of the governance policy. */
             policy_yaml: string;
         };
+        /** @description Request body for approval decide actions. */
+        DecideRequest: {
+            /** @description Identity of the operator making the decision. */
+            by?: string | null;
+            /** @description Optional reason for the decision. */
+            reason?: string | null;
+        };
         /** @description Response body for the health endpoint. */
         HealthResponse: {
             /** @description Liveness status string, always `"ok"` when the service is running. */
@@ -564,7 +571,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DecideRequest"];
+            };
+        };
         responses: {
             /** @description Action approved */
             200: {
@@ -594,7 +605,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DecideRequest"];
+            };
+        };
         responses: {
             /** @description Action rejected */
             200: {

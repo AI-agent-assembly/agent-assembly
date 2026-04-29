@@ -94,9 +94,8 @@ pub async fn approve_action(
     axum::extract::Path(id): axum::extract::Path<String>,
     Json(body): Json<DecideRequest>,
 ) -> Result<(StatusCode, Json<ApprovalResponse>), ProblemDetail> {
-    let uuid = Uuid::parse_str(&id).map_err(|_| {
-        ProblemDetail::from_status(StatusCode::BAD_REQUEST).with_detail(format!("Invalid UUID: {id}"))
-    })?;
+    let uuid = Uuid::parse_str(&id)
+        .map_err(|_| ProblemDetail::from_status(StatusCode::BAD_REQUEST).with_detail(format!("Invalid UUID: {id}")))?;
 
     let decision = ApprovalDecision::Approved {
         by: body.by.unwrap_or_else(|| "api".to_string()),
@@ -104,8 +103,7 @@ pub async fn approve_action(
     };
 
     state.approval_queue.decide(uuid, decision).map_err(|_| {
-        ProblemDetail::from_status(StatusCode::NOT_FOUND)
-            .with_detail(format!("Approval request not found: {id}"))
+        ProblemDetail::from_status(StatusCode::NOT_FOUND).with_detail(format!("Approval request not found: {id}"))
     })?;
 
     Ok((
@@ -139,9 +137,8 @@ pub async fn reject_action(
     axum::extract::Path(id): axum::extract::Path<String>,
     Json(body): Json<DecideRequest>,
 ) -> Result<(StatusCode, Json<ApprovalResponse>), ProblemDetail> {
-    let uuid = Uuid::parse_str(&id).map_err(|_| {
-        ProblemDetail::from_status(StatusCode::BAD_REQUEST).with_detail(format!("Invalid UUID: {id}"))
-    })?;
+    let uuid = Uuid::parse_str(&id)
+        .map_err(|_| ProblemDetail::from_status(StatusCode::BAD_REQUEST).with_detail(format!("Invalid UUID: {id}")))?;
 
     let decision = ApprovalDecision::Rejected {
         by: body.by.unwrap_or_else(|| "api".to_string()),
@@ -149,8 +146,7 @@ pub async fn reject_action(
     };
 
     state.approval_queue.decide(uuid, decision).map_err(|_| {
-        ProblemDetail::from_status(StatusCode::NOT_FOUND)
-            .with_detail(format!("Approval request not found: {id}"))
+        ProblemDetail::from_status(StatusCode::NOT_FOUND).with_detail(format!("Approval request not found: {id}"))
     })?;
 
     Ok((

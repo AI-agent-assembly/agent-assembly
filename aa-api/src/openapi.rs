@@ -53,6 +53,7 @@ use crate::routes::{agents, alerts, approvals, costs, logs, policies, traces};
         policies::PolicyResponse,
         policies::CreatePolicyRequest,
         approvals::ApprovalResponse,
+        approvals::DecideRequest,
         costs::CostSummary,
         alerts::AlertResponse,
     ))

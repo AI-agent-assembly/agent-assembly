@@ -82,8 +82,7 @@ pub async fn create_policy(
         .apply_yaml(&body.policy_yaml, Some("api"), state.policy_history.as_ref())
         .await
         .map_err(|e| {
-            ProblemDetail::from_status(StatusCode::BAD_REQUEST)
-                .with_detail(format!("Invalid policy: {e:?}"))
+            ProblemDetail::from_status(StatusCode::BAD_REQUEST).with_detail(format!("Invalid policy: {e:?}"))
         })?;
 
     Ok((

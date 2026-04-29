@@ -183,6 +183,13 @@ paths:
         required: true
         schema:
           type: string
+      requestBody:
+        description: ''
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DecideRequest'
+        required: true
       responses:
         '200':
           description: Action approved
@@ -206,6 +213,13 @@ paths:
         required: true
         schema:
           type: string
+      requestBody:
+        description: ''
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DecideRequest'
+        required: true
       responses:
         '200':
           description: Action rejected
@@ -506,6 +520,18 @@ components:
         policy_yaml:
           type: string
           description: Raw YAML content of the governance policy.
+    DecideRequest:
+      type: object
+      description: Request body for approval decide actions.
+      properties:
+        by:
+          type: string
+          description: Identity of the operator making the decision.
+          nullable: true
+        reason:
+          type: string
+          description: Optional reason for the decision.
+          nullable: true
     HealthResponse:
       type: object
       description: Response body for the health endpoint.
