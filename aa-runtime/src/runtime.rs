@@ -495,10 +495,8 @@ mod tests {
 
     // ── spawn_proxy tests ────────────────────────────────────────────────
 
-    use std::sync::Mutex;
-
     /// Serialise env-var-mutating spawn_proxy tests.
-    static PROXY_ENV_LOCK: Mutex<()> = Mutex::new(());
+    static PROXY_ENV_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
     fn clear_proxy_env() {
         std::env::remove_var("AA_PROXY_ADDR");
@@ -509,7 +507,7 @@ mod tests {
 
     #[tokio::test]
     async fn spawn_proxy_with_invalid_config_emits_degradation() {
-        let _lock = PROXY_ENV_LOCK.lock().unwrap();
+        let _lock = PROXY_ENV_LOCK.lock().await;
         clear_proxy_env();
         std::env::set_var("AA_PROXY_ADDR", "not-a-valid-address");
 
@@ -539,7 +537,7 @@ mod tests {
 
     #[tokio::test]
     async fn spawn_proxy_with_occupied_port_emits_degradation() {
-        let _lock = PROXY_ENV_LOCK.lock().unwrap();
+        let _lock = PROXY_ENV_LOCK.lock().await;
         clear_proxy_env();
 
         // Bind a port so the proxy will fail to bind the same one.
