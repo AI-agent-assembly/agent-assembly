@@ -41,6 +41,11 @@ pub fn build_app(state: AppState) -> Router {
 ///
 /// [`DRAIN_TIMEOUT`]: crate::shutdown::DRAIN_TIMEOUT
 pub async fn run_server(config: ApiConfig, state: AppState) -> Result<(), Box<dyn std::error::Error>> {
+    // Spawn background task to capture budget alerts into the alert store.
+    let budget_rx = state.events.subscribe_budget();
+    let _alert_capture_handle =
+        crate::alerts::capture::spawn_alert_capture(budget_rx, state.alert_store.clone());
+
     let app = build_app(state);
 
     let listener = TcpListener::bind(config.bind_addr).await?;
