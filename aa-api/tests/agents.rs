@@ -374,9 +374,7 @@ async fn suspend_agent_returns_200() {
 
     assert_eq!(response.status(), StatusCode::OK);
 
-    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
-        .await
-        .unwrap();
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(json["agent_id"], id);
     assert_eq!(json["previous_status"], "Active");
@@ -410,10 +408,7 @@ async fn resume_agent_returns_200() {
     // Suspend first so we can resume
     state
         .agent_registry
-        .suspend_agent(
-            &[0xDD; 16],
-            aa_gateway::registry::SuspendReason::Manual,
-        )
+        .suspend_agent(&[0xDD; 16], aa_gateway::registry::SuspendReason::Manual)
         .unwrap();
 
     let app = aa_api::server::build_app(state);
@@ -432,9 +427,7 @@ async fn resume_agent_returns_200() {
 
     assert_eq!(response.status(), StatusCode::OK);
 
-    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
-        .await
-        .unwrap();
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(json["agent_id"], id);
     assert_eq!(json["previous_status"], "Suspended(Manual)");

@@ -62,9 +62,7 @@ pub fn run(args: SuspendArgs, ctx: &ResolvedContext, output: OutputFormat) -> Ex
     let rt = tokio::runtime::Runtime::new().expect("failed to create tokio runtime");
 
     let path = format!("/api/v1/agents/{}/suspend", args.agent_id);
-    let body = SuspendRequest {
-        reason: args.reason,
-    };
+    let body = SuspendRequest { reason: args.reason };
 
     match rt.block_on(client::post_json::<_, SuspendResponse>(ctx, &path, &body)) {
         Ok(resp) => {

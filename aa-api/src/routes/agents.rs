@@ -299,21 +299,13 @@ pub async fn suspend_agent(
         .agent_registry
         .agent_status(&agent_id)
         .map(|s| format!("{s:?}"))
-        .map_err(|_| {
-            ProblemDetail::from_status(StatusCode::NOT_FOUND).with_detail(format!("Agent not found: {id}"))
-        })?;
+        .map_err(|_| ProblemDetail::from_status(StatusCode::NOT_FOUND).with_detail(format!("Agent not found: {id}")))?;
 
     state
         .agent_registry
-        .suspend_and_notify(
-            &agent_id,
-            aa_gateway::registry::SuspendReason::Manual,
-            &body.reason,
-        )
+        .suspend_and_notify(&agent_id, aa_gateway::registry::SuspendReason::Manual, &body.reason)
         .await
-        .map_err(|_| {
-            ProblemDetail::from_status(StatusCode::NOT_FOUND).with_detail(format!("Agent not found: {id}"))
-        })?;
+        .map_err(|_| ProblemDetail::from_status(StatusCode::NOT_FOUND).with_detail(format!("Agent not found: {id}")))?;
 
     Ok((
         StatusCode::OK,
@@ -350,16 +342,12 @@ pub async fn resume_agent(
         .agent_registry
         .agent_status(&agent_id)
         .map(|s| format!("{s:?}"))
-        .map_err(|_| {
-            ProblemDetail::from_status(StatusCode::NOT_FOUND).with_detail(format!("Agent not found: {id}"))
-        })?;
+        .map_err(|_| ProblemDetail::from_status(StatusCode::NOT_FOUND).with_detail(format!("Agent not found: {id}")))?;
 
     state
         .agent_registry
         .resume_agent(&agent_id)
-        .map_err(|_| {
-            ProblemDetail::from_status(StatusCode::NOT_FOUND).with_detail(format!("Agent not found: {id}"))
-        })?;
+        .map_err(|_| ProblemDetail::from_status(StatusCode::NOT_FOUND).with_detail(format!("Agent not found: {id}")))?;
 
     Ok((
         StatusCode::OK,
