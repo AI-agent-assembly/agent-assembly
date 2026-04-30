@@ -77,3 +77,33 @@ pub fn render_timeline(trace: &SessionTrace, max_width: usize) -> String {
     }
     output
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_event(kind: TraceEventKind, label: &str, duration_ms: u64) -> TraceEvent {
+        TraceEvent {
+            kind,
+            label: label.to_string(),
+            duration_ms,
+            children: vec![],
+            violation_reason: None,
+        }
+    }
+
+    #[test]
+    fn compute_max_duration_returns_largest() {
+        let events = vec![
+            make_event(TraceEventKind::Llm, "a", 100),
+            make_event(TraceEventKind::ToolCall, "b", 500),
+            make_event(TraceEventKind::ToolResult, "c", 200),
+        ];
+        assert_eq!(compute_max_duration(&events), 500);
+    }
+
+    #[test]
+    fn compute_max_duration_empty() {
+        assert_eq!(compute_max_duration(&[]), 0);
+    }
+}
