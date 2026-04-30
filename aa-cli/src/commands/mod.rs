@@ -11,6 +11,7 @@ pub mod agent;
 pub mod approvals;
 pub mod completion;
 pub mod context;
+pub mod cost;
 pub mod logs;
 pub mod policy;
 pub mod status;
@@ -38,6 +39,8 @@ pub enum Commands {
     Trace(trace::TraceArgs),
     /// Manage human-in-the-loop approval requests.
     Approvals(approvals::ApprovalsArgs),
+    /// Query cost summary and forecast spending.
+    Cost(cost::CostArgs),
 }
 
 /// Dispatch the parsed CLI command to the appropriate handler.
@@ -52,5 +55,6 @@ pub fn dispatch(cmd: Commands, ctx: &ResolvedContext, output: OutputFormat) -> E
         Commands::Version => version::run(ctx),
         Commands::Trace(args) => trace::dispatch(args, ctx, output),
         Commands::Approvals(args) => approvals::dispatch(args, ctx, output),
+        Commands::Cost(args) => cost::dispatch(args, ctx, output),
     }
 }

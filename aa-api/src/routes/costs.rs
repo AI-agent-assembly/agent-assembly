@@ -14,6 +14,10 @@ pub struct AgentCostEntry {
     pub agent_id: String,
     /// Daily spend for this agent in USD.
     pub daily_spend_usd: String,
+    /// Total spend this month in USD for this agent (if monthly tracking is enabled).
+    pub monthly_spend_usd: Option<String>,
+    /// Calendar date (YYYY-MM-DD) the daily spend applies to.
+    pub date: String,
 }
 
 /// JSON representation of the cost/budget summary.
@@ -38,7 +42,8 @@ pub struct CostSummary {
 
 /// `GET /api/v1/costs` — cost and budget summary.
 ///
-/// Retrieve the current daily and monthly cost and budget summary.
+/// Retrieve the current daily and monthly cost and budget summary,
+/// including per-agent breakdown and configured budget limits.
 #[utoipa::path(
     get,
     path = "/api/v1/costs",
@@ -56,6 +61,8 @@ pub async fn get_cost_summary(Extension(state): Extension<AppState>) -> (StatusC
         .map(|entry| AgentCostEntry {
             agent_id: entry.agent_id_hex.clone(),
             daily_spend_usd: entry.state.spent_usd.to_string(),
+            monthly_spend_usd: entry.state.monthly_spent_usd.map(|d| d.to_string()),
+            date: entry.state.date.to_string(),
         })
         .collect();
 
@@ -86,6 +93,8 @@ mod tests {
             per_agent: vec![AgentCostEntry {
                 agent_id: "abc123".to_string(),
                 daily_spend_usd: "4.10".to_string(),
+                monthly_spend_usd: Some("80.00".to_string()),
+                date: "2026-04-30".to_string(),
             }],
         };
         let json = serde_json::to_value(&summary).unwrap();
