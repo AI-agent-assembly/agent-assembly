@@ -171,6 +171,16 @@ impl BudgetTracker {
         self.timezone
     }
 
+    /// Returns the configured daily budget limit in USD, if set.
+    pub fn daily_limit_usd(&self) -> Option<Decimal> {
+        self.daily_limit_usd
+    }
+
+    /// Returns the configured monthly budget limit in USD, if set.
+    pub fn monthly_limit_usd(&self) -> Option<Decimal> {
+        self.monthly_limit_usd
+    }
+
     /// Returns `true` if the agent has met or exceeded the given daily limit.
     ///
     /// Automatically resets spend to zero when the stored date is before today
