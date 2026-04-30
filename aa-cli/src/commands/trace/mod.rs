@@ -68,8 +68,7 @@ pub fn dispatch(args: TraceArgs, ctx: &ResolvedContext, output: OutputFormat) ->
                 print!("{}", tree::render_tree(&trace));
             }
             TraceFormat::Timeline => {
-                // TODO: wire timeline format
-                println!("{trace:?}");
+                print!("{}", timeline::render_timeline(&trace, 80));
             }
         },
     }
