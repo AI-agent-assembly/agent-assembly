@@ -1,10 +1,12 @@
 //! Policy version history subcommands — apply, history, rollback, diff.
 
+use std::io::IsTerminal;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
 use aa_gateway::policy::history::{FsHistoryStore, HistoryConfig, PolicyHistoryStore};
 use clap::Args;
+use owo_colors::OwoColorize;
 
 /// Arguments for `aasm policy apply`.
 #[derive(Args)]
@@ -145,7 +147,7 @@ pub fn run_diff(args: DiffArgs) -> ExitCode {
                 if diff.lines().count() <= 2 {
                     println!("No differences between the two versions.");
                 } else {
-                    print!("{}", diff);
+                    print_colored_diff(&diff);
                 }
                 ExitCode::SUCCESS
             }
@@ -155,4 +157,36 @@ pub fn run_diff(args: DiffArgs) -> ExitCode {
             }
         }
     })
+}
+
+/// Print a unified diff with ANSI colors.
+///
+/// Colors are suppressed when stdout is not a TTY so piped output
+/// remains machine-readable.
+fn print_colored_diff(diff: &str) {
+    let use_color = std::io::stdout().is_terminal();
+    for line in diff.lines() {
+        if use_color {
+            println!("{}", colorize_diff_line(line));
+        } else {
+            println!("{line}");
+        }
+    }
+}
+
+/// Apply color to a single diff line based on its prefix.
+fn colorize_diff_line(line: &str) -> String {
+    if line.starts_with("---") {
+        line.red().to_string()
+    } else if line.starts_with("+++") {
+        line.green().to_string()
+    } else if line.starts_with("@@") {
+        line.cyan().to_string()
+    } else if line.starts_with('-') {
+        line.red().to_string()
+    } else if line.starts_with('+') {
+        line.green().to_string()
+    } else {
+        line.to_string()
+    }
 }
