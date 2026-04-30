@@ -112,3 +112,33 @@ fn run_set(args: SetArgs) -> ExitCode {
     println!("Context '{}' saved.", args.name);
     ExitCode::SUCCESS
 }
+
+/// Switch the default context.
+fn run_use(args: UseArgs) -> ExitCode {
+    let mut cfg = match config::load() {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("error: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+
+    if !cfg.contexts.contains_key(&args.name) {
+        eprintln!("error: context '{}' not found", args.name);
+        eprintln!("Available contexts:");
+        for name in cfg.contexts.keys() {
+            eprintln!("  {name}");
+        }
+        return ExitCode::FAILURE;
+    }
+
+    cfg.default_context = Some(args.name.clone());
+
+    if let Err(e) = config::save(&cfg) {
+        eprintln!("error: {e}");
+        return ExitCode::FAILURE;
+    }
+
+    println!("Switched to context '{}'.", args.name);
+    ExitCode::SUCCESS
+}
