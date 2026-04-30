@@ -21,9 +21,24 @@ use crate::state::AppState;
     tag = "traces"
 )]
 pub async fn get_trace(
-    Extension(_state): Extension<AppState>,
+    Extension(state): Extension<AppState>,
     axum::extract::Path(session_id): axum::extract::Path<String>,
 ) -> Result<(StatusCode, Json<TraceResponse>), ProblemDetail> {
-    // TODO: wire to trace store once available
-    Err(ProblemDetail::from_status(StatusCode::NOT_FOUND).with_detail(format!("Session not found: {session_id}")))
+    let trace = state
+        .trace_store
+        .get_trace(&session_id)
+        .map_err(|e| ProblemDetail::from_status(StatusCode::INTERNAL_SERVER_ERROR).with_detail(e.to_string()))?;
+
+    match trace {
+        Some(session_trace) => Ok((
+            StatusCode::OK,
+            Json(TraceResponse {
+                session_id,
+                agent_id: session_trace.agent_id,
+                spans: session_trace.spans,
+            }),
+        )),
+        None => Err(ProblemDetail::from_status(StatusCode::NOT_FOUND)
+            .with_detail(format!("Session not found: {session_id}"))),
+    }
 }
