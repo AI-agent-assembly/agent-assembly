@@ -57,6 +57,12 @@ impl ValidationWarning {
     }
 }
 
+impl fmt::Display for ValidationWarning {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} — {}", self.field, self.message)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
