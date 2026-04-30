@@ -127,4 +127,16 @@ mod tests {
             "http://localhost:8080/api/v1/approvals"
         );
     }
+
+    #[test]
+    fn build_ws_url_http_to_ws() {
+        let url = build_ws_url("http://localhost:8080", "approval_required").unwrap();
+        assert_eq!(url, "ws://localhost:8080/api/v1/events?types=approval_required");
+    }
+
+    #[test]
+    fn build_ws_url_https_to_wss() {
+        let url = build_ws_url("https://api.example.com", "approval_required").unwrap();
+        assert_eq!(url, "wss://api.example.com/api/v1/events?types=approval_required");
+    }
 }
