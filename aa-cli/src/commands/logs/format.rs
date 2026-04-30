@@ -1,5 +1,6 @@
 //! Log line formatting and color output for the `aasm logs` command.
 
+use chrono::{DateTime, Utc};
 use console::Style;
 use serde::{Deserialize, Serialize};
 
@@ -39,6 +40,69 @@ pub fn format_log_line(entry: &LogLineData, use_color: bool) -> String {
 /// Format a log entry as a single newline-delimited JSON object.
 pub fn format_log_json(entry: &LogLineData) -> String {
     serde_json::to_string(entry).unwrap_or_default()
+}
+
+/// Parse a `--since` value into a [`DateTime<Utc>`].
+///
+/// Accepts either:
+/// - A duration shorthand: `30m`, `2h`, `1d` (minutes, hours, days)
+/// - An ISO 8601 timestamp: `2026-04-30T10:00:00Z`
+///
+/// Duration values are resolved relative to the current time.
+pub fn parse_since(value: &str) -> Option<DateTime<Utc>> {
+    // Try duration shorthand first.
+    if let Some(duration) = parse_duration_shorthand(value) {
+        return Some(Utc::now() - duration);
+    }
+    // Fall back to ISO 8601 timestamp.
+    value.parse::<DateTime<Utc>>().ok()
+}
+
+/// Parse an `--until` value into a [`DateTime<Utc>`].
+///
+/// Accepts an ISO 8601 timestamp (e.g. `2026-04-30T12:00:00Z`).
+pub fn parse_until(value: &str) -> Option<DateTime<Utc>> {
+    value.parse::<DateTime<Utc>>().ok()
+}
+
+/// Parse a duration shorthand like `30m`, `2h`, `1d` into a [`chrono::Duration`].
+fn parse_duration_shorthand(value: &str) -> Option<chrono::Duration> {
+    let value = value.trim();
+    if value.len() < 2 {
+        return None;
+    }
+    let (num_str, suffix) = value.split_at(value.len() - 1);
+    let num: i64 = num_str.parse().ok()?;
+    match suffix {
+        "s" => Some(chrono::Duration::seconds(num)),
+        "m" => Some(chrono::Duration::minutes(num)),
+        "h" => Some(chrono::Duration::hours(num)),
+        "d" => Some(chrono::Duration::days(num)),
+        _ => None,
+    }
+}
+
+/// Check whether a log entry's timestamp falls within the `--since`/`--until` window.
+pub fn is_within_time_range(
+    entry_timestamp: &str,
+    since: Option<&DateTime<Utc>>,
+    until: Option<&DateTime<Utc>>,
+) -> bool {
+    let entry_dt = match entry_timestamp.parse::<DateTime<Utc>>() {
+        Ok(dt) => dt,
+        Err(_) => return true, // If we can't parse, include it.
+    };
+    if let Some(s) = since {
+        if entry_dt < *s {
+            return false;
+        }
+    }
+    if let Some(u) = until {
+        if entry_dt > *u {
+            return false;
+        }
+    }
+    true
 }
 
 /// Return a [`Style`] for the given event type string.
@@ -101,5 +165,94 @@ mod tests {
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed["event_type"], "violation");
         assert_eq!(parsed["agent_id"], "aa001");
+    }
+
+    #[test]
+    fn parse_since_duration_minutes() {
+        let dt = parse_since("30m").unwrap();
+        let diff = Utc::now() - dt;
+        // Should be approximately 30 minutes (allow 5 sec tolerance).
+        assert!((diff.num_seconds() - 1800).abs() < 5);
+    }
+
+    #[test]
+    fn parse_since_duration_hours() {
+        let dt = parse_since("2h").unwrap();
+        let diff = Utc::now() - dt;
+        assert!((diff.num_seconds() - 7200).abs() < 5);
+    }
+
+    #[test]
+    fn parse_since_iso_timestamp() {
+        let dt = parse_since("2026-04-30T10:00:00Z").unwrap();
+        assert_eq!(dt.to_rfc3339(), "2026-04-30T10:00:00+00:00");
+    }
+
+    #[test]
+    fn parse_since_invalid_returns_none() {
+        assert!(parse_since("invalid").is_none());
+        assert!(parse_since("").is_none());
+    }
+
+    #[test]
+    fn parse_until_iso_timestamp() {
+        let dt = parse_until("2026-04-30T12:00:00Z").unwrap();
+        assert_eq!(dt.to_rfc3339(), "2026-04-30T12:00:00+00:00");
+    }
+
+    #[test]
+    fn is_within_range_no_bounds() {
+        assert!(is_within_time_range("2026-04-30T10:00:00Z", None, None));
+    }
+
+    #[test]
+    fn is_within_range_since_filter() {
+        let since = "2026-04-30T10:00:00Z".parse().unwrap();
+        assert!(is_within_time_range(
+            "2026-04-30T11:00:00Z",
+            Some(&since),
+            None
+        ));
+        assert!(!is_within_time_range(
+            "2026-04-30T09:00:00Z",
+            Some(&since),
+            None
+        ));
+    }
+
+    #[test]
+    fn is_within_range_until_filter() {
+        let until = "2026-04-30T12:00:00Z".parse().unwrap();
+        assert!(is_within_time_range(
+            "2026-04-30T11:00:00Z",
+            None,
+            Some(&until)
+        ));
+        assert!(!is_within_time_range(
+            "2026-04-30T13:00:00Z",
+            None,
+            Some(&until)
+        ));
+    }
+
+    #[test]
+    fn is_within_range_both_bounds() {
+        let since = "2026-04-30T10:00:00Z".parse().unwrap();
+        let until = "2026-04-30T12:00:00Z".parse().unwrap();
+        assert!(is_within_time_range(
+            "2026-04-30T11:00:00Z",
+            Some(&since),
+            Some(&until)
+        ));
+        assert!(!is_within_time_range(
+            "2026-04-30T09:00:00Z",
+            Some(&since),
+            Some(&until)
+        ));
+        assert!(!is_within_time_range(
+            "2026-04-30T13:00:00Z",
+            Some(&since),
+            Some(&until)
+        ));
     }
 }
