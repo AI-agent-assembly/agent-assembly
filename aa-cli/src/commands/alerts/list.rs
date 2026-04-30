@@ -68,8 +68,8 @@ pub fn render_table(alerts: &[AlertResponse]) {
 
     for alert in alerts {
         let agent = alert.agent_id.as_deref().unwrap_or("-");
-        let sev = AlertSeverity::from_str(&alert.severity);
-        let status = AlertStatusKind::from_str(&alert.status);
+        let sev = AlertSeverity::parse(&alert.severity);
+        let status = AlertStatusKind::parse(&alert.status);
 
         table.add_row(vec![
             Cell::new(&alert.id),

@@ -27,7 +27,7 @@ pub fn render_detail(alert: &AlertResponse) {
     let agent = alert.agent_id.as_deref().unwrap_or("-");
     table.add_row(vec!["Agent", agent]);
 
-    let sev = AlertSeverity::from_str(&alert.severity);
+    let sev = AlertSeverity::parse(&alert.severity);
     table.add_row(vec![
         Cell::new("Severity"),
         Cell::new(&alert.severity).fg(sev.color()),
@@ -36,7 +36,7 @@ pub fn render_detail(alert: &AlertResponse) {
     table.add_row(vec!["Type", &alert.category]);
     table.add_row(vec!["Message", &alert.message]);
 
-    let status = AlertStatusKind::from_str(&alert.status);
+    let status = AlertStatusKind::parse(&alert.status);
     table.add_row(vec![
         Cell::new("Status"),
         Cell::new(&alert.status).fg(status.color()),

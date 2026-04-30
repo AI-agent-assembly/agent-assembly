@@ -57,7 +57,7 @@ pub enum AlertSeverity {
 
 impl AlertSeverity {
     /// Parse a severity string (case-insensitive).
-    pub fn from_str(s: &str) -> Self {
+    pub fn parse(s: &str) -> Self {
         match s.to_lowercase().as_str() {
             "critical" => Self::Critical,
             "warning" => Self::Warning,
@@ -99,7 +99,7 @@ pub enum AlertStatusKind {
 
 impl AlertStatusKind {
     /// Parse a status string (case-insensitive).
-    pub fn from_str(s: &str) -> Self {
+    pub fn parse(s: &str) -> Self {
         match s.to_lowercase().as_str() {
             "unresolved" => Self::Unresolved,
             "acknowledged" => Self::Acknowledged,
@@ -136,10 +136,10 @@ mod tests {
 
     #[test]
     fn severity_from_str_case_insensitive() {
-        assert_eq!(AlertSeverity::from_str("Critical"), AlertSeverity::Critical);
-        assert_eq!(AlertSeverity::from_str("WARNING"), AlertSeverity::Warning);
-        assert_eq!(AlertSeverity::from_str("info"), AlertSeverity::Info);
-        assert_eq!(AlertSeverity::from_str("other"), AlertSeverity::Unknown);
+        assert_eq!(AlertSeverity::parse("Critical"), AlertSeverity::Critical);
+        assert_eq!(AlertSeverity::parse("WARNING"), AlertSeverity::Warning);
+        assert_eq!(AlertSeverity::parse("info"), AlertSeverity::Info);
+        assert_eq!(AlertSeverity::parse("other"), AlertSeverity::Unknown);
     }
 
     #[test]
@@ -152,10 +152,10 @@ mod tests {
 
     #[test]
     fn status_from_str_case_insensitive() {
-        assert_eq!(AlertStatusKind::from_str("unresolved"), AlertStatusKind::Unresolved);
-        assert_eq!(AlertStatusKind::from_str("ACKNOWLEDGED"), AlertStatusKind::Acknowledged);
-        assert_eq!(AlertStatusKind::from_str("Resolved"), AlertStatusKind::Resolved);
-        assert_eq!(AlertStatusKind::from_str("other"), AlertStatusKind::Unknown);
+        assert_eq!(AlertStatusKind::parse("unresolved"), AlertStatusKind::Unresolved);
+        assert_eq!(AlertStatusKind::parse("ACKNOWLEDGED"), AlertStatusKind::Acknowledged);
+        assert_eq!(AlertStatusKind::parse("Resolved"), AlertStatusKind::Resolved);
+        assert_eq!(AlertStatusKind::parse("other"), AlertStatusKind::Unknown);
     }
 
     #[test]
