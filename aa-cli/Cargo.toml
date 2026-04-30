@@ -15,6 +15,7 @@ aa-core        = { path = "../aa-core" }
 aa-gateway     = { path = "../aa-gateway" }
 clap           = { version = "4", features = ["derive"] }
 clap_complete  = "4"
+colored        = "3"
 comfy-table    = "7"
 dirs           = "6"
 owo-colors     = "4"

@@ -1,5 +1,7 @@
 //! Tree renderer for session traces using box-drawing characters.
 
+use colored::Colorize;
+
 use super::models::{SessionTrace, TraceEvent, TraceEventKind};
 
 /// Format a duration in milliseconds into a human-readable string.
@@ -21,13 +23,25 @@ fn event_icon(kind: &TraceEventKind) -> &'static str {
 }
 
 /// Render a single event as a one-line string (without tree prefix).
+///
+/// Policy denials are highlighted in red with the violation reason appended.
 pub fn render_event_line(event: &TraceEvent) -> String {
-    format!(
+    let line = format!(
         "{} {}  {}",
         event_icon(&event.kind),
         event.label,
         format_duration(event.duration_ms),
-    )
+    );
+
+    if event.kind == TraceEventKind::PolicyDeny {
+        let reason = event
+            .violation_reason
+            .as_deref()
+            .unwrap_or("no reason provided");
+        format!("{}", format!("{line}  ({reason})").red())
+    } else {
+        line
+    }
 }
 
 /// Recursively render a list of events as a tree with box-drawing prefixes.
