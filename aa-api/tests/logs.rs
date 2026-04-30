@@ -202,7 +202,7 @@ async fn list_logs_filters_by_agent_id() {
     let response = app
         .oneshot(
             Request::builder()
-                .uri(&format!("/api/v1/logs?agent_id={}", hex::encode(AGENT_BYTES)))
+                .uri(format!("/api/v1/logs?agent_id={}", hex::encode(AGENT_BYTES)))
                 .body(Body::empty())
                 .unwrap(),
         )
