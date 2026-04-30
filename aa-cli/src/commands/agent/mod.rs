@@ -57,6 +57,18 @@ pub struct AgentResponse {
     pub tool_names: Vec<String>,
     /// Arbitrary metadata key-value pairs.
     pub metadata: BTreeMap<String, String>,
+    /// OS process ID, if known.
+    #[serde(default)]
+    pub pid: Option<u32>,
+    /// Number of sessions handled.
+    #[serde(default)]
+    pub session_count: Option<u32>,
+    /// ISO 8601 timestamp of the most recent event.
+    #[serde(default)]
+    pub last_event: Option<String>,
+    /// Number of policy violations recorded.
+    #[serde(default)]
+    pub policy_violations_count: Option<u32>,
 }
 
 /// Paginated API response wrapper.
@@ -107,6 +119,10 @@ mod tests {
             status: "Suspended(PolicyViolation)".to_string(),
             tool_names: vec![],
             metadata: BTreeMap::new(),
+            pid: Some(1234),
+            session_count: Some(5),
+            last_event: Some("2025-01-01T00:00:00Z".to_string()),
+            policy_violations_count: Some(2),
         };
 
         let json = serde_json::to_string(&agent).unwrap();
