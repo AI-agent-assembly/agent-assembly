@@ -31,3 +31,13 @@ pub struct AgentResponse {
     pub tool_names: Vec<String>,
     pub metadata: BTreeMap<String, String>,
 }
+
+/// Flattened agent row for tabular display.
+#[derive(Debug, Clone, Serialize)]
+pub struct AgentRow {
+    pub id: String,
+    pub name: String,
+    pub framework: String,
+    pub status: String,
+    pub violations_today: u64,
+}
