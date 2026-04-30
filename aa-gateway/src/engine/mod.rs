@@ -449,6 +449,16 @@ impl PolicyEngine {
     ///
     /// Used by the persistence layer to spawn the background writer and
     /// to perform the final save on graceful shutdown.
+    /// Return a lightweight summary of the currently active policy.
+    pub fn active_policy_info(&self) -> ActivePolicyInfo {
+        let doc = self.policy.load();
+        ActivePolicyInfo {
+            name: doc.name.clone(),
+            policy_version: doc.policy_version.clone(),
+            rule_count: doc.tools.len(),
+        }
+    }
+
     pub fn budget_tracker(&self) -> Arc<BudgetTracker> {
         Arc::clone(&self.budget)
     }
