@@ -69,7 +69,6 @@ pub struct DiffArgs {
 pub fn run_apply(args: ApplyArgs, ctx: &ResolvedContext) -> ExitCode {
     let rt = tokio::runtime::Runtime::new().expect("failed to create tokio runtime");
     rt.block_on(async {
-        let store = FsHistoryStore::new(HistoryConfig::default_config());
         let yaml = match std::fs::read_to_string(&args.file) {
             Ok(y) => y,
             Err(e) => {
@@ -81,15 +80,14 @@ pub fn run_apply(args: ApplyArgs, ctx: &ResolvedContext) -> ExitCode {
             eprintln!("error: policy validation failed: {:?}", errs);
             return ExitCode::FAILURE;
         }
-        match store.save(&yaml, args.applied_by.as_deref()).await {
-            Ok(meta) => {
+        let body = CreatePolicyRequest { policy_yaml: yaml };
+        match crate::client::post_json::<_, PolicyApplyResponse>(ctx, "/api/v1/policies", &body).await {
+            Ok(resp) => {
                 println!("Policy applied successfully.");
-                println!("  Version:    {}", &meta.sha256[..12]);
-                println!("  Timestamp:  {}", meta.timestamp);
-                println!("  SHA-256:    {}", meta.sha256);
-                if let Some(by) = &meta.applied_by {
-                    println!("  Applied by: {}", by);
-                }
+                println!("  Version:    {}", resp.name);
+                println!("  Timestamp:  {}", resp.version);
+                println!("  Active:     {}", resp.active);
+                println!("  Rules:      {}", resp.rule_count);
                 ExitCode::SUCCESS
             }
             Err(e) => {
