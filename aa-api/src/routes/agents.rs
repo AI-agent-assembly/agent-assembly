@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::{Extension, Json};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 use crate::error::ProblemDetail;
@@ -144,6 +144,35 @@ pub struct RecentTraceResponse {
     pub session_id: String,
     /// ISO 8601 timestamp when the trace session started.
     pub timestamp: String,
+}
+
+/// Request body for `POST /api/v1/agents/:id/suspend`.
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct SuspendRequest {
+    /// Reason for suspending the agent (logged for audit).
+    pub reason: String,
+}
+
+/// Response from `POST /api/v1/agents/:id/suspend`.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct SuspendResponse {
+    /// Hex-encoded agent UUID.
+    pub agent_id: String,
+    /// Agent status before the suspend operation.
+    pub previous_status: String,
+    /// Agent status after the suspend operation.
+    pub new_status: String,
+}
+
+/// Response from `POST /api/v1/agents/:id/resume`.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct ResumeResponse {
+    /// Hex-encoded agent UUID.
+    pub agent_id: String,
+    /// Agent status before the resume operation.
+    pub previous_status: String,
+    /// Agent status after the resume operation.
+    pub new_status: String,
 }
 
 /// `GET /api/v1/agents` — list all registered agents with pagination.
