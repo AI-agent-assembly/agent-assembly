@@ -78,6 +78,7 @@ pub fn save(config: &CliConfig) -> Result<(), CliError> {
 }
 
 /// Resolved connection parameters after merging CLI flags and config file.
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct ResolvedContext {
     /// The context name that was resolved (if any).
