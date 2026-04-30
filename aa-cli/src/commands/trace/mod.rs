@@ -1,6 +1,6 @@
 //! `aasm trace` — session trace visualization.
 
-use clap::ValueEnum;
+use clap::{Args, ValueEnum};
 
 pub mod models;
 
@@ -12,4 +12,15 @@ pub enum TraceFormat {
     Tree,
     /// Horizontal ASCII timeline with duration bars.
     Timeline,
+}
+
+/// Arguments for the `aasm trace` subcommand.
+#[derive(Debug, Args)]
+pub struct TraceArgs {
+    /// Session ID to retrieve the trace for.
+    pub session_id: String,
+
+    /// Visualization format.
+    #[arg(long, value_enum, default_value_t = TraceFormat::Tree)]
+    pub format: TraceFormat,
 }
