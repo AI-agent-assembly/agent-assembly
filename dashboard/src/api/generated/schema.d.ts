@@ -128,6 +128,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Issue a short-lived JWT token from an authenticated API key.
+         * @description The caller must already be authenticated (via API key or existing JWT).
+         *     If `scopes` is provided in the request body, it must be a subset of
+         *     the caller's granted scopes.
+         */
+        post: operations["issue_token"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/costs": {
         parameters: {
             query?: never;
@@ -387,6 +409,34 @@ export interface components {
             /** @description URI reference identifying the problem type. */
             type: string;
         };
+        /**
+         * @description Authorization scope level for API operations.
+         *
+         *     Variants are ordered by privilege: `Read < Write < Admin`.
+         *     A caller with `Admin` scope satisfies any scope requirement.
+         * @enum {string}
+         */
+        Scope: "read" | "write" | "admin";
+        /** @description Request body for `POST /auth/token`. */
+        TokenRequest: {
+            /**
+             * @description Requested scopes for the issued JWT.
+             *     If omitted, the caller's full scopes are used.
+             */
+            scopes?: components["schemas"]["Scope"][] | null;
+        };
+        /** @description Response body for `POST /auth/token`. */
+        TokenResponse: {
+            /**
+             * Format: int64
+             * @description Unix timestamp when the token expires.
+             */
+            expires_at: number;
+            /** @description Scopes granted in the token. */
+            scopes: components["schemas"]["Scope"][];
+            /** @description The issued JWT token string. */
+            token: string;
+        };
         /** @description Full trace for one agent session. */
         TraceResponse: {
             /** @description Agent that produced this trace. */
@@ -632,6 +682,48 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    issue_token: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TokenRequest"];
+            };
+        };
+        responses: {
+            /** @description JWT issued successfully */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TokenResponse"];
+                };
+            };
+            /** @description Missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Requested scope exceeds caller grants */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetail"];
+                };
             };
         };
     };

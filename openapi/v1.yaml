@@ -229,6 +229,43 @@ paths:
                 $ref: '#/components/schemas/ApprovalResponse'
         '404':
           description: Approval request not found
+  /api/v1/auth/token:
+    post:
+      tags:
+      - auth
+      summary: Issue a short-lived JWT token from an authenticated API key.
+      description: |-
+        The caller must already be authenticated (via API key or existing JWT).
+        If `scopes` is provided in the request body, it must be a subset of
+        the caller's granted scopes.
+      operationId: issue_token
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenRequest'
+        required: true
+      responses:
+        '200':
+          description: JWT issued successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '401':
+          description: Missing or invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+        '403':
+          description: Requested scope exceeds caller grants
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+      security:
+      - bearer_auth: []
   /api/v1/costs:
     get:
       tags:
@@ -643,6 +680,50 @@ components:
         status: 404
         title: Not Found
         type: about:blank
+    Scope:
+      type: string
+      description: |-
+        Authorization scope level for API operations.
+
+        Variants are ordered by privilege: `Read < Write < Admin`.
+        A caller with `Admin` scope satisfies any scope requirement.
+      enum:
+      - read
+      - write
+      - admin
+    TokenRequest:
+      type: object
+      description: Request body for `POST /auth/token`.
+      properties:
+        scopes:
+          type: array
+          items:
+            $ref: '#/components/schemas/Scope'
+          description: |-
+            Requested scopes for the issued JWT.
+            If omitted, the caller's full scopes are used.
+          nullable: true
+    TokenResponse:
+      type: object
+      description: Response body for `POST /auth/token`.
+      required:
+      - token
+      - expires_at
+      - scopes
+      properties:
+        expires_at:
+          type: integer
+          format: int64
+          description: Unix timestamp when the token expires.
+          minimum: 0
+        scopes:
+          type: array
+          items:
+            $ref: '#/components/schemas/Scope'
+          description: Scopes granted in the token.
+        token:
+          type: string
+          description: The issued JWT token string.
     TraceResponse:
       type: object
       description: Full trace for one agent session.
@@ -691,6 +772,12 @@ components:
         start_time:
           type: string
           description: Start time of the span (ISO 8601).
+  securitySchemes:
+    bearer_auth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: API key (`aa_…` prefix) or JWT bearer token
 tags:
 - name: health
   description: Liveness and readiness probes
@@ -708,3 +795,5 @@ tags:
   description: Cost and budget tracking
 - name: alerts
   description: Governance alerts
+- name: auth
+  description: Authentication and token issuance
