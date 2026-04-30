@@ -279,3 +279,156 @@ fn print_event(text: &str) {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn logs_args_defaults() {
+        let args = LogsArgs {
+            follow: false,
+            agent_id: None,
+            event_type: None,
+            page: 1,
+            per_page: 50,
+        };
+        assert!(!args.follow);
+        assert_eq!(args.page, 1);
+        assert_eq!(args.per_page, 50);
+        assert!(args.agent_id.is_none());
+        assert!(args.event_type.is_none());
+    }
+
+    #[test]
+    fn logs_args_follow_flag() {
+        let args = LogsArgs {
+            follow: true,
+            agent_id: Some("abc123".to_string()),
+            event_type: Some("violation".to_string()),
+            page: 1,
+            per_page: 50,
+        };
+        assert!(args.follow);
+        assert_eq!(args.agent_id.as_deref(), Some("abc123"));
+        assert_eq!(args.event_type.as_deref(), Some("violation"));
+    }
+
+    #[test]
+    fn truncate_short_string() {
+        assert_eq!(truncate("hello", 10), "hello");
+    }
+
+    #[test]
+    fn truncate_long_string() {
+        let result = truncate("abcdefghijklmnop", 10);
+        assert_eq!(result, "abcdefghi…");
+        assert!(result.chars().count() <= 10);
+    }
+
+    #[test]
+    fn truncate_exact_length() {
+        assert_eq!(truncate("abcde", 5), "abcde");
+    }
+
+    #[test]
+    fn build_ws_url_no_filters() {
+        let ctx = ResolvedContext {
+            name: None,
+            api_url: "http://localhost:8080".to_string(),
+            api_key: None,
+        };
+        let args = LogsArgs {
+            follow: true,
+            agent_id: None,
+            event_type: None,
+            page: 1,
+            per_page: 50,
+        };
+        assert_eq!(
+            build_ws_url(&ctx, &args),
+            "ws://localhost:8080/api/v1/ws/events"
+        );
+    }
+
+    #[test]
+    fn build_ws_url_with_https() {
+        let ctx = ResolvedContext {
+            name: None,
+            api_url: "https://gateway.example.com".to_string(),
+            api_key: None,
+        };
+        let args = LogsArgs {
+            follow: true,
+            agent_id: None,
+            event_type: None,
+            page: 1,
+            per_page: 50,
+        };
+        assert_eq!(
+            build_ws_url(&ctx, &args),
+            "wss://gateway.example.com/api/v1/ws/events"
+        );
+    }
+
+    #[test]
+    fn build_ws_url_with_filters() {
+        let ctx = ResolvedContext {
+            name: None,
+            api_url: "http://localhost:8080".to_string(),
+            api_key: None,
+        };
+        let args = LogsArgs {
+            follow: true,
+            agent_id: Some("agent42".to_string()),
+            event_type: Some("violation".to_string()),
+            page: 1,
+            per_page: 50,
+        };
+        let url = build_ws_url(&ctx, &args);
+        assert!(url.contains("types=violation"));
+        assert!(url.contains("agent_id=agent42"));
+    }
+
+    #[test]
+    fn print_logs_table_empty() {
+        let body = PaginatedLogs {
+            items: vec![],
+            page: 1,
+            per_page: 50,
+            total: 0,
+        };
+        // Should not panic on empty items.
+        print_logs_table(&body);
+    }
+
+    #[test]
+    fn deserialize_governance_event() {
+        let json = r#"{
+            "id": 42,
+            "event_type": "violation",
+            "agent_id": "abc123",
+            "payload": {"key": "value"},
+            "timestamp": "2025-01-01T00:00:00Z"
+        }"#;
+        let event: GovernanceEvent = serde_json::from_str(json).unwrap();
+        assert_eq!(event.id, 42);
+        assert_eq!(event.event_type, "violation");
+        assert_eq!(event.agent_id, "abc123");
+    }
+
+    #[test]
+    fn deserialize_log_entry() {
+        let json = r#"{
+            "seq": 1,
+            "timestamp": "2025-01-01T00:00:00Z",
+            "agent_id": "abc123",
+            "session_id": "sess456",
+            "event_type": "PolicyViolation",
+            "payload": "{\"detail\": \"blocked\"}"
+        }"#;
+        let entry: LogEntry = serde_json::from_str(json).unwrap();
+        assert_eq!(entry.seq, 1);
+        assert_eq!(entry.event_type, "PolicyViolation");
+    }
+}
