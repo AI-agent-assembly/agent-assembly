@@ -44,10 +44,8 @@ impl HistoricalReplay {
             if trimmed.is_empty() {
                 continue;
             }
-            let event: SimulationEvent =
-                serde_json::from_str(trimmed).map_err(|e| {
-                    SimulationError::AuditParse(format!("line {}: {e}", line_num + 1))
-                })?;
+            let event: SimulationEvent = serde_json::from_str(trimmed)
+                .map_err(|e| SimulationError::AuditParse(format!("line {}: {e}", line_num + 1)))?;
             events.push(event);
         }
 
