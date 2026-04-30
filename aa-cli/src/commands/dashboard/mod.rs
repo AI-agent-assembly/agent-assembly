@@ -1,5 +1,6 @@
 //! `aasm dashboard` — interactive TUI dashboard for real-time governance monitoring.
 
+pub mod input;
 pub mod state;
 pub mod ui;
 
