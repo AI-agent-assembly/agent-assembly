@@ -19,3 +19,14 @@ pub struct ContextConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub api_key: Option<String>,
 }
+
+/// Top-level CLI configuration file schema (`~/.aa/config.yaml`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CliConfig {
+    /// Name of the default context to use when `--context` is not specified.
+    #[serde(default)]
+    pub default_context: Option<String>,
+    /// Named contexts mapping (e.g. `{ "production": { api_url: "..." } }`).
+    #[serde(default)]
+    pub contexts: BTreeMap<String, ContextConfig>,
+}
