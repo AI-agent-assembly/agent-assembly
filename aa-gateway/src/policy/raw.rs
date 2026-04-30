@@ -76,6 +76,25 @@ pub struct RawMetadata {
     pub description: Option<String>,
 }
 
+/// Raw deserialization target for the governance policy YAML envelope.
+///
+/// Detects the `apiVersion`/`kind`/`metadata`/`spec` wrapper format used by
+/// `policy-examples/*.yaml`. When `spec` is present the inner value is
+/// re-parsed as [`RawPolicyDocument`].
+#[derive(Debug, Deserialize)]
+pub struct GovernancePolicyEnvelope {
+    /// Schema version URI (e.g. `"agent-assembly/v1"`).
+    #[serde(rename = "apiVersion")]
+    pub api_version: Option<String>,
+    /// Resource kind (e.g. `"Policy"`).
+    pub kind: Option<String>,
+    /// Policy metadata (name, version, description).
+    pub metadata: Option<RawMetadata>,
+    /// The inner spec section, kept as an opaque YAML value so it can be
+    /// re-parsed as [`RawPolicyDocument`] by the validator.
+    pub spec: Option<serde_yaml::Value>,
+}
+
 /// Raw (unvalidated) top-level deserialization target for a policy document.
 #[derive(Debug, Deserialize)]
 pub struct RawPolicyDocument {
