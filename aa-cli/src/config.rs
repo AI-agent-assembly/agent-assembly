@@ -30,3 +30,34 @@ pub struct CliConfig {
     #[serde(default)]
     pub contexts: BTreeMap<String, ContextConfig>,
 }
+
+/// Return the config directory path (`~/.aa/`).
+pub fn config_dir() -> PathBuf {
+    dirs::home_dir()
+        .expect("cannot determine home directory")
+        .join(".aa")
+}
+
+/// Return the config file path (`~/.aa/config.yaml`).
+pub fn config_path() -> PathBuf {
+    config_dir().join("config.yaml")
+}
+
+/// Load the CLI configuration from `~/.aa/config.yaml`.
+///
+/// Returns a default (empty) config if the file does not exist.
+pub fn load() -> Result<CliConfig, CliError> {
+    let path = config_path();
+    if !path.exists() {
+        return Ok(CliConfig {
+            default_context: None,
+            contexts: BTreeMap::new(),
+        });
+    }
+    let contents = std::fs::read_to_string(&path).map_err(|e| CliError::Config {
+        path: path.clone(),
+        source: e,
+    })?;
+    let config: CliConfig = serde_yaml::from_str(&contents)?;
+    Ok(config)
+}
