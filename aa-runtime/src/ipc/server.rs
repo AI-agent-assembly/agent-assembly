@@ -788,4 +788,150 @@ mod tests {
 
         token.cancel();
     }
+
+    /// Full approval round-trip over the IPC socket:
+    /// SDK sends PolicyQuery → pipeline responds PENDING → CLI calls
+    /// ApprovalQueue::decide() → pipeline pushes ApprovalDecision back
+    /// over the same Unix socket connection.
+    #[tokio::test]
+    async fn approval_round_trip_over_ipc_socket() {
+        use crate::approval::ApprovalDecision as RuntimeApprovalDecision;
+        use crate::ipc::codec::{TAG_APPROVAL_DECISION, TAG_POLICY_QUERY, TAG_POLICY_RESPONSE};
+        use crate::pipeline::{PipelineConfig, PipelineMetrics};
+        use crate::policy::{PolicyRule, PolicyRules};
+        use aa_proto::assembly::common::v1::{ActionType, Decision};
+        use aa_proto::assembly::event::v1::ApprovalDecision as ProtoApprovalDecision;
+        use aa_proto::assembly::policy::v1::{CheckActionRequest, CheckActionResponse};
+        use prost::Message;
+        use std::sync::Arc;
+        use tokio::io::AsyncReadExt;
+
+        let socket_path = temp_socket_path("approval-roundtrip");
+        let token = CancellationToken::new();
+        let counter = Arc::new(AtomicI64::new(0));
+        let (inbound_rx, router) = start_server(socket_path.clone(), token.clone(), Arc::clone(&counter)).await;
+
+        // Policy: TOOL_CALL requires approval.
+        let policy = Arc::new(PolicyRules {
+            rules: vec![PolicyRule {
+                name: "approve-tool".to_string(),
+                requires_approval_actions: vec![ActionType::ToolCall.as_str_name().to_string()],
+                approval_timeout_secs: 60,
+                ..Default::default()
+            }],
+        });
+
+        let approval_queue = crate::approval::ApprovalQueue::new();
+        let queue_ref = Arc::clone(&approval_queue);
+
+        let pipeline_config = PipelineConfig {
+            input_buffer: 64,
+            batch_size: 100,
+            flush_interval: std::time::Duration::from_secs(60),
+            broadcast_capacity: 64,
+            agent_id: "test-agent".to_string(),
+        };
+        let pipeline_metrics = Arc::new(PipelineMetrics::default());
+        let (broadcast_tx, _broadcast_rx) = tokio::sync::broadcast::channel::<crate::pipeline::PipelineEvent>(64);
+        let pipeline_router = Arc::clone(&router);
+        let pipeline_token = token.clone();
+        tokio::spawn(crate::pipeline::run(
+            inbound_rx,
+            broadcast_tx,
+            pipeline_config,
+            pipeline_metrics,
+            pipeline_token,
+            policy,
+            pipeline_router,
+            approval_queue,
+            None,
+            Arc::new(std::sync::atomic::AtomicU64::new(0)),
+        ));
+
+        // Connect a client.
+        let client = connect_client(&socket_path).await;
+        let (mut read_half, mut write_half) = client.into_split();
+
+        // Wait for the connection to be registered.
+        for _ in 0..50 {
+            if counter.load(Ordering::Relaxed) == 1 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+
+        // Step 1: Send a PolicyQuery for TOOL_CALL.
+        let request = CheckActionRequest {
+            action_type: ActionType::ToolCall as i32,
+            trace_id: "trace-approval-roundtrip".to_string(),
+            ..Default::default()
+        };
+        let payload = request.encode_to_vec();
+        write_raw_frame(&mut write_half, TAG_POLICY_QUERY, &payload).await;
+
+        // Step 2: Read the PENDING response.
+        let tag = tokio::time::timeout(Duration::from_millis(200), read_half.read_u8())
+            .await
+            .expect("PENDING response timed out")
+            .expect("read error");
+        assert_eq!(tag, TAG_POLICY_RESPONSE, "expected PolicyResponse tag");
+
+        // Read varint length + payload.
+        let mut resp_len: u64 = 0;
+        let mut shift = 0u32;
+        loop {
+            let byte = read_half.read_u8().await.unwrap();
+            resp_len |= ((byte & 0x7F) as u64) << shift;
+            if byte & 0x80 == 0 {
+                break;
+            }
+            shift += 7;
+        }
+        let mut resp_buf = vec![0u8; resp_len as usize];
+        read_half.read_exact(&mut resp_buf).await.unwrap();
+        let pending_resp = CheckActionResponse::decode(resp_buf.as_ref()).unwrap();
+
+        assert_eq!(pending_resp.decision, Decision::Pending as i32);
+        assert!(!pending_resp.approval_id.is_empty(), "approval_id must be set");
+
+        let approval_id = uuid::Uuid::parse_str(&pending_resp.approval_id).expect("invalid UUID in approval_id");
+
+        // Step 3: Approve via the queue (simulates CLI calling ApprovalQueue::decide).
+        queue_ref
+            .decide(
+                approval_id,
+                RuntimeApprovalDecision::Approved {
+                    by: "cli-operator".to_string(),
+                    reason: Some("approved via IPC test".to_string()),
+                },
+            )
+            .expect("decide should succeed");
+
+        // Step 4: Read the ApprovalDecision pushed back over the socket.
+        let tag2 = tokio::time::timeout(Duration::from_millis(200), read_half.read_u8())
+            .await
+            .expect("ApprovalDecision response timed out")
+            .expect("read error");
+        assert_eq!(tag2, TAG_APPROVAL_DECISION, "expected ApprovalDecision tag");
+
+        let mut dec_len: u64 = 0;
+        shift = 0;
+        loop {
+            let byte = read_half.read_u8().await.unwrap();
+            dec_len |= ((byte & 0x7F) as u64) << shift;
+            if byte & 0x80 == 0 {
+                break;
+            }
+            shift += 7;
+        }
+        let mut dec_buf = vec![0u8; dec_len as usize];
+        read_half.read_exact(&mut dec_buf).await.unwrap();
+        let decision = ProtoApprovalDecision::decode(dec_buf.as_ref()).unwrap();
+
+        assert!(decision.approved, "decision should be approved");
+        assert_eq!(decision.decided_by, "cli-operator");
+        assert_eq!(decision.approval_id, approval_id.to_string());
+
+        token.cancel();
+    }
 }

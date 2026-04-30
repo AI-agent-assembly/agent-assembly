@@ -8,6 +8,7 @@ use crate::config::ResolvedContext;
 use crate::output::OutputFormat;
 
 pub mod agent;
+pub mod approvals;
 pub mod completion;
 pub mod context;
 pub mod logs;
@@ -35,6 +36,8 @@ pub enum Commands {
     Version,
     /// Visualize a session trace (tree or timeline).
     Trace(trace::TraceArgs),
+    /// Manage human-in-the-loop approval requests.
+    Approvals(approvals::ApprovalsArgs),
 }
 
 /// Dispatch the parsed CLI command to the appropriate handler.
@@ -48,5 +51,6 @@ pub fn dispatch(cmd: Commands, ctx: &ResolvedContext, output: OutputFormat) -> E
         Commands::Status(args) => status::dispatch(args, ctx, output),
         Commands::Version => version::run(ctx),
         Commands::Trace(args) => trace::dispatch(args, ctx, output),
+        Commands::Approvals(args) => approvals::dispatch(args, ctx, output),
     }
 }
