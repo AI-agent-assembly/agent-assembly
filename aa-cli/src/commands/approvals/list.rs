@@ -1,9 +1,15 @@
 //! `aasm approvals list` — list pending approval requests.
 
+use std::process::ExitCode;
+
+use chrono::Utc;
 use clap::Args;
 use comfy_table::{Cell, Color, Table};
 
+use crate::config::ResolvedContext;
 use crate::output::OutputFormat;
+
+use super::client;
 
 use super::models::{compute_timeout_color, format_countdown, ApprovalResponse, TimeoutColor};
 
@@ -47,4 +53,34 @@ pub fn render_approvals_table(items: &[ApprovalResponse], now_epoch: i64) {
     }
 
     println!("{table}");
+}
+
+/// Execute the `aasm approvals list` subcommand.
+pub fn run_list(args: ListArgs, ctx: &ResolvedContext, global_output: OutputFormat) -> ExitCode {
+    let rt = tokio::runtime::Runtime::new().expect("failed to create tokio runtime");
+    let result = rt.block_on(client::list_approvals(ctx));
+
+    match result {
+        Ok(paginated) => {
+            let format = args.output.unwrap_or(global_output);
+            match format {
+                OutputFormat::Json => {
+                    println!("{}", serde_json::to_string_pretty(&paginated.items).unwrap_or_default());
+                }
+                OutputFormat::Yaml => {
+                    println!("{}", serde_yaml::to_string(&paginated.items).unwrap_or_default());
+                }
+                OutputFormat::Table => {
+                    let now = Utc::now().timestamp();
+                    render_approvals_table(&paginated.items, now);
+                    println!("\n{} pending approval(s)", paginated.total);
+                }
+            }
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            eprintln!("error: {e}");
+            ExitCode::FAILURE
+        }
+    }
 }
