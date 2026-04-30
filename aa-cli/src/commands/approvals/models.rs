@@ -78,3 +78,27 @@ pub struct PaginatedResponse<T> {
     /// Total items across all pages.
     pub total: u64,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn approval_response_deserializes_from_json() {
+        let json = r#"{
+            "id": "abc-123",
+            "agent_id": "support-agent",
+            "action": "process_refund",
+            "reason": "amount > $100",
+            "status": "pending",
+            "created_at": "2026-04-30T10:00:00Z"
+        }"#;
+        let resp: ApprovalResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.id, "abc-123");
+        assert_eq!(resp.agent_id, "support-agent");
+        assert_eq!(resp.action, "process_refund");
+        assert_eq!(resp.reason, "amount > $100");
+        assert_eq!(resp.status, "pending");
+        assert_eq!(resp.created_at, "2026-04-30T10:00:00Z");
+    }
+}
