@@ -3,7 +3,7 @@
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Cell, Gauge, List, ListItem, Paragraph, Row, Table};
+use ratatui::widgets::{Block, Borders, Cell, Clear, Gauge, List, ListItem, Paragraph, Row, Table};
 use ratatui::Frame;
 
 use super::state::{DashboardState, Panel};
@@ -39,6 +39,10 @@ pub fn draw(f: &mut Frame, state: &DashboardState) {
     draw_approvals_panel(f, bottom[0], state);
     draw_budget_panel(f, bottom[1], state);
     draw_footer(f, outer[2], state);
+
+    if state.show_help {
+        draw_help_overlay(f, size);
+    }
 }
 
 /// Build a Block with a highlighted border when the panel is focused.
@@ -278,6 +282,83 @@ fn draw_footer(f: &mut Frame, area: Rect, _state: &DashboardState) {
         Paragraph::new(footer).style(Style::default().fg(Color::DarkGray)),
         area,
     );
+}
+
+/// Render a centered help overlay listing all keyboard shortcuts.
+fn draw_help_overlay(f: &mut Frame, area: Rect) {
+    let overlay = centered_rect(60, 60, area);
+    f.render_widget(Clear, overlay);
+
+    let block = Block::default()
+        .title(" Help — Keyboard Shortcuts ")
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Cyan));
+    let inner = block.inner(overlay);
+    f.render_widget(block, overlay);
+
+    let lines = vec![
+        Line::from(vec![
+            Span::styled("Tab      ", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw("Next panel"),
+        ]),
+        Line::from(vec![
+            Span::styled("Shift+Tab", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw("Previous panel"),
+        ]),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("↑ / k    ", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw("Scroll up / select previous"),
+        ]),
+        Line::from(vec![
+            Span::styled("↓ / j    ", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw("Scroll down / select next"),
+        ]),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("a        ", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw("Approve selected request"),
+        ]),
+        Line::from(vec![
+            Span::styled("r        ", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw("Reject selected request"),
+        ]),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("?        ", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw("Toggle this help overlay"),
+        ]),
+        Line::from(vec![
+            Span::styled("q / Esc  ", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw("Quit dashboard"),
+        ]),
+    ];
+
+    let help = Paragraph::new(lines);
+    f.render_widget(help, inner);
+}
+
+/// Compute a centered rectangle within `area`.
+fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
+    let vertical = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Percentage((100 - percent_y) / 2),
+            Constraint::Percentage(percent_y),
+            Constraint::Percentage((100 - percent_y) / 2),
+        ])
+        .split(area);
+
+    let horizontal = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage((100 - percent_x) / 2),
+            Constraint::Percentage(percent_x),
+            Constraint::Percentage((100 - percent_x) / 2),
+        ])
+        .split(vertical[1]);
+
+    horizontal[1]
 }
 
 /// Compute the budget gauge ratio and label string.
