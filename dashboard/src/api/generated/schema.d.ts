@@ -286,12 +286,29 @@ export interface components {
             framework: string;
             /** @description Hex-encoded agent UUID. */
             id: string;
+            /** @description ISO 8601 timestamp of the most recent event. */
+            last_event?: string | null;
             /** @description Arbitrary metadata key-value pairs. */
             metadata: {
                 [key: string]: string;
             };
             /** @description Human-readable agent name. */
             name: string;
+            /**
+             * Format: int32
+             * @description OS process ID, if known.
+             */
+            pid?: number | null;
+            /**
+             * Format: int32
+             * @description Number of policy violations recorded.
+             */
+            policy_violations_count: number;
+            /**
+             * Format: int32
+             * @description Number of sessions handled.
+             */
+            session_count: number;
             /** @description Current runtime status. */
             status: string;
             /** @description Tools declared at registration. */
