@@ -16,6 +16,7 @@ use crate::auth::jwt::{JwtSigner, JwtVerifier};
 use crate::auth::rate_limit::RateLimiter;
 use crate::events::EventBroadcast;
 use crate::replay::ReplayBuffer;
+use crate::trace_store::TraceStore;
 
 /// Shared state available to all Axum handlers via `Extension<AppState>`.
 #[derive(Clone)]
@@ -48,4 +49,6 @@ pub struct AppState {
     pub jwt_signer: Arc<JwtSigner>,
     /// JWT token verifier.
     pub jwt_verifier: Arc<JwtVerifier>,
+    /// Session trace storage for the trace query endpoint.
+    pub trace_store: Arc<dyn TraceStore>,
 }

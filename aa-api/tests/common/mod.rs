@@ -14,6 +14,7 @@ use aa_api::events::EventBroadcast;
 use aa_api::replay::ReplayBuffer;
 use aa_api::server::build_app;
 use aa_api::state::AppState;
+use aa_api::trace_store::InMemoryTraceStore;
 use aa_gateway::budget::pricing::PricingTable;
 use aa_gateway::budget::tracker::BudgetTracker;
 use aa_gateway::engine::PolicyEngine;
@@ -126,6 +127,7 @@ spec:
         rate_limiter,
         jwt_signer,
         jwt_verifier,
+        trace_store: Arc::new(InMemoryTraceStore::new()),
     }
 }
 

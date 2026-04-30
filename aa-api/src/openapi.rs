@@ -2,6 +2,7 @@
 
 use utoipa::OpenApi;
 
+use crate::models::trace::{TraceResponse, TraceSpan};
 use crate::routes::{agents, alerts, approvals, costs, logs, policies, traces};
 
 /// Root OpenAPI document collecting all annotated paths and schemas.
@@ -48,8 +49,8 @@ use crate::routes::{agents, alerts, approvals, costs, logs, policies, traces};
         crate::error::ProblemDetail,
         agents::AgentResponse,
         logs::LogEntry,
-        traces::TraceResponse,
-        traces::TraceSpan,
+        TraceResponse,
+        TraceSpan,
         policies::PolicyResponse,
         policies::CreatePolicyRequest,
         approvals::ApprovalResponse,

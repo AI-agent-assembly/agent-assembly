@@ -19,6 +19,7 @@ pub mod routes;
 pub mod server;
 pub mod shutdown;
 pub mod state;
+pub mod trace_store;
 pub mod ws;
 
 pub use config::ApiConfig;
@@ -29,3 +30,4 @@ pub use openapi::ApiDoc;
 pub use replay::ReplayBuffer;
 pub use server::{build_app, run_server};
 pub use state::AppState;
+pub use trace_store::{InMemoryTraceStore, TraceStore};
