@@ -351,3 +351,54 @@ async fn get_agent_response_includes_active_sessions_and_recent_events() {
     assert_eq!(events[0]["summary"], "blocked tool call");
     assert!(events[0]["timestamp"].as_str().is_some());
 }
+
+#[tokio::test]
+async fn suspend_agent_returns_200() {
+    let state = common::test_state();
+    state.agent_registry.register(test_agent(0xCC)).unwrap();
+
+    let app = aa_api::server::build_app(state);
+    let id = hex_id(0xCC);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/v1/agents/{id}/suspend"))
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"reason":"anomaly spike"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["agent_id"], id);
+    assert_eq!(json["previous_status"], "Active");
+    assert_eq!(json["new_status"], "Suspended(Manual)");
+}
+
+#[tokio::test]
+async fn suspend_agent_returns_404_for_unknown_id() {
+    let app = common::test_app();
+    let id = hex_id(0xFF);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/v1/agents/{id}/suspend"))
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"reason":"test"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}
