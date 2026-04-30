@@ -1,6 +1,11 @@
 //! `aasm approvals` — human-in-the-loop approval management subcommands.
 
+use std::process::ExitCode;
+
 use clap::{Args, Subcommand};
+
+use crate::config::ResolvedContext;
+use crate::output::OutputFormat;
 
 pub mod approve;
 pub mod client;
@@ -30,4 +35,19 @@ pub enum ApprovalsSubcommand {
 pub struct ApprovalsArgs {
     #[command(subcommand)]
     pub command: ApprovalsSubcommand,
+}
+
+/// Dispatch the parsed approvals subcommand to the appropriate handler.
+pub fn dispatch(
+    args: ApprovalsArgs,
+    ctx: &ResolvedContext,
+    global_output: OutputFormat,
+) -> ExitCode {
+    match args.command {
+        ApprovalsSubcommand::List(a) => list::run_list(a, ctx, global_output),
+        ApprovalsSubcommand::Get(a) => get::run_get(a, ctx, global_output),
+        ApprovalsSubcommand::Approve(a) => approve::run_approve(a, ctx),
+        ApprovalsSubcommand::Reject(a) => reject::run_reject(a, ctx),
+        ApprovalsSubcommand::Watch(a) => watch::run_watch(a, ctx),
+    }
 }
