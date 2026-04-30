@@ -43,3 +43,23 @@ pub struct SessionTrace {
     /// Top-level events in the session (in chronological order).
     pub events: Vec<TraceEvent>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn trace_event_kind_serializes_to_snake_case() {
+        assert_eq!(serde_json::to_string(&TraceEventKind::Llm).unwrap(), "\"llm\"");
+        assert_eq!(serde_json::to_string(&TraceEventKind::ToolCall).unwrap(), "\"tool_call\"");
+        assert_eq!(serde_json::to_string(&TraceEventKind::ToolResult).unwrap(), "\"tool_result\"");
+        assert_eq!(serde_json::to_string(&TraceEventKind::PolicyAllow).unwrap(), "\"policy_allow\"");
+        assert_eq!(serde_json::to_string(&TraceEventKind::PolicyDeny).unwrap(), "\"policy_deny\"");
+    }
+
+    #[test]
+    fn trace_event_kind_deserializes_from_snake_case() {
+        let kind: TraceEventKind = serde_json::from_str("\"tool_call\"").unwrap();
+        assert_eq!(kind, TraceEventKind::ToolCall);
+    }
+}
