@@ -1,10 +1,11 @@
 //! `aasm approvals watch` — live-updating approval request stream.
 
 use std::io::Write;
+use std::time::Duration;
 
 use chrono::Utc;
 use clap::Args;
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::{self, Event, KeyCode, KeyEvent};
 use crossterm::terminal;
 use futures_util::StreamExt;
 use tokio_tungstenite::tungstenite::Message;
@@ -199,4 +200,100 @@ pub async fn run_watch_stream(mut ws: WsStream) {
             _ => {}
         }
     }
+}
+
+/// Run the watch in interactive mode with keyboard shortcuts.
+///
+/// Combines WebSocket event streaming with `crossterm` raw terminal input.
+/// The user navigates with arrow keys, approves with `a`, rejects with `r`,
+/// and quits with `q`.
+pub async fn run_watch_interactive(mut ws: WsStream, ctx: &ResolvedContext) {
+    let mut state = InteractiveState::new();
+
+    // Pre-populate with current pending approvals.
+    if let Ok(paginated) = client::list_approvals(ctx).await {
+        state.items = paginated.items;
+        state.dirty = true;
+    }
+
+    terminal::enable_raw_mode().expect("failed to enable raw terminal mode");
+    render_interactive_view(&state);
+
+    loop {
+        // Poll for keyboard events with a short timeout so we can also check WebSocket.
+        if event::poll(Duration::from_millis(100)).unwrap_or(false) {
+            if let Ok(Event::Key(key)) = event::read() {
+                match handle_keypress(key, &mut state) {
+                    KeyAction::Approve => {
+                        if let Some(id) = state.selected_id().map(String::from) {
+                            terminal::disable_raw_mode().ok();
+                            let result =
+                                client::approve_action(ctx, &id, Some("approved via watch")).await;
+                            match result {
+                                Ok(_) => {
+                                    state.items.retain(|i| i.id != id);
+                                    if state.selected > 0 && state.selected >= state.items.len() {
+                                        state.selected = state.items.len().saturating_sub(1);
+                                    }
+                                }
+                                Err(e) => eprintln!("approve error: {e}"),
+                            }
+                            terminal::enable_raw_mode().ok();
+                            state.dirty = true;
+                        }
+                    }
+                    KeyAction::Reject => {
+                        if let Some(id) = state.selected_id().map(String::from) {
+                            terminal::disable_raw_mode().ok();
+                            print!("Rejection reason: ");
+                            std::io::stdout().flush().ok();
+                            let mut reason = String::new();
+                            std::io::stdin().read_line(&mut reason).ok();
+                            let reason = reason.trim();
+                            if !reason.is_empty() {
+                                let result =
+                                    client::reject_action(ctx, &id, reason).await;
+                                match result {
+                                    Ok(_) => {
+                                        state.items.retain(|i| i.id != id);
+                                        if state.selected > 0
+                                            && state.selected >= state.items.len()
+                                        {
+                                            state.selected =
+                                                state.items.len().saturating_sub(1);
+                                        }
+                                    }
+                                    Err(e) => eprintln!("reject error: {e}"),
+                                }
+                            }
+                            terminal::enable_raw_mode().ok();
+                            state.dirty = true;
+                        }
+                    }
+                    KeyAction::Quit => break,
+                    KeyAction::None => {}
+                }
+            }
+        }
+
+        // Check for new WebSocket messages (non-blocking).
+        match ws.next().now_or_never() {
+            Some(Some(Ok(Message::Text(text)))) => {
+                if let Ok(approval) = serde_json::from_str::<ApprovalResponse>(&text) {
+                    state.items.push(approval);
+                    state.dirty = true;
+                }
+            }
+            Some(Some(Ok(Message::Close(_)))) | Some(None) => break,
+            _ => {}
+        }
+
+        if state.dirty {
+            render_interactive_view(&state);
+            state.dirty = false;
+        }
+    }
+
+    terminal::disable_raw_mode().ok();
+    println!();
 }
