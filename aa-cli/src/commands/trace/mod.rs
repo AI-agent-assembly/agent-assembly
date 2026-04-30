@@ -63,10 +63,15 @@ pub fn dispatch(args: TraceArgs, ctx: &ResolvedContext, output: OutputFormat) ->
                 }
             }
         }
-        OutputFormat::Table => {
-            // TODO: wire tree and timeline formats
-            println!("{trace:?}");
-        }
+        OutputFormat::Table => match args.format {
+            TraceFormat::Tree => {
+                print!("{}", tree::render_tree(&trace));
+            }
+            TraceFormat::Timeline => {
+                // TODO: wire timeline format
+                println!("{trace:?}");
+            }
+        },
     }
 
     ExitCode::SUCCESS
