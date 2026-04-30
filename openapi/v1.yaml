@@ -97,6 +97,62 @@ paths:
           description: Invalid agent ID format
         '404':
           description: Agent not found
+  /api/v1/agents/{id}/resume:
+    post:
+      tags:
+      - agents
+      summary: '`POST /api/v1/agents/:id/resume` — resume a suspended agent.'
+      description: Resume an agent that was previously suspended back to Active status.
+      operationId: resume_agent
+      parameters:
+      - name: id
+        in: path
+        description: Hex-encoded agent UUID
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Agent resumed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResumeResponse'
+        '400':
+          description: Invalid agent ID format
+        '404':
+          description: Agent not found
+  /api/v1/agents/{id}/suspend:
+    post:
+      tags:
+      - agents
+      summary: '`POST /api/v1/agents/:id/suspend` — suspend an agent.'
+      description: Suspend a running agent with a reason logged for audit.
+      operationId: suspend_agent
+      parameters:
+      - name: id
+        in: path
+        description: Hex-encoded agent UUID
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SuspendRequest'
+        required: true
+      responses:
+        '200':
+          description: Agent suspended
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuspendResponse'
+        '400':
+          description: Invalid agent ID format
+        '404':
+          description: Agent not found
   /api/v1/alerts:
     get:
       tags:
@@ -1006,6 +1062,23 @@ components:
         timestamp:
           type: string
           description: ISO 8601 timestamp when the trace session started.
+    ResumeResponse:
+      type: object
+      description: Response from `POST /api/v1/agents/:id/resume`.
+      required:
+      - agent_id
+      - previous_status
+      - new_status
+      properties:
+        agent_id:
+          type: string
+          description: Hex-encoded agent UUID.
+        new_status:
+          type: string
+          description: Agent status after the resume operation.
+        previous_status:
+          type: string
+          description: Agent status before the resume operation.
     Scope:
       type: string
       description: |-
@@ -1017,6 +1090,32 @@ components:
       - read
       - write
       - admin
+    SuspendRequest:
+      type: object
+      description: Request body for `POST /api/v1/agents/:id/suspend`.
+      required:
+      - reason
+      properties:
+        reason:
+          type: string
+          description: Reason for suspending the agent (logged for audit).
+    SuspendResponse:
+      type: object
+      description: Response from `POST /api/v1/agents/:id/suspend`.
+      required:
+      - agent_id
+      - previous_status
+      - new_status
+      properties:
+        agent_id:
+          type: string
+          description: Hex-encoded agent UUID.
+        new_status:
+          type: string
+          description: Agent status after the suspend operation.
+        previous_status:
+          type: string
+          description: Agent status before the suspend operation.
     TokenRequest:
       type: object
       description: Request body for `POST /auth/token`.
