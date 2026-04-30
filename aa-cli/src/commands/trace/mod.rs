@@ -75,3 +75,51 @@ pub fn dispatch(args: TraceArgs, ctx: &ResolvedContext, output: OutputFormat) ->
 
     ExitCode::SUCCESS
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::Parser;
+
+    /// Minimal CLI struct for testing subcommand parsing.
+    #[derive(Parser)]
+    #[command(name = "aasm")]
+    struct TestCli {
+        #[command(subcommand)]
+        command: TestCommands,
+    }
+
+    #[derive(clap::Subcommand)]
+    enum TestCommands {
+        Trace(TraceArgs),
+    }
+
+    #[test]
+    fn parse_trace_with_session_id() {
+        let cli = TestCli::try_parse_from(["aasm", "trace", "sess-001"]).unwrap();
+        match cli.command {
+            TestCommands::Trace(args) => {
+                assert_eq!(args.session_id, "sess-001");
+                assert!(matches!(args.format, TraceFormat::Tree));
+            }
+        }
+    }
+
+    #[test]
+    fn parse_trace_with_timeline_format() {
+        let cli =
+            TestCli::try_parse_from(["aasm", "trace", "sess-002", "--format", "timeline"]).unwrap();
+        match cli.command {
+            TestCommands::Trace(args) => {
+                assert_eq!(args.session_id, "sess-002");
+                assert!(matches!(args.format, TraceFormat::Timeline));
+            }
+        }
+    }
+
+    #[test]
+    fn parse_trace_missing_session_id_fails() {
+        let result = TestCli::try_parse_from(["aasm", "trace"]);
+        assert!(result.is_err());
+    }
+}
