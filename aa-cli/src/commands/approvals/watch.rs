@@ -297,3 +297,27 @@ pub async fn run_watch_interactive(mut ws: WsStream, ctx: &ResolvedContext) {
     terminal::disable_raw_mode().ok();
     println!();
 }
+
+/// Execute the `aasm approvals watch` subcommand.
+///
+/// Routes to interactive or stream mode based on the `--interactive` flag.
+pub fn run_watch(args: WatchArgs, ctx: &ResolvedContext) -> std::process::ExitCode {
+    let rt = tokio::runtime::Runtime::new().expect("failed to create tokio runtime");
+    let result = rt.block_on(async {
+        let ws = connect_approval_ws(ctx).await?;
+        if args.interactive {
+            run_watch_interactive(ws, ctx).await;
+        } else {
+            run_watch_stream(ws).await;
+        }
+        Ok::<(), CliError>(())
+    });
+
+    match result {
+        Ok(()) => std::process::ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("error: {e}");
+            std::process::ExitCode::FAILURE
+        }
+    }
+}
