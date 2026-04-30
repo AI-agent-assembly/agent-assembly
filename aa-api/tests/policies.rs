@@ -78,3 +78,33 @@ async fn list_policies_returns_200() {
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert!(json["items"].as_array().is_some());
 }
+
+#[tokio::test]
+async fn list_policies_returns_created_versions() {
+    let state = common::test_state();
+
+    // Create a policy via the engine so history gets a record.
+    state
+        .policy_engine
+        .apply_yaml(VALID_POLICY_YAML, Some("test"), state.policy_history.as_ref())
+        .await
+        .unwrap();
+
+    let app = aa_api::server::build_app(state);
+
+    let response = app
+        .oneshot(Request::builder().uri("/api/v1/policies").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["total"], 1);
+
+    let items = json["items"].as_array().unwrap();
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0]["active"], true);
+    assert!(items[0]["version"].as_str().is_some());
+}
