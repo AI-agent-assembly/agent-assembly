@@ -55,3 +55,18 @@ pub fn render_approvals_summary(summary: &ApprovalsSummary) {
     }
     println!();
 }
+
+/// Render an ASCII bar chart: 20-char wide, `█` for used, `░` for remaining.
+///
+/// `percentage` is clamped to `0..=100`.
+pub fn format_bar_chart(percentage: u32) -> String {
+    let pct = percentage.min(100);
+    let filled = (pct as usize * 20) / 100;
+    let empty = 20 - filled;
+    format!(
+        "{}{} {:>3}%",
+        "█".repeat(filled),
+        "░".repeat(empty),
+        pct,
+    )
+}
