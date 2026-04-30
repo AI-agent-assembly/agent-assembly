@@ -4,7 +4,7 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use wiremock::matchers::{method, path};
+use wiremock::matchers::{body_partial_json, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 fn make_context(api_url: &str) -> aa_cli::config::ResolvedContext {
@@ -21,6 +21,9 @@ async fn apply_sends_post_to_api_and_prints_response() {
 
     Mock::given(method("POST"))
         .and(path("/api/v1/policies"))
+        .and(body_partial_json(serde_json::json!({
+            "policy_yaml": "apiVersion: agent-assembly.dev/v1alpha1\nkind: GovernancePolicy\nmetadata:\n  name: test-policy\n  version: \"1.0.0\"\nspec:\n  rules: []\n"
+        })))
         .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({
             "name": "abc123def456",
             "version": "2026-04-30T12:00:00Z",
