@@ -1,6 +1,7 @@
 //! Query parameters for the WebSocket events endpoint.
 
 use serde::Deserialize;
+use utoipa::IntoParams;
 
 use crate::models::{EventId, EventType};
 
@@ -11,13 +12,15 @@ use crate::models::{EventId, EventType};
 ///   All types are included when omitted.
 /// - `agent_id`: restrict events to a single agent.
 /// - `since`: replay buffered events whose id is greater than this value.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, IntoParams)]
 pub struct WsQueryParams {
-    /// Comma-separated event type filter.
+    /// Comma-separated event type filter (e.g. `violation,budget`).
+    /// All types are included when omitted.
     pub types: Option<String>,
-    /// Filter events by agent identifier.
+    /// Filter events by agent identifier (hex-encoded).
     pub agent_id: Option<String>,
-    /// Replay events after this event id on reconnect.
+    /// Replay buffered events whose id is greater than this value.
+    /// The server keeps the last 1000 events in a circular buffer.
     pub since: Option<EventId>,
 }
 
