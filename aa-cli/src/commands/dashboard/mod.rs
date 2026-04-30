@@ -87,6 +87,19 @@ async fn run(_args: DashboardArgs, ctx: &ResolvedContext) -> ExitCode {
         // Check for terminal input events (non-blocking, 50ms timeout).
         if ct_event::poll(Duration::from_millis(50)).unwrap_or(false) {
             if let Ok(Event::Key(key)) = ct_event::read() {
+                // If an overlay is showing, Esc dismisses it.
+                if state.show_inspect {
+                    if matches!(key.code, KeyCode::Esc | KeyCode::Char('q')) {
+                        state.show_inspect = false;
+                    }
+                    continue;
+                }
+                if state.show_policy {
+                    if matches!(key.code, KeyCode::Esc | KeyCode::Char('q')) {
+                        state.show_policy = false;
+                    }
+                    continue;
+                }
                 // If a confirm dialog is showing, intercept y/n/Esc.
                 if let Some(dialog_action) = state.confirm_dialog {
                     match key.code {
@@ -127,6 +140,16 @@ async fn run(_args: DashboardArgs, ctx: &ResolvedContext) -> ExitCode {
                         InputAction::Reject => {
                             state.confirm_dialog = Some(DialogAction::Reject);
                         }
+                        InputAction::Inspect => {
+                            state.show_inspect = true;
+                        }
+                        InputAction::PolicyView => {
+                            // Fetch policy YAML in background if not cached.
+                            if state.policy_yaml.is_none() {
+                                state.policy_yaml = fetch_policy_yaml();
+                            }
+                            state.show_policy = true;
+                        }
                         InputAction::None => {}
                     }
                 }
@@ -148,7 +171,12 @@ async fn run(_args: DashboardArgs, ctx: &ResolvedContext) -> ExitCode {
                     state.approvals_summary = approvals_summary;
                     state.pending_approvals = pending_approvals;
                     state.budget = budget;
-                    // Clamp approval selection to valid range.
+                    // Clamp selections to valid range.
+                    if !state.agents.is_empty() {
+                        state.agent_selected = state.agent_selected.min(state.agents.len() - 1);
+                    } else {
+                        state.agent_selected = 0;
+                    }
                     if !state.pending_approvals.is_empty() {
                         state.approval_selected = state.approval_selected.min(state.pending_approvals.len() - 1);
                     } else {
@@ -171,6 +199,20 @@ async fn run(_args: DashboardArgs, ctx: &ResolvedContext) -> ExitCode {
 
     let _ = restore_terminal();
     ExitCode::SUCCESS
+}
+
+/// Attempt to load the active policy YAML from the local policy history store.
+fn fetch_policy_yaml() -> Option<String> {
+    use aa_gateway::policy::history::{FsHistoryStore, HistoryConfig, PolicyHistoryStore};
+
+    let config = HistoryConfig::default_config();
+    let store = FsHistoryStore::new(config);
+
+    let rt = tokio::runtime::Handle::current();
+    let versions = rt.block_on(store.list(1)).ok()?;
+    let latest = versions.first()?;
+    let snapshot = rt.block_on(store.get(&latest.sha256)).ok()?;
+    Some(snapshot.yaml_content)
 }
 
 /// Enter raw mode and alternate screen for the TUI.
