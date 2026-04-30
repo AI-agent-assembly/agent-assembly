@@ -40,6 +40,10 @@ fn record_to_response(r: aa_gateway::registry::AgentRecord) -> AgentResponse {
         status: format!("{:?}", r.status),
         tool_names: r.tool_names,
         metadata: r.metadata,
+        pid: r.pid,
+        session_count: r.session_count,
+        last_event: r.last_event.map(|t| t.to_rfc3339()),
+        policy_violations_count: r.policy_violations_count,
     }
 }
 
@@ -60,6 +64,14 @@ pub struct AgentResponse {
     pub tool_names: Vec<String>,
     /// Arbitrary metadata key-value pairs.
     pub metadata: BTreeMap<String, String>,
+    /// OS process ID, if known.
+    pub pid: Option<u32>,
+    /// Number of sessions handled.
+    pub session_count: u32,
+    /// ISO 8601 timestamp of the most recent event.
+    pub last_event: Option<String>,
+    /// Number of policy violations recorded.
+    pub policy_violations_count: u32,
 }
 
 /// `GET /api/v1/agents` — list all registered agents with pagination.
