@@ -2,7 +2,7 @@
 
 use comfy_table::{ContentArrangement, Table};
 
-use super::models::{AgentRow, RuntimeHealth};
+use super::models::{AgentRow, ApprovalsSummary, RuntimeHealth};
 
 /// Render the Runtime Health section to stdout.
 pub fn render_runtime_health(health: &RuntimeHealth) {
@@ -42,5 +42,16 @@ pub fn render_agents_table(agents: &[AgentRow]) {
         ]);
     }
     println!("{table}");
+    println!();
+}
+
+/// Render the Pending Approvals section to stdout.
+pub fn render_approvals_summary(summary: &ApprovalsSummary) {
+    println!("PENDING APPROVALS");
+    println!("─────────────────");
+    println!("  Count:  {}", summary.pending_count);
+    if let Some(ref age) = summary.oldest_pending_age {
+        println!("  Oldest: {age} ago");
+    }
     println!();
 }
