@@ -126,3 +126,100 @@ fn print_report(report: &SimulationReport) {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn invalid_policy_file_exits_failure() {
+        let mut tmp = tempfile::NamedTempFile::new().unwrap();
+        std::io::Write::write_all(&mut tmp, b"not: valid: policy: [[[").unwrap();
+
+        let args = SimulateArgs {
+            policy: tmp.path().to_path_buf(),
+            against: None,
+            live: false,
+            duration: None,
+            output: None,
+        };
+        assert_eq!(run(args), ExitCode::FAILURE);
+    }
+
+    #[test]
+    fn missing_policy_file_exits_failure() {
+        let args = SimulateArgs {
+            policy: PathBuf::from("/tmp/nonexistent-policy-simulate.yaml"),
+            against: None,
+            live: false,
+            duration: None,
+            output: None,
+        };
+        assert_eq!(run(args), ExitCode::FAILURE);
+    }
+
+    #[test]
+    fn missing_against_flag_exits_failure() {
+        // Create a valid policy file but don't provide --against
+        let mut tmp = tempfile::NamedTempFile::new().unwrap();
+        std::io::Write::write_all(
+            &mut tmp,
+            br#"apiVersion: agent-assembly/v1
+kind: Policy
+metadata:
+  name: sim-test
+spec:
+  tier: low
+  rules:
+    - id: allow-all
+      description: Allow all
+      match:
+        actions: ["*"]
+      effect: allow
+      audit: true
+"#,
+        )
+        .unwrap();
+
+        let args = SimulateArgs {
+            policy: tmp.path().to_path_buf(),
+            against: None,
+            live: false,
+            duration: None,
+            output: None,
+        };
+        assert_eq!(run(args), ExitCode::FAILURE);
+    }
+
+    #[test]
+    fn live_mode_exits_failure_not_implemented() {
+        let mut tmp = tempfile::NamedTempFile::new().unwrap();
+        std::io::Write::write_all(
+            &mut tmp,
+            br#"apiVersion: agent-assembly/v1
+kind: Policy
+metadata:
+  name: sim-test
+spec:
+  tier: low
+  rules:
+    - id: allow-all
+      description: Allow all
+      match:
+        actions: ["*"]
+      effect: allow
+      audit: true
+"#,
+        )
+        .unwrap();
+
+        let args = SimulateArgs {
+            policy: tmp.path().to_path_buf(),
+            against: None,
+            live: true,
+            duration: Some("30s".to_string()),
+            output: None,
+        };
+        assert_eq!(run(args), ExitCode::FAILURE);
+    }
+}
