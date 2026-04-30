@@ -107,4 +107,30 @@ mod tests {
         let json = serde_json::to_string(&event).unwrap();
         assert!(!json.contains("violation_reason"));
     }
+
+    #[test]
+    fn session_trace_round_trip_with_nested_events() {
+        let trace = SessionTrace {
+            session_id: "sess-001".to_string(),
+            events: vec![TraceEvent {
+                kind: TraceEventKind::Llm,
+                label: "GPT-4o".to_string(),
+                duration_ms: 834,
+                children: vec![TraceEvent {
+                    kind: TraceEventKind::ToolCall,
+                    label: "query_db".to_string(),
+                    duration_ms: 12,
+                    children: vec![],
+                    violation_reason: None,
+                }],
+                violation_reason: None,
+            }],
+        };
+        let json = serde_json::to_string_pretty(&trace).unwrap();
+        let parsed: SessionTrace = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.session_id, "sess-001");
+        assert_eq!(parsed.events.len(), 1);
+        assert_eq!(parsed.events[0].children.len(), 1);
+        assert_eq!(parsed.events[0].children[0].label, "query_db");
+    }
 }
