@@ -54,3 +54,28 @@ pub fn run_reject(args: RejectArgs, ctx: &ResolvedContext) -> ExitCode {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validate_reject_reason_none_returns_error() {
+        let result = validate_reject_reason(&None);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn validate_reject_reason_empty_returns_error() {
+        let empty = Some("   ".to_string());
+        let result = validate_reject_reason(&empty);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn validate_reject_reason_valid_returns_ok() {
+        let reason = Some("policy violation".to_string());
+        let result = validate_reject_reason(&reason);
+        assert_eq!(result.unwrap(), "policy violation");
+    }
+}
