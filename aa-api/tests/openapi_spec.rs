@@ -101,10 +101,7 @@ fn governance_event_schema_exists() {
         schemas.contains_key("BudgetAlertPayload"),
         "BudgetAlertPayload schema missing"
     );
-    assert!(
-        schemas.contains_key("EventPayload"),
-        "EventPayload schema missing"
-    );
+    assert!(schemas.contains_key("EventPayload"), "EventPayload schema missing");
 }
 
 #[test]
