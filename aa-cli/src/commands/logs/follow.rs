@@ -1,9 +1,12 @@
 //! Follow mode: real-time event streaming via WebSocket.
 
+use std::collections::VecDeque;
 use std::process::ExitCode;
+use std::sync::Arc;
 
 use futures_util::StreamExt;
 use serde::Deserialize;
+use tokio::sync::{Mutex, Notify};
 use tokio_tungstenite::tungstenite::Message;
 
 use crate::config::ResolvedContext;
@@ -105,11 +108,18 @@ async fn stream_events(args: LogsArgs, ctx: &ResolvedContext) -> ExitCode {
 
     let (_write, mut read) = ws_stream.split();
 
-    // Bounded channel provides backpressure: if stdout is slow the
-    // receiver drops the oldest events instead of blocking the WS read.
-    let (tx, mut rx) = tokio::sync::mpsc::channel::<LogLineData>(EVENT_BUFFER_CAPACITY);
+    // Ring buffer: when full the oldest event is evicted so the WS
+    // reader never blocks and the display always shows the latest events.
+    let buf: Arc<Mutex<VecDeque<LogLineData>>> =
+        Arc::new(Mutex::new(VecDeque::with_capacity(EVENT_BUFFER_CAPACITY)));
+    let notify = Arc::new(Notify::new());
+    let ws_closed = Arc::new(Notify::new());
 
-    // Spawn WS reader task — deserialises events and pushes into the channel.
+    let buf_tx = Arc::clone(&buf);
+    let notify_tx = Arc::clone(&notify);
+    let ws_closed_tx = Arc::clone(&ws_closed);
+
+    // Spawn WS reader task — deserialises events and pushes into the ring buffer.
     let ws_reader = tokio::spawn(async move {
         while let Some(msg) = read.next().await {
             match msg {
@@ -119,41 +129,41 @@ async fn stream_events(args: LogsArgs, ctx: &ResolvedContext) -> ExitCode {
                         Err(_) => continue,
                     };
                     let line_data = event.to_line_data();
-                    // Try to send; if the channel is full, drop the oldest
-                    // entry first to make room.
-                    if tx.try_send(line_data).is_err() {
-                        // Channel full — oldest event is implicitly dropped.
-                        rx_drain_hint();
+                    let mut ring = buf_tx.lock().await;
+                    if ring.len() >= EVENT_BUFFER_CAPACITY {
+                        ring.pop_front(); // drop oldest
                     }
+                    ring.push_back(line_data);
+                    drop(ring);
+                    notify_tx.notify_one();
                 }
                 Ok(Message::Close(_)) => break,
                 Ok(_) => {} // ping/pong/binary
                 Err(_) => break,
             }
         }
+        ws_closed_tx.notify_one();
     });
 
-    // Main loop: drain the channel and print, with Ctrl+C handling.
+    // Main loop: drain the ring buffer and print, with Ctrl+C handling.
     loop {
         tokio::select! {
-            entry = rx.recv() => {
-                match entry {
-                    Some(line_data) => {
-                        if !is_within_time_range(&line_data.timestamp, since.as_ref(), None) {
-                            continue;
-                        }
-                        if use_json {
-                            println!("{}", format_log_json(&line_data));
-                        } else {
-                            println!("{}", format_log_line(&line_data, use_color));
-                        }
+            _ = notify.notified() => {
+                let mut ring = buf.lock().await;
+                while let Some(line_data) = ring.pop_front() {
+                    if !is_within_time_range(&line_data.timestamp, since.as_ref(), None) {
+                        continue;
                     }
-                    None => {
-                        // Sender dropped — WS reader finished.
-                        eprintln!("WebSocket connection closed by server");
-                        return ExitCode::FAILURE;
+                    if use_json {
+                        println!("{}", format_log_json(&line_data));
+                    } else {
+                        println!("{}", format_log_line(&line_data, use_color));
                     }
                 }
+            }
+            _ = ws_closed.notified() => {
+                eprintln!("WebSocket connection closed by server");
+                return ExitCode::FAILURE;
             }
             _ = tokio::signal::ctrl_c() => {
                 ws_reader.abort();
@@ -161,14 +171,6 @@ async fn stream_events(args: LogsArgs, ctx: &ResolvedContext) -> ExitCode {
             }
         }
     }
-}
-
-/// Placeholder for a channel-full hint. In the current implementation
-/// the bounded channel handles backpressure by blocking the sender
-/// via `try_send` / error path. This function exists so future
-/// telemetry can observe dropped events.
-fn rx_drain_hint() {
-    // Currently a no-op. The channel itself applies backpressure.
 }
 
 #[cfg(test)]
