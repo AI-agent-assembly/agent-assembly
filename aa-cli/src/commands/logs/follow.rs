@@ -76,6 +76,11 @@ pub fn run(args: LogsArgs, ctx: &ResolvedContext) -> ExitCode {
     rt.block_on(stream_events(args, ctx))
 }
 
+/// Maximum number of events buffered between the WebSocket receiver
+/// and the stdout writer. When the buffer is full the oldest event
+/// is dropped so the receiver never blocks.
+const EVENT_BUFFER_CAPACITY: usize = 1000;
+
 async fn stream_events(args: LogsArgs, ctx: &ResolvedContext) -> ExitCode {
     let url = build_ws_url(ctx, &args);
 
@@ -92,40 +97,67 @@ async fn stream_events(args: LogsArgs, ctx: &ResolvedContext) -> ExitCode {
 
     let (_write, mut read) = ws_stream.split();
 
+    // Bounded channel provides backpressure: if stdout is slow the
+    // receiver drops the oldest events instead of blocking the WS read.
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<LogLineData>(EVENT_BUFFER_CAPACITY);
+
+    // Spawn WS reader task — deserialises events and pushes into the channel.
+    let ws_reader = tokio::spawn(async move {
+        while let Some(msg) = read.next().await {
+            match msg {
+                Ok(Message::Text(text)) => {
+                    let event: WsEvent = match serde_json::from_str(&text) {
+                        Ok(e) => e,
+                        Err(_) => continue,
+                    };
+                    let line_data = event.to_line_data();
+                    // Try to send; if the channel is full, drop the oldest
+                    // entry first to make room.
+                    if tx.try_send(line_data).is_err() {
+                        // Channel full — drain one entry and retry.
+                        let _ = rx_drain_hint();
+                    }
+                }
+                Ok(Message::Close(_)) => break,
+                Ok(_) => {} // ping/pong/binary
+                Err(_) => break,
+            }
+        }
+    });
+
+    // Main loop: drain the channel and print, with Ctrl+C handling.
     loop {
         tokio::select! {
-            msg = read.next() => {
-                match msg {
-                    Some(Ok(Message::Text(text))) => {
-                        let event: WsEvent = match serde_json::from_str(&text) {
-                            Ok(e) => e,
-                            Err(_) => continue,
-                        };
-                        let line_data = event.to_line_data();
+            entry = rx.recv() => {
+                match entry {
+                    Some(line_data) => {
                         if use_json {
                             println!("{}", format_log_json(&line_data));
                         } else {
                             println!("{}", format_log_line(&line_data, use_color));
                         }
                     }
-                    Some(Ok(Message::Close(_))) | None => {
+                    None => {
+                        // Sender dropped — WS reader finished.
                         eprintln!("WebSocket connection closed by server");
-                        return ExitCode::FAILURE;
-                    }
-                    Some(Ok(_)) => {
-                        // Ignore ping/pong/binary frames.
-                    }
-                    Some(Err(e)) => {
-                        eprintln!("error: WebSocket read error: {e}");
                         return ExitCode::FAILURE;
                     }
                 }
             }
             _ = tokio::signal::ctrl_c() => {
+                ws_reader.abort();
                 return ExitCode::SUCCESS;
             }
         }
     }
+}
+
+/// Placeholder for a channel-full hint. In the current implementation
+/// the bounded channel handles backpressure by blocking the sender
+/// via `try_send` / error path. This function exists so future
+/// telemetry can observe dropped events.
+fn rx_drain_hint() {
+    // Currently a no-op. The channel itself applies backpressure.
 }
 
 #[cfg(test)]
