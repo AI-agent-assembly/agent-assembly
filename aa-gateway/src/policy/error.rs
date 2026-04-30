@@ -84,20 +84,13 @@ mod tests {
     #[test]
     fn validation_error_display_without_line() {
         let e = ValidationError::new("budget.daily_limit_usd", "must be greater than 0");
-        assert_eq!(
-            e.to_string(),
-            "budget.daily_limit_usd — must be greater than 0"
-        );
+        assert_eq!(e.to_string(), "budget.daily_limit_usd — must be greater than 0");
     }
 
     #[test]
     fn validation_error_display_with_line() {
-        let e =
-            ValidationError::new("budget.daily_limit_usd", "invalid value").with_line(12);
-        assert_eq!(
-            e.to_string(),
-            "line 12: budget.daily_limit_usd — invalid value"
-        );
+        let e = ValidationError::new("budget.daily_limit_usd", "invalid value").with_line(12);
+        assert_eq!(e.to_string(), "line 12: budget.daily_limit_usd — invalid value");
     }
 
     #[test]
@@ -116,9 +109,6 @@ mod tests {
     #[test]
     fn validation_warning_display_formatting() {
         let w = ValidationWarning::unknown_key("risk_tier");
-        assert_eq!(
-            w.to_string(),
-            "risk_tier — Unknown key 'risk_tier' will be ignored"
-        );
+        assert_eq!(w.to_string(), "risk_tier — Unknown key 'risk_tier' will be ignored");
     }
 }
