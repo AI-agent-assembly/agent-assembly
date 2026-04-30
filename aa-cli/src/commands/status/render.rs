@@ -110,3 +110,57 @@ pub fn render_all(snapshot: &StatusSnapshot, format: OutputFormat) {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bar_chart_at_zero_percent() {
+        let bar = format_bar_chart(0);
+        assert_eq!(bar, "░░░░░░░░░░░░░░░░░░░░   0%");
+    }
+
+    #[test]
+    fn bar_chart_at_fifty_percent() {
+        let bar = format_bar_chart(50);
+        assert_eq!(bar, "██████████░░░░░░░░░░  50%");
+    }
+
+    #[test]
+    fn bar_chart_at_hundred_percent() {
+        let bar = format_bar_chart(100);
+        assert_eq!(bar, "████████████████████ 100%");
+    }
+
+    #[test]
+    fn bar_chart_clamps_above_hundred() {
+        let bar = format_bar_chart(150);
+        assert_eq!(bar, "████████████████████ 100%");
+    }
+
+    #[test]
+    fn render_status_json_contains_all_keys() {
+        let snapshot = StatusSnapshot {
+            runtime: RuntimeHealth {
+                reachable: true,
+                status: "ok".to_string(),
+            },
+            agents: vec![],
+            approvals: ApprovalsSummary {
+                pending_count: 0,
+                oldest_pending_age: None,
+            },
+            budget: BudgetRow {
+                daily_spend_usd: "0.00".to_string(),
+                monthly_spend_usd: None,
+                date: "2026-04-30".to_string(),
+            },
+        };
+        let json = serde_json::to_string_pretty(&snapshot).unwrap();
+        assert!(json.contains("\"runtime\""));
+        assert!(json.contains("\"agents\""));
+        assert!(json.contains("\"approvals\""));
+        assert!(json.contains("\"budget\""));
+    }
+}
