@@ -1,9 +1,10 @@
 //! OpenAPI spec aggregation via utoipa.
 
-use utoipa::OpenApi;
+use utoipa::openapi::security::{HttpAuthScheme, HttpBuilder, SecurityScheme};
+use utoipa::{Modify, OpenApi};
 
 use crate::models::trace::{TraceResponse, TraceSpan};
-use crate::routes::{agents, alerts, approvals, costs, logs, policies, traces};
+use crate::routes::{agents, alerts, approvals, auth, costs, logs, policies, traces};
 
 /// Root OpenAPI document collecting all annotated paths and schemas.
 #[derive(OpenApi)]
@@ -27,6 +28,7 @@ use crate::routes::{agents, alerts, approvals, costs, logs, policies, traces};
         (name = "approvals", description = "Human-in-the-loop approvals"),
         (name = "costs", description = "Cost and budget tracking"),
         (name = "alerts", description = "Governance alerts"),
+        (name = "auth", description = "Authentication and token issuance"),
     ),
     paths(
         crate::routes::health::health,
@@ -43,6 +45,7 @@ use crate::routes::{agents, alerts, approvals, costs, logs, policies, traces};
         approvals::reject_action,
         costs::get_cost_summary,
         alerts::list_alerts,
+        auth::issue_token,
     ),
     components(schemas(
         crate::routes::health::HealthResponse,
@@ -57,6 +60,31 @@ use crate::routes::{agents, alerts, approvals, costs, logs, policies, traces};
         approvals::DecideRequest,
         costs::CostSummary,
         alerts::AlertResponse,
-    ))
+        auth::TokenRequest,
+        auth::TokenResponse,
+        crate::auth::scope::Scope,
+    )),
+    modifiers(&SecurityAddon),
 )]
 pub struct ApiDoc;
+
+/// Adds the `bearer_auth` security scheme to the generated OpenAPI spec.
+struct SecurityAddon;
+
+impl Modify for SecurityAddon {
+    fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
+        let components = openapi.components.get_or_insert_default();
+        components.add_security_scheme(
+            "bearer_auth",
+            SecurityScheme::Http(
+                HttpBuilder::new()
+                    .scheme(HttpAuthScheme::Bearer)
+                    .bearer_format("JWT")
+                    .description(Some(
+                        "API key (`aa_…` prefix) or JWT bearer token".to_string(),
+                    ))
+                    .build(),
+            ),
+        );
+    }
+}
