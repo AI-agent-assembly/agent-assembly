@@ -1,6 +1,7 @@
 //! OpenAPI spec aggregation via utoipa.
 
 use utoipa::openapi::security::{HttpAuthScheme, HttpBuilder, SecurityScheme};
+use utoipa::openapi::ComponentsBuilder;
 use utoipa::{Modify, OpenApi};
 
 use crate::models::trace::{TraceResponse, TraceSpan};
@@ -73,7 +74,9 @@ struct SecurityAddon;
 
 impl Modify for SecurityAddon {
     fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
-        let components = openapi.components.get_or_insert_default();
+        let components = openapi
+            .components
+            .get_or_insert_with(|| ComponentsBuilder::new().build());
         components.add_security_scheme(
             "bearer_auth",
             SecurityScheme::Http(
