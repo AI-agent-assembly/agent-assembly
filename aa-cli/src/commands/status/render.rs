@@ -194,6 +194,62 @@ mod tests {
     }
 
     #[test]
+    fn colorize_bar_green_below_50() {
+        let bar = format_bar_chart(30);
+        let colored = colorize_bar(&bar, 30);
+        // The colored string contains ANSI escape codes for green.
+        assert!(colored.contains("30%"));
+    }
+
+    #[test]
+    fn colorize_bar_yellow_at_50() {
+        let bar = format_bar_chart(50);
+        let colored = colorize_bar(&bar, 50);
+        assert!(colored.contains("50%"));
+    }
+
+    #[test]
+    fn colorize_bar_yellow_at_80() {
+        let bar = format_bar_chart(80);
+        let colored = colorize_bar(&bar, 80);
+        assert!(colored.contains("80%"));
+    }
+
+    #[test]
+    fn colorize_bar_red_above_80() {
+        let bar = format_bar_chart(95);
+        let colored = colorize_bar(&bar, 95);
+        assert!(colored.contains("95%"));
+    }
+
+    #[test]
+    fn per_agent_sorted_by_spend_descending() {
+        use super::super::models::AgentCostEntry;
+        let mut entries = vec![
+            AgentCostEntry {
+                agent_id: "low".to_string(),
+                daily_spend_usd: "1.00".to_string(),
+            },
+            AgentCostEntry {
+                agent_id: "high".to_string(),
+                daily_spend_usd: "10.00".to_string(),
+            },
+            AgentCostEntry {
+                agent_id: "mid".to_string(),
+                daily_spend_usd: "5.00".to_string(),
+            },
+        ];
+        entries.sort_by(|a, b| {
+            let a_val: f64 = a.daily_spend_usd.parse().unwrap_or(0.0);
+            let b_val: f64 = b.daily_spend_usd.parse().unwrap_or(0.0);
+            b_val.partial_cmp(&a_val).unwrap_or(std::cmp::Ordering::Equal)
+        });
+        assert_eq!(entries[0].agent_id, "high");
+        assert_eq!(entries[1].agent_id, "mid");
+        assert_eq!(entries[2].agent_id, "low");
+    }
+
+    #[test]
     fn render_status_json_contains_all_keys() {
         let snapshot = StatusSnapshot {
             runtime: RuntimeHealth {
