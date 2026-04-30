@@ -68,7 +68,14 @@ fn status_color(status: &str) -> Color {
 fn render_table(agents: &[AgentResponse]) {
     let mut table = Table::new();
     table.set_header(vec![
-        "AGENT_ID", "NAME", "FRAMEWORK", "VERSION", "STATUS", "PID", "SESSIONS", "LAST_EVENT",
+        "AGENT_ID",
+        "NAME",
+        "FRAMEWORK",
+        "VERSION",
+        "STATUS",
+        "PID",
+        "SESSIONS",
+        "LAST_EVENT",
     ]);
 
     for agent in agents {

@@ -50,9 +50,7 @@ fn render_detail(agent: &AgentResponse) {
     let last_event_str = agent.last_event.as_deref().unwrap_or("-").to_string();
     table.add_row(vec!["Last Event".to_string(), last_event_str]);
 
-    let violations_str = agent
-        .policy_violations_count
-        .map_or("-".to_string(), |v| v.to_string());
+    let violations_str = agent.policy_violations_count.map_or("-".to_string(), |v| v.to_string());
     table.add_row(vec!["Policy Violations".to_string(), violations_str]);
 
     if !agent.metadata.is_empty() {
