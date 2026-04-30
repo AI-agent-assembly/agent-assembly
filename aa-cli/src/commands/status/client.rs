@@ -2,7 +2,7 @@
 
 use reqwest::Client;
 
-use super::models::{AgentResponse, HealthResponse, PaginatedResponse};
+use super::models::{AgentResponse, ApprovalResponse, HealthResponse, PaginatedResponse};
 use crate::error::CliError;
 
 /// Client for making status-related API requests.
@@ -52,6 +52,18 @@ impl StatusClient {
             .send()
             .await?;
         let body = resp.json::<PaginatedResponse<AgentResponse>>().await?;
+        Ok(body.items)
+    }
+
+    /// List all approvals via `GET /api/v1/approvals`.
+    pub async fn list_approvals(&self) -> Result<Vec<ApprovalResponse>, CliError> {
+        let resp = self
+            .http
+            .get(self.url("/api/v1/approvals"))
+            .query(&[("per_page", "100")])
+            .send()
+            .await?;
+        let body = resp.json::<PaginatedResponse<ApprovalResponse>>().await?;
         Ok(body.items)
     }
 }
