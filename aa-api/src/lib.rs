@@ -5,6 +5,7 @@
 //! via `utoipa`. CI validates that `openapi/v1.yaml` stays in sync with
 //! the generated spec — a drift failure blocks merge.
 
+pub mod alerts;
 pub mod auth;
 pub mod config;
 pub mod error;
