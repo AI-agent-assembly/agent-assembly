@@ -62,4 +62,49 @@ mod tests {
         let kind: TraceEventKind = serde_json::from_str("\"tool_call\"").unwrap();
         assert_eq!(kind, TraceEventKind::ToolCall);
     }
+
+    #[test]
+    fn trace_event_round_trip() {
+        let event = TraceEvent {
+            kind: TraceEventKind::Llm,
+            label: "GPT-4o".to_string(),
+            duration_ms: 834,
+            children: vec![],
+            violation_reason: None,
+        };
+        let json = serde_json::to_string(&event).unwrap();
+        let parsed: TraceEvent = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.kind, TraceEventKind::Llm);
+        assert_eq!(parsed.label, "GPT-4o");
+        assert_eq!(parsed.duration_ms, 834);
+        assert!(parsed.children.is_empty());
+        assert!(parsed.violation_reason.is_none());
+    }
+
+    #[test]
+    fn trace_event_violation_reason_included_when_present() {
+        let event = TraceEvent {
+            kind: TraceEventKind::PolicyDeny,
+            label: "process_refund".to_string(),
+            duration_ms: 1,
+            children: vec![],
+            violation_reason: Some("amount exceeds limit".to_string()),
+        };
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(json.contains("violation_reason"));
+        assert!(json.contains("amount exceeds limit"));
+    }
+
+    #[test]
+    fn trace_event_violation_reason_omitted_when_none() {
+        let event = TraceEvent {
+            kind: TraceEventKind::ToolCall,
+            label: "query_db".to_string(),
+            duration_ms: 12,
+            children: vec![],
+            violation_reason: None,
+        };
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(!json.contains("violation_reason"));
+    }
 }
