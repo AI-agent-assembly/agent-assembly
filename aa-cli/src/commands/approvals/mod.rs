@@ -1,5 +1,6 @@
 //! `aasm approvals` — human-in-the-loop approval management subcommands.
 
+pub mod approve;
 pub mod client;
 pub mod get;
 pub mod list;
