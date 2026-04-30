@@ -22,7 +22,7 @@ pub struct CostResponse {
     #[serde(default)]
     pub monthly_limit_usd: Option<String>,
     #[serde(default)]
-    pub agents: Vec<AgentCostEntry>,
+    pub per_agent: Vec<AgentCostEntry>,
 }
 
 /// Display model for cost summary output.
@@ -33,7 +33,7 @@ pub struct CostSummaryDisplay {
     pub date: String,
     pub daily_limit_usd: Option<String>,
     pub monthly_limit_usd: Option<String>,
-    pub agents: Vec<AgentCostEntry>,
+    pub per_agent: Vec<AgentCostEntry>,
 }
 
 /// Display model for cost forecast output.
@@ -56,7 +56,7 @@ impl From<CostResponse> for CostSummaryDisplay {
             date: resp.date,
             daily_limit_usd: resp.daily_limit_usd,
             monthly_limit_usd: resp.monthly_limit_usd,
-            agents: resp.agents,
+            per_agent: resp.per_agent,
         }
     }
 }
@@ -72,7 +72,7 @@ mod tests {
         assert_eq!(resp.daily_spend_usd, "0.00");
         assert!(resp.monthly_spend_usd.is_none());
         assert!(resp.daily_limit_usd.is_none());
-        assert!(resp.agents.is_empty());
+        assert!(resp.per_agent.is_empty());
     }
 
     #[test]
@@ -83,7 +83,7 @@ mod tests {
             "date": "2026-04-30",
             "daily_limit_usd": "50.00",
             "monthly_limit_usd": "500.00",
-            "agents": [{
+            "per_agent": [{
                 "agent_id": "abc123",
                 "daily_spend_usd": "4.00",
                 "monthly_spend_usd": "80.00",
@@ -92,7 +92,7 @@ mod tests {
         }"#;
         let resp: CostResponse = serde_json::from_str(json).unwrap();
         assert_eq!(resp.daily_limit_usd.as_deref(), Some("50.00"));
-        assert_eq!(resp.agents.len(), 1);
-        assert_eq!(resp.agents[0].agent_id, "abc123");
+        assert_eq!(resp.per_agent.len(), 1);
+        assert_eq!(resp.per_agent[0].agent_id, "abc123");
     }
 }

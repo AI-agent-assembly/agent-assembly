@@ -159,7 +159,8 @@ export interface paths {
         };
         /**
          * `GET /api/v1/costs` — cost and budget summary.
-         * @description Retrieve the current daily and monthly cost and budget summary.
+         * @description Retrieve the current daily and monthly cost and budget summary,
+         *     including per-agent breakdown and configured budget limits.
          */
         get: operations["get_cost_summary"];
         put?: never;
@@ -338,6 +339,10 @@ export interface components {
             agent_id: string;
             /** @description Daily spend for this agent in USD. */
             daily_spend_usd: string;
+            /** @description Calendar date (YYYY-MM-DD) the daily spend applies to. */
+            date: string;
+            /** @description Total spend this month in USD for this agent (if monthly tracking is enabled). */
+            monthly_spend_usd?: string | null;
         };
         /** @description JSON representation of an agent returned by the API. */
         AgentResponse: {

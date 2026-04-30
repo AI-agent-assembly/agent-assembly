@@ -271,7 +271,9 @@ paths:
       tags:
       - costs
       summary: '`GET /api/v1/costs` — cost and budget summary.'
-      description: Retrieve the current daily and monthly cost and budget summary.
+      description: |-
+        Retrieve the current daily and monthly cost and budget summary,
+        including per-agent breakdown and configured budget limits.
       operationId: get_cost_summary
       responses:
         '200':
@@ -545,6 +547,7 @@ components:
       required:
       - agent_id
       - daily_spend_usd
+      - date
       properties:
         agent_id:
           type: string
@@ -552,6 +555,13 @@ components:
         daily_spend_usd:
           type: string
           description: Daily spend for this agent in USD.
+        date:
+          type: string
+          description: Calendar date (YYYY-MM-DD) the daily spend applies to.
+        monthly_spend_usd:
+          type: string
+          description: Total spend this month in USD for this agent (if monthly tracking is enabled).
+          nullable: true
     AgentResponse:
       type: object
       description: JSON representation of an agent returned by the API.

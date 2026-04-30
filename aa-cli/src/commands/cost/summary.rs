@@ -95,7 +95,7 @@ fn render_table(display: &CostSummaryDisplay, args: &SummaryArgs) {
     };
 
     // Per-agent table when --group-by agent is specified
-    if matches!(args.group_by, Some(GroupBy::Agent)) && !display.agents.is_empty() {
+    if matches!(args.group_by, Some(GroupBy::Agent)) && !display.per_agent.is_empty() {
         render_agent_table(display, args);
     }
 
@@ -116,7 +116,7 @@ fn render_agent_table(display: &CostSummaryDisplay, args: &SummaryArgs) {
     let mut table = Table::new();
     table.set_header(vec!["AGENT_ID", "DAILY_SPEND", "MONTHLY_SPEND"]);
 
-    for agent in &display.agents {
+    for agent in &display.per_agent {
         let spend = match args.period {
             Period::Today => format!("${}", agent.daily_spend_usd),
             Period::Month => agent
@@ -183,7 +183,7 @@ mod tests {
             date: "2026-04-30".to_string(),
             daily_limit_usd: Some("50.00".to_string()),
             monthly_limit_usd: None,
-            agents: vec![],
+            per_agent: vec![],
         };
         let json = serde_json::to_string(&display).unwrap();
         assert!(json.contains("\"daily_spend_usd\":\"8.10\""));

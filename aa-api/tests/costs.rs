@@ -54,8 +54,12 @@ async fn get_cost_summary_includes_agents_array() {
 
     let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-    assert!(json["agents"].is_array(), "agents field should be an array");
-    assert_eq!(json["agents"].as_array().unwrap().len(), 0, "fresh tracker has no per-agent data");
+    assert!(json["per_agent"].is_array(), "per_agent field should be an array");
+    assert_eq!(
+        json["per_agent"].as_array().unwrap().len(),
+        0,
+        "fresh tracker has no per-agent data"
+    );
 }
 
 #[tokio::test]

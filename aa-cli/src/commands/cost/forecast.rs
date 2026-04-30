@@ -188,16 +188,13 @@ mod tests {
             date: "2026-04-15".to_string(),
             daily_limit_usd: Some("50.00".to_string()),
             monthly_limit_usd: Some("500.00".to_string()),
-            agents: vec![],
+            per_agent: vec![],
         };
         let forecast = build_forecast(&resp);
         assert_eq!(forecast.day_of_month, 15);
         assert_eq!(forecast.days_in_month, 30);
         assert_eq!(forecast.projected_monthly_spend, "300.00");
-        assert_eq!(
-            forecast.projected_utilization_pct.as_deref(),
-            Some("60.0%")
-        );
+        assert_eq!(forecast.projected_utilization_pct.as_deref(), Some("60.0%"));
     }
 
     #[test]
@@ -208,7 +205,7 @@ mod tests {
             date: "2026-01-10".to_string(),
             daily_limit_usd: None,
             monthly_limit_usd: None,
-            agents: vec![],
+            per_agent: vec![],
         };
         let forecast = build_forecast(&resp);
         assert_eq!(forecast.projected_monthly_spend, "155.00");

@@ -314,16 +314,6 @@ impl BudgetTracker {
             .unwrap_or_else(|_| BudgetState::new_for_date(today_in_tz(self.timezone)))
     }
 
-    /// Return the configured daily budget limit, if any.
-    pub fn daily_limit(&self) -> Option<Decimal> {
-        self.daily_limit_usd
-    }
-
-    /// Return the configured monthly budget limit, if any.
-    pub fn monthly_limit(&self) -> Option<Decimal> {
-        self.monthly_limit_usd
-    }
-
     /// Snapshot the full tracker state for disk persistence.
     pub fn snapshot(&self) -> crate::budget::persistence::PersistedBudget {
         let per_agent = self
