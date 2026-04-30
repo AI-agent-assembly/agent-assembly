@@ -83,9 +83,7 @@ impl Modify for SecurityAddon {
                 HttpBuilder::new()
                     .scheme(HttpAuthScheme::Bearer)
                     .bearer_format("JWT")
-                    .description(Some(
-                        "API key (`aa_…` prefix) or JWT bearer token".to_string(),
-                    ))
+                    .description(Some("API key (`aa_…` prefix) or JWT bearer token".to_string()))
                     .build(),
             ),
         );
