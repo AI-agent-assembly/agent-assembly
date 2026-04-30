@@ -33,11 +33,7 @@ fn timeline_label(event: &TraceEvent) -> String {
 }
 
 /// Render one row of the timeline: label | bar | duration.
-pub fn render_timeline_row(
-    event: &TraceEvent,
-    max_duration: u64,
-    bar_width: usize,
-) -> String {
+pub fn render_timeline_row(event: &TraceEvent, max_duration: u64, bar_width: usize) -> String {
     let label = timeline_label(event);
     let bar = render_bar(event.duration_ms, max_duration, bar_width);
     format!("{label} {bar:<bar_width$}  {}", format_duration(event.duration_ms))
@@ -65,9 +61,7 @@ pub fn render_timeline(trace: &SessionTrace, max_width: usize) -> String {
         return output;
     }
 
-    let max_duration = compute_max_duration(
-        &flat.iter().map(|e| (*e).clone()).collect::<Vec<_>>(),
-    );
+    let max_duration = compute_max_duration(&flat.iter().map(|e| (*e).clone()).collect::<Vec<_>>());
     // Reserve ~30 chars for label, ~10 for duration suffix
     let bar_width = max_width.saturating_sub(40);
 
@@ -152,10 +146,7 @@ mod tests {
         for line in output.lines() {
             // Use char count (display width) — not byte len, since █ is multi-byte.
             let char_count = line.chars().count();
-            assert!(
-                char_count <= 80,
-                "line exceeds 80 columns ({char_count} chars): {line}",
-            );
+            assert!(char_count <= 80, "line exceeds 80 columns ({char_count} chars): {line}",);
         }
     }
 

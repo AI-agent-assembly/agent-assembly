@@ -51,10 +51,22 @@ mod tests {
     #[test]
     fn trace_event_kind_serializes_to_snake_case() {
         assert_eq!(serde_json::to_string(&TraceEventKind::Llm).unwrap(), "\"llm\"");
-        assert_eq!(serde_json::to_string(&TraceEventKind::ToolCall).unwrap(), "\"tool_call\"");
-        assert_eq!(serde_json::to_string(&TraceEventKind::ToolResult).unwrap(), "\"tool_result\"");
-        assert_eq!(serde_json::to_string(&TraceEventKind::PolicyAllow).unwrap(), "\"policy_allow\"");
-        assert_eq!(serde_json::to_string(&TraceEventKind::PolicyDeny).unwrap(), "\"policy_deny\"");
+        assert_eq!(
+            serde_json::to_string(&TraceEventKind::ToolCall).unwrap(),
+            "\"tool_call\""
+        );
+        assert_eq!(
+            serde_json::to_string(&TraceEventKind::ToolResult).unwrap(),
+            "\"tool_result\""
+        );
+        assert_eq!(
+            serde_json::to_string(&TraceEventKind::PolicyAllow).unwrap(),
+            "\"policy_allow\""
+        );
+        assert_eq!(
+            serde_json::to_string(&TraceEventKind::PolicyDeny).unwrap(),
+            "\"policy_deny\""
+        );
     }
 
     #[test]

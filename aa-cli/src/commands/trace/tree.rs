@@ -34,10 +34,7 @@ pub fn render_event_line(event: &TraceEvent) -> String {
     );
 
     if event.kind == TraceEventKind::PolicyDeny {
-        let reason = event
-            .violation_reason
-            .as_deref()
-            .unwrap_or("no reason provided");
+        let reason = event.violation_reason.as_deref().unwrap_or("no reason provided");
         format!("{}", format!("{line}  ({reason})").red())
     } else {
         line

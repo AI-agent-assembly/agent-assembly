@@ -45,24 +45,20 @@ pub fn dispatch(args: TraceArgs, ctx: &ResolvedContext, output: OutputFormat) ->
     };
 
     match output {
-        OutputFormat::Json => {
-            match serde_json::to_string_pretty(&trace) {
-                Ok(json) => println!("{json}"),
-                Err(e) => {
-                    eprintln!("error serializing trace: {e}");
-                    return ExitCode::FAILURE;
-                }
+        OutputFormat::Json => match serde_json::to_string_pretty(&trace) {
+            Ok(json) => println!("{json}"),
+            Err(e) => {
+                eprintln!("error serializing trace: {e}");
+                return ExitCode::FAILURE;
             }
-        }
-        OutputFormat::Yaml => {
-            match serde_yaml::to_string(&trace) {
-                Ok(yaml) => print!("{yaml}"),
-                Err(e) => {
-                    eprintln!("error serializing trace: {e}");
-                    return ExitCode::FAILURE;
-                }
+        },
+        OutputFormat::Yaml => match serde_yaml::to_string(&trace) {
+            Ok(yaml) => print!("{yaml}"),
+            Err(e) => {
+                eprintln!("error serializing trace: {e}");
+                return ExitCode::FAILURE;
             }
-        }
+        },
         OutputFormat::Table => match args.format {
             TraceFormat::Tree => {
                 print!("{}", tree::render_tree(&trace));
@@ -107,8 +103,7 @@ mod tests {
 
     #[test]
     fn parse_trace_with_timeline_format() {
-        let cli =
-            TestCli::try_parse_from(["aasm", "trace", "sess-002", "--format", "timeline"]).unwrap();
+        let cli = TestCli::try_parse_from(["aasm", "trace", "sess-002", "--format", "timeline"]).unwrap();
         match cli.command {
             TestCommands::Trace(args) => {
                 assert_eq!(args.session_id, "sess-002");
