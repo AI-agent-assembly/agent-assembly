@@ -357,6 +357,30 @@ export interface components {
             /** @description ISO 8601 timestamp when the alert was raised. */
             timestamp: string;
         };
+        /**
+         * @description Payload for `event_type: "approval"` events.
+         *
+         *     Represents a human-in-the-loop approval request submitted by the
+         *     policy engine when an action requires explicit authorisation.
+         */
+        ApprovalPayload: {
+            /** @description Human-readable description of the action awaiting approval. */
+            action: string;
+            /** @description Policy condition that triggered this request. */
+            condition_triggered: string;
+            /** @description Unique ID for the approval request (UUID v4). */
+            request_id: string;
+            /**
+             * Format: int64
+             * @description Unix epoch timestamp (seconds) when the request was submitted.
+             */
+            submitted_at: number;
+            /**
+             * Format: int64
+             * @description Seconds before the request times out.
+             */
+            timeout_secs: number;
+        };
         /** @description JSON representation of a pending approval request. */
         ApprovalResponse: {
             /** @description The governance action requiring approval. */
@@ -371,6 +395,29 @@ export interface components {
             reason: string;
             /** @description Current status: "pending", "approved", or "rejected". */
             status: string;
+        };
+        /**
+         * @description Payload for `event_type: "budget"` events.
+         *
+         *     Emitted when an agent's spend crosses a configured daily threshold
+         *     (80 % or 95 % of the daily limit).
+         */
+        BudgetAlertPayload: {
+            /**
+             * Format: double
+             * @description Configured daily limit in USD.
+             */
+            limit_usd: number;
+            /**
+             * Format: double
+             * @description Current total spend in USD at the time of the alert.
+             */
+            spent_usd: number;
+            /**
+             * Format: int32
+             * @description Threshold percentage that was crossed (e.g. `80` or `95`).
+             */
+            threshold_pct: number;
         };
         /** @description JSON representation of the cost/budget summary. */
         CostSummary: {
@@ -393,6 +440,15 @@ export interface components {
             /** @description Optional reason for the decision. */
             reason?: string | null;
         };
+        /**
+         * @description Discriminated union of all possible `GovernanceEvent.payload` shapes.
+         *
+         *     The concrete variant is determined by the sibling `event_type` field:
+         *     - `"violation"` → [`ViolationPayload`]
+         *     - `"approval"` → [`ApprovalPayload`]
+         *     - `"budget"` → [`BudgetAlertPayload`]
+         */
+        EventPayload: components["schemas"]["ViolationPayload"] | components["schemas"]["ApprovalPayload"] | components["schemas"]["BudgetAlertPayload"];
         /**
          * @description Classification of governance events for client-side filtering.
          *
@@ -418,8 +474,7 @@ export interface components {
              * @description Monotonically increasing event identifier.
              */
             id: number;
-            /** @description Event-specific payload serialised as a JSON value. */
-            payload: unknown;
+            payload: components["schemas"]["EventPayload"];
             /** @description Timestamp when the event was received by the API layer (ISO 8601). */
             timestamp: string;
         };
@@ -533,6 +588,37 @@ export interface components {
             span_id: string;
             /** @description Start time of the span (ISO 8601). */
             start_time: string;
+        };
+        /**
+         * @description Payload for `event_type: "violation"` events.
+         *
+         *     Represents a governance audit event from the pipeline — either an
+         *     action that violated policy or an interception layer degradation.
+         */
+        ViolationPayload: {
+            /** @enum {string} */
+            kind: "audit";
+            /**
+             * Format: int64
+             * @description Unix milliseconds when the pipeline received the event.
+             */
+            received_at_ms: number;
+            /**
+             * Format: int64
+             * @description Monotonic sequence number assigned by the pipeline.
+             */
+            sequence_number: number;
+            /** @description Source that delivered the event: `"sdk"`, `"ebpf"`, or `"proxy"`. */
+            source: string;
+        } | {
+            /** @enum {string} */
+            kind: "layer_degradation";
+            /** @description Name of the degraded layer (e.g. `"ebpf"`, `"proxy"`). */
+            layer: string;
+            /** @description Human-readable reason for the degradation. */
+            reason: string;
+            /** @description Remaining active layers after degradation. */
+            remaining_layers: string[];
         };
     };
     responses: never;
