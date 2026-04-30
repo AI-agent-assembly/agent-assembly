@@ -94,4 +94,32 @@ mod tests {
     fn format_duration_large() {
         assert_eq!(format_duration(60000), "60000ms");
     }
+
+    fn make_event(kind: TraceEventKind, label: &str, duration_ms: u64) -> TraceEvent {
+        TraceEvent {
+            kind,
+            label: label.to_string(),
+            duration_ms,
+            children: vec![],
+            violation_reason: None,
+        }
+    }
+
+    #[test]
+    fn render_event_line_llm() {
+        let event = make_event(TraceEventKind::Llm, "GPT-4o", 834);
+        let line = render_event_line(&event);
+        assert!(line.contains("LLM"));
+        assert!(line.contains("GPT-4o"));
+        assert!(line.contains("834ms"));
+    }
+
+    #[test]
+    fn render_event_line_tool_call() {
+        let event = make_event(TraceEventKind::ToolCall, "query_db", 12);
+        let line = render_event_line(&event);
+        assert!(line.contains("TOOL"));
+        assert!(line.contains("query_db"));
+        assert!(line.contains("12ms"));
+    }
 }
