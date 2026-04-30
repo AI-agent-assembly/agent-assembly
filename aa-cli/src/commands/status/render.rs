@@ -2,7 +2,7 @@
 
 use comfy_table::{ContentArrangement, Table};
 
-use super::models::{AgentRow, ApprovalsSummary, RuntimeHealth};
+use super::models::{AgentRow, ApprovalsSummary, BudgetRow, RuntimeHealth};
 
 /// Render the Runtime Health section to stdout.
 pub fn render_runtime_health(health: &RuntimeHealth) {
@@ -69,4 +69,16 @@ pub fn format_bar_chart(percentage: u32) -> String {
         "░".repeat(empty),
         pct,
     )
+}
+
+/// Render the Budget Status section to stdout.
+pub fn render_budget_table(budget: &BudgetRow) {
+    println!("BUDGET STATUS");
+    println!("─────────────");
+    println!("  Daily spend:   ${}", budget.daily_spend_usd);
+    if let Some(ref monthly) = budget.monthly_spend_usd {
+        println!("  Monthly spend: ${monthly}");
+    }
+    println!("  Date:          {}", budget.date);
+    println!();
 }
