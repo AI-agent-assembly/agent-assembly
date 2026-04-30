@@ -7,6 +7,15 @@ use utoipa::ToSchema;
 
 use crate::state::AppState;
 
+/// Per-agent cost entry within the budget summary.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct AgentCostEntry {
+    /// Agent identifier (hex-encoded).
+    pub agent_id: String,
+    /// Daily spend for this agent in USD.
+    pub daily_spend_usd: String,
+}
+
 /// JSON representation of the cost/budget summary.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct CostSummary {
