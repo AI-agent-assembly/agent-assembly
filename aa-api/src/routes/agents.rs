@@ -271,3 +271,56 @@ pub async fn delete_agent(
 
     Ok(StatusCode::NO_CONTENT)
 }
+
+/// `POST /api/v1/agents/:id/suspend` — suspend an agent.
+///
+/// Suspend a running agent with a reason logged for audit.
+#[utoipa::path(
+    post,
+    path = "/api/v1/agents/{id}/suspend",
+
+    params(("id" = String, Path, description = "Hex-encoded agent UUID")),
+    request_body = SuspendRequest,
+    responses(
+        (status = 200, description = "Agent suspended", body = SuspendResponse),
+        (status = 400, description = "Invalid agent ID format"),
+        (status = 404, description = "Agent not found")
+    ),
+    tag = "agents"
+)]
+pub async fn suspend_agent(
+    Extension(state): Extension<AppState>,
+    axum::extract::Path(id): axum::extract::Path<String>,
+    Json(body): Json<SuspendRequest>,
+) -> Result<(StatusCode, Json<SuspendResponse>), ProblemDetail> {
+    let agent_id = parse_agent_id(&id)?;
+
+    let previous_status = state
+        .agent_registry
+        .agent_status(&agent_id)
+        .map(|s| format!("{s:?}"))
+        .map_err(|_| {
+            ProblemDetail::from_status(StatusCode::NOT_FOUND).with_detail(format!("Agent not found: {id}"))
+        })?;
+
+    state
+        .agent_registry
+        .suspend_and_notify(
+            &agent_id,
+            aa_gateway::registry::SuspendReason::Manual,
+            &body.reason,
+        )
+        .await
+        .map_err(|_| {
+            ProblemDetail::from_status(StatusCode::NOT_FOUND).with_detail(format!("Agent not found: {id}"))
+        })?;
+
+    Ok((
+        StatusCode::OK,
+        Json(SuspendResponse {
+            agent_id: id,
+            previous_status,
+            new_status: "Suspended(Manual)".to_string(),
+        }),
+    ))
+}
