@@ -75,3 +75,23 @@ pub fn render_tree(trace: &SessionTrace) -> String {
     render_tree_recursive(&trace.events, "", &mut output);
     output
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn format_duration_zero() {
+        assert_eq!(format_duration(0), "0ms");
+    }
+
+    #[test]
+    fn format_duration_typical() {
+        assert_eq!(format_duration(142), "142ms");
+    }
+
+    #[test]
+    fn format_duration_large() {
+        assert_eq!(format_duration(60000), "60000ms");
+    }
+}
