@@ -554,6 +554,7 @@ components:
       - policy_violations_count
       - active_sessions
       - recent_events
+      - recent_traces
       properties:
         active_sessions:
           type: array
