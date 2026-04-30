@@ -62,12 +62,25 @@ pub struct ApprovalsSummary {
     pub oldest_pending_age: Option<String>,
 }
 
+/// Per-agent cost entry from the API.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AgentCostEntry {
+    pub agent_id: String,
+    pub daily_spend_usd: String,
+}
+
 /// API response from `GET /api/v1/costs`.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct CostResponse {
     pub daily_spend_usd: String,
     pub monthly_spend_usd: Option<String>,
     pub date: String,
+    #[serde(default)]
+    pub daily_limit_usd: Option<String>,
+    #[serde(default)]
+    pub monthly_limit_usd: Option<String>,
+    #[serde(default)]
+    pub per_agent: Vec<AgentCostEntry>,
 }
 
 /// Per-agent budget row for display.
