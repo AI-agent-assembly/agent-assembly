@@ -94,6 +94,21 @@ fn render_detail(agent: &AgentResponse) {
         }
         println!("{events_table}");
     }
+
+    // Recent traces section
+    if !agent.recent_traces.is_empty() {
+        println!("\nRecent Traces:");
+        let mut traces_table = Table::new();
+        traces_table.set_header(vec!["SESSION_ID", "TIMESTAMP"]);
+        for t in &agent.recent_traces {
+            traces_table.add_row(vec![
+                Cell::new(&t.session_id),
+                Cell::new(&t.timestamp),
+            ]);
+        }
+        println!("{traces_table}");
+        println!("Tip: run `aasm trace <session-id>` to visualize a trace");
+    }
 }
 
 /// Run the `aasm agent inspect` command.
