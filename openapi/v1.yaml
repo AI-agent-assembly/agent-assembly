@@ -657,8 +657,8 @@ components:
           description: Governance decision result for this span.
           nullable: true
         end_time:
-          allOf:
-          - $ref: '#/components/schemas/DateTime'
+          type: string
+          description: End time of the span (ISO 8601, if completed).
           nullable: true
         operation:
           type: string
@@ -671,7 +671,8 @@ components:
           type: string
           description: Span identifier.
         start_time:
-          $ref: '#/components/schemas/DateTime'
+          type: string
+          description: Start time of the span (ISO 8601).
 tags:
 - name: health
   description: Liveness and readiness probes

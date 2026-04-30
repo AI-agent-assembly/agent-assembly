@@ -396,13 +396,15 @@ export interface components {
         TraceSpan: {
             /** @description Governance decision result for this span. */
             decision?: string | null;
-            /** @description ISO 8601 end time (if completed). */
+            /** @description End time of the span (ISO 8601, if completed). */
             end_time?: string | null;
             /** @description Operation name. */
             operation: string;
+            /** @description Parent span identifier (links to the calling action). */
+            parent_span_id?: string | null;
             /** @description Span identifier. */
             span_id: string;
-            /** @description ISO 8601 start time. */
+            /** @description Start time of the span (ISO 8601). */
             start_time: string;
         };
     };

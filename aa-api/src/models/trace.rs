@@ -15,9 +15,11 @@ pub struct TraceSpan {
     pub operation: String,
     /// Governance decision result for this span.
     pub decision: Option<String>,
-    /// Start time of the span.
+    /// Start time of the span (ISO 8601).
+    #[schema(value_type = String)]
     pub start_time: DateTime<Utc>,
-    /// End time of the span (if completed).
+    /// End time of the span (ISO 8601, if completed).
+    #[schema(value_type = Option<String>)]
     pub end_time: Option<DateTime<Utc>>,
 }
 
