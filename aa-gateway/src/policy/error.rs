@@ -1,5 +1,7 @@
 //! Validation error and warning types for policy YAML parsing.
 
+use std::fmt;
+
 /// An error produced during policy document validation.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ValidationError {
@@ -25,6 +27,15 @@ impl ValidationError {
     pub fn with_line(mut self, line: u32) -> Self {
         self.line = Some(line);
         self
+    }
+}
+
+impl fmt::Display for ValidationError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.line {
+            Some(line) => write!(f, "line {}: {} — {}", line, self.field, self.message),
+            None => write!(f, "{} — {}", self.field, self.message),
+        }
     }
 }
 
