@@ -87,6 +87,8 @@ pub struct AgentRecord {
     pub recent_events: VecDeque<RecentEvent>,
     /// Most recent trace session IDs for this agent.
     pub recent_traces: Vec<RecentTrace>,
+    /// Governance layer this agent is assigned to (e.g. "advisory", "enforced").
+    pub layer: Option<String>,
 }
 
 /// Channel sender type for pushing [`ControlCommand`]s to an agent's control stream.
