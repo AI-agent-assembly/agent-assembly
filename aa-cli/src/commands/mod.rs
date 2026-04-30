@@ -8,6 +8,7 @@ use crate::config::ResolvedContext;
 use crate::output::OutputFormat;
 
 pub mod agent;
+pub mod approvals;
 pub mod completion;
 pub mod context;
 pub mod logs;
