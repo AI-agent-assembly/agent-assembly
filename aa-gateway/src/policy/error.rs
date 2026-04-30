@@ -1,5 +1,7 @@
 //! Validation error and warning types for policy YAML parsing.
 
+use std::fmt;
+
 /// An error produced during policy document validation.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ValidationError {
@@ -28,6 +30,15 @@ impl ValidationError {
     }
 }
 
+impl fmt::Display for ValidationError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.line {
+            Some(line) => write!(f, "line {}: {} — {}", line, self.field, self.message),
+            None => write!(f, "{} — {}", self.field, self.message),
+        }
+    }
+}
+
 /// A non-fatal warning produced during policy document validation.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ValidationWarning {
@@ -43,6 +54,12 @@ impl ValidationWarning {
         let field = field.into();
         let message = format!("Unknown key '{}' will be ignored", field);
         Self { field, message }
+    }
+}
+
+impl fmt::Display for ValidationWarning {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} — {}", self.field, self.message)
     }
 }
 
@@ -65,6 +82,18 @@ mod tests {
     }
 
     #[test]
+    fn validation_error_display_without_line() {
+        let e = ValidationError::new("budget.daily_limit_usd", "must be greater than 0");
+        assert_eq!(e.to_string(), "budget.daily_limit_usd — must be greater than 0");
+    }
+
+    #[test]
+    fn validation_error_display_with_line() {
+        let e = ValidationError::new("budget.daily_limit_usd", "invalid value").with_line(12);
+        assert_eq!(e.to_string(), "line 12: budget.daily_limit_usd — invalid value");
+    }
+
+    #[test]
     fn validation_warning_unknown_key_formats_message() {
         let w = ValidationWarning::unknown_key("risk_tier");
         assert_eq!(w.field, "risk_tier");
@@ -75,5 +104,11 @@ mod tests {
     fn validation_warning_unknown_key_nested_path() {
         let w = ValidationWarning::unknown_key("network.blocklist");
         assert_eq!(w.field, "network.blocklist");
+    }
+
+    #[test]
+    fn validation_warning_display_formatting() {
+        let w = ValidationWarning::unknown_key("risk_tier");
+        assert_eq!(w.to_string(), "risk_tier — Unknown key 'risk_tier' will be ignored");
     }
 }

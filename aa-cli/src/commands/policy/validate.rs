@@ -28,14 +28,14 @@ pub fn run(args: ValidateArgs) -> ExitCode {
     match aa_gateway::policy::PolicyValidator::from_yaml(&yaml) {
         Ok(output) => {
             for w in &output.warnings {
-                eprintln!("warning: {w:?}");
+                eprintln!("warning: {w}");
             }
             println!("Policy is valid: {}", args.file.display());
             ExitCode::SUCCESS
         }
         Err(errors) => {
             for e in &errors {
-                eprintln!("error: {e:?}");
+                eprintln!("error: {e}");
             }
             ExitCode::FAILURE
         }
@@ -90,6 +90,39 @@ spec:
     fn missing_file_exits_failure() {
         let args = ValidateArgs {
             file: PathBuf::from("/tmp/nonexistent-policy-file-that-does-not-exist.yaml"),
+        };
+        assert_eq!(run(args), ExitCode::FAILURE);
+    }
+
+    #[test]
+    fn unknown_key_produces_warning_not_error() {
+        let mut tmp = tempfile::NamedTempFile::new().unwrap();
+        writeln!(tmp, "risk_tier: high").unwrap();
+
+        let args = ValidateArgs {
+            file: tmp.path().to_path_buf(),
+        };
+        assert_eq!(run(args), ExitCode::SUCCESS);
+    }
+
+    #[test]
+    fn multiple_errors_all_reported() {
+        let mut tmp = tempfile::NamedTempFile::new().unwrap();
+        writeln!(
+            tmp,
+            r#"network:
+  allowlist:
+    - ""
+budget:
+  daily_limit_usd: 0.0
+data:
+  sensitive_patterns:
+    - "[bad""#
+        )
+        .unwrap();
+
+        let args = ValidateArgs {
+            file: tmp.path().to_path_buf(),
         };
         assert_eq!(run(args), ExitCode::FAILURE);
     }
