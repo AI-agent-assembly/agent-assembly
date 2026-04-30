@@ -36,21 +36,39 @@ pub struct PolicyResponse {
     tag = "policies"
 )]
 pub async fn list_policies(
-    Extension(_state): Extension<AppState>,
+    Extension(state): Extension<AppState>,
     axum::extract::Query(params): axum::extract::Query<PaginationParams>,
-) -> impl IntoResponse {
-    // TODO: wire to policy version store once available
-    let items: Vec<PolicyResponse> = Vec::new();
+) -> Result<impl IntoResponse, ProblemDetail> {
+    let all = state
+        .policy_history
+        .list(usize::MAX)
+        .await
+        .map_err(|e| ProblemDetail::from_status(StatusCode::INTERNAL_SERVER_ERROR).with_detail(format!("{e:?}")))?;
 
-    (
+    let total = all.len() as u64;
+
+    let items: Vec<PolicyResponse> = all
+        .into_iter()
+        .skip(params.offset())
+        .take(params.per_page() as usize)
+        .enumerate()
+        .map(|(i, meta)| PolicyResponse {
+            name: meta.sha256[..12].to_string(),
+            version: meta.timestamp,
+            active: i == 0 && params.page() == 1,
+            rule_count: 0,
+        })
+        .collect();
+
+    Ok((
         StatusCode::OK,
         Json(PaginatedResponse {
             items,
             page: params.page(),
             per_page: params.per_page(),
-            total: 0,
+            total,
         }),
-    )
+    ))
 }
 
 /// Request body for creating a new policy.
