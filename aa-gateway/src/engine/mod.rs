@@ -491,6 +491,8 @@ mod tests {
 
     fn empty_doc() -> PolicyDocument {
         PolicyDocument {
+            name: None,
+            policy_version: None,
             version: None,
             network: None,
             schedule: None,

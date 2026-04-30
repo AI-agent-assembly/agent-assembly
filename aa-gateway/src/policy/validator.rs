@@ -70,6 +70,8 @@ impl PolicyValidator {
 
         Ok(PolicyValidatorOutput {
             document: PolicyDocument {
+                name: None,
+                policy_version: None,
                 version: raw.version,
                 network,
                 schedule,
