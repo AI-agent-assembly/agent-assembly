@@ -3,7 +3,8 @@
 use chrono::Utc;
 
 use super::models::{
-    AgentResponse, AgentRow, ApprovalResponse, ApprovalsSummary, HealthResponse, RuntimeHealth,
+    AgentResponse, AgentRow, ApprovalResponse, ApprovalsSummary, BudgetRow, CostResponse,
+    HealthResponse, RuntimeHealth,
 };
 
 /// Convert a health API response into a display-ready `RuntimeHealth`.
@@ -52,6 +53,15 @@ pub fn build_approvals_summary(approvals: &[ApprovalResponse]) -> ApprovalsSumma
     ApprovalsSummary {
         pending_count,
         oldest_pending_age,
+    }
+}
+
+/// Convert cost API response into a display-ready `BudgetRow`.
+pub fn build_budget_row(cost: CostResponse) -> BudgetRow {
+    BudgetRow {
+        daily_spend_usd: cost.daily_spend_usd,
+        monthly_spend_usd: cost.monthly_spend_usd,
+        date: cost.date,
     }
 }
 
