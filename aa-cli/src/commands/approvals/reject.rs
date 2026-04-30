@@ -12,3 +12,14 @@ pub struct RejectArgs {
     #[arg(long)]
     pub reason: Option<String>,
 }
+
+/// Validate that a rejection reason was provided.
+///
+/// Returns the reason string if present, or an error message explaining
+/// that `--reason` is required for non-interactive rejection.
+pub fn validate_reject_reason(reason: &Option<String>) -> Result<&str, &'static str> {
+    match reason.as_deref() {
+        Some(r) if !r.trim().is_empty() => Ok(r),
+        _ => Err("error: --reason is required for aasm approvals reject"),
+    }
+}
