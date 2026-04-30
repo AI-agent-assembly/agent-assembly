@@ -139,4 +139,38 @@ mod tests {
         let url = build_ws_url("https://api.example.com", "approval_required").unwrap();
         assert_eq!(url, "wss://api.example.com/api/v1/events?types=approval_required");
     }
+
+    #[tokio::test]
+    async fn list_approvals_returns_paginated_items_from_mock() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+        let body = serde_json::json!({
+            "items": [{
+                "id": "abc-123",
+                "agent_id": "support-agent",
+                "action": "process_refund",
+                "reason": "amount > $100",
+                "status": "pending",
+                "created_at": "2026-04-30T10:00:00Z"
+            }],
+            "page": 1, "per_page": 20, "total": 1
+        });
+        Mock::given(method("GET"))
+            .and(path("/api/v1/approvals"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+            .mount(&mock_server)
+            .await;
+
+        let ctx = ResolvedContext {
+            name: None,
+            api_url: mock_server.uri(),
+            api_key: None,
+        };
+        let result = list_approvals(&ctx).await.unwrap();
+        assert_eq!(result.items.len(), 1);
+        assert_eq!(result.items[0].id, "abc-123");
+        assert_eq!(result.total, 1);
+    }
 }
