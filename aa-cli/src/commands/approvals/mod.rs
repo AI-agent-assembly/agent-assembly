@@ -1,6 +1,6 @@
 //! `aasm approvals` — human-in-the-loop approval management subcommands.
 
-use clap::Subcommand;
+use clap::{Args, Subcommand};
 
 pub mod approve;
 pub mod client;
@@ -23,4 +23,11 @@ pub enum ApprovalsSubcommand {
     Reject(reject::RejectArgs),
     /// Watch for new approval requests in real time.
     Watch(watch::WatchArgs),
+}
+
+/// Top-level arguments for the `aasm approvals` command group.
+#[derive(Debug, Args)]
+pub struct ApprovalsArgs {
+    #[command(subcommand)]
+    pub command: ApprovalsSubcommand,
 }
