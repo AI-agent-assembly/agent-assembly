@@ -28,6 +28,7 @@ fn make_record(key: [u8; 16]) -> AgentRecord {
         policy_violations_count: 0,
         active_sessions: Vec::new(),
         recent_events: VecDeque::new(),
+        recent_traces: Vec::new(),
     }
 }
 
@@ -221,6 +222,7 @@ async fn concurrent_registration_of_100_agents() {
                 policy_violations_count: 0,
                 active_sessions: Vec::new(),
                 recent_events: VecDeque::new(),
+                recent_traces: Vec::new(),
             };
             reg.register(record).unwrap();
         }));
