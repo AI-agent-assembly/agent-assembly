@@ -7,6 +7,27 @@ use std::process::ExitCode;
 use aa_gateway::policy::history::{FsHistoryStore, HistoryConfig, PolicyHistoryStore};
 use clap::Args;
 use owo_colors::OwoColorize;
+use serde::{Deserialize, Serialize};
+
+/// Request body for `POST /api/v1/policies`.
+#[derive(Debug, Serialize)]
+pub struct CreatePolicyRequest {
+    /// Raw YAML content of the governance policy.
+    pub policy_yaml: String,
+}
+
+/// Response from `POST /api/v1/policies`.
+#[derive(Debug, Deserialize)]
+pub struct PolicyApplyResponse {
+    /// Policy name (SHA-256 prefix).
+    pub name: String,
+    /// Policy version string (timestamp).
+    pub version: String,
+    /// Whether this is the currently active policy.
+    pub active: bool,
+    /// Number of rules in this policy version.
+    pub rule_count: usize,
+}
 
 /// Arguments for `aasm policy apply`.
 #[derive(Args)]
