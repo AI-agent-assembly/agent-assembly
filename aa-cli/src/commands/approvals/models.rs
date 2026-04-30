@@ -19,6 +19,20 @@ pub struct ApprovalResponse {
     pub created_at: String,
 }
 
+/// Color category for approval countdown timer display.
+///
+/// Indicates urgency: `Red` means the approval is about to time out,
+/// `Yellow` means moderate urgency, `Green` means plenty of time.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TimeoutColor {
+    /// Less than 60 seconds remaining.
+    Red,
+    /// Between 60 and 180 seconds remaining.
+    Yellow,
+    /// More than 180 seconds remaining.
+    Green,
+}
+
 /// Generic paginated response wrapper matching the aa-api JSON envelope.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PaginatedResponse<T: DeserializeOwned> {
