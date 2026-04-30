@@ -10,8 +10,25 @@ pub fn render_runtime_health(health: &RuntimeHealth) {
     println!("RUNTIME HEALTH");
     println!("──────────────");
     let indicator = if health.reachable { "✓" } else { "✗" };
-    println!("  API:    {indicator} {}", health.status);
+    println!("  API:         {indicator} {}", health.status);
+    println!("  Uptime:      {}", format_duration(health.uptime_secs));
+    println!("  Connections: {}", health.active_connections);
+    println!("  Lag:         {} ms", health.pipeline_lag_ms);
     println!();
+}
+
+/// Format a duration in seconds into a human-readable string (e.g. `"1h 30m 5s"`).
+fn format_duration(secs: u64) -> String {
+    let hours = secs / 3600;
+    let minutes = (secs % 3600) / 60;
+    let seconds = secs % 60;
+    if hours > 0 {
+        format!("{hours}h {minutes}m {seconds}s")
+    } else if minutes > 0 {
+        format!("{minutes}m {seconds}s")
+    } else {
+        format!("{seconds}s")
+    }
 }
 
 /// Render the Active Agents section as a table to stdout.
