@@ -649,26 +649,29 @@ components:
       description: A single span within an agent session trace.
       required:
       - span_id
-      - start_time
       - operation
+      - start_time
       properties:
         decision:
           type: string
           description: Governance decision result for this span.
           nullable: true
         end_time:
-          type: string
-          description: ISO 8601 end time (if completed).
+          allOf:
+          - $ref: '#/components/schemas/DateTime'
           nullable: true
         operation:
           type: string
           description: Operation name.
+        parent_span_id:
+          type: string
+          description: Parent span identifier (links to the calling action).
+          nullable: true
         span_id:
           type: string
           description: Span identifier.
         start_time:
-          type: string
-          description: ISO 8601 start time.
+          $ref: '#/components/schemas/DateTime'
 tags:
 - name: health
   description: Liveness and readiness probes
