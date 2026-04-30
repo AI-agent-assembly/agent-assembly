@@ -402,3 +402,60 @@ async fn suspend_agent_returns_404_for_unknown_id() {
 
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
+
+#[tokio::test]
+async fn resume_agent_returns_200() {
+    let state = common::test_state();
+    state.agent_registry.register(test_agent(0xDD)).unwrap();
+    // Suspend first so we can resume
+    state
+        .agent_registry
+        .suspend_agent(
+            &[0xDD; 16],
+            aa_gateway::registry::SuspendReason::Manual,
+        )
+        .unwrap();
+
+    let app = aa_api::server::build_app(state);
+    let id = hex_id(0xDD);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/v1/agents/{id}/resume"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["agent_id"], id);
+    assert_eq!(json["previous_status"], "Suspended(Manual)");
+    assert_eq!(json["new_status"], "Active");
+}
+
+#[tokio::test]
+async fn resume_agent_returns_404_for_unknown_id() {
+    let app = common::test_app();
+    let id = hex_id(0xFF);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/v1/agents/{id}/resume"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}
