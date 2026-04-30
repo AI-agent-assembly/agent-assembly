@@ -101,15 +101,13 @@ impl PolicyValidator {
         // Try envelope format: if it has a `spec` key, treat it as wrapped.
         if let Ok(envelope) = serde_yaml::from_str::<GovernancePolicyEnvelope>(yaml_str) {
             if let Some(spec_value) = envelope.spec {
-                let raw: RawPolicyDocument =
-                    serde_yaml::from_value(spec_value).map_err(make_parse_error)?;
+                let raw: RawPolicyDocument = serde_yaml::from_value(spec_value).map_err(make_parse_error)?;
                 return Ok((raw, envelope.metadata));
             }
         }
 
         // Fall back to flat format (no envelope).
-        let raw: RawPolicyDocument =
-            serde_yaml::from_str(yaml_str).map_err(make_parse_error)?;
+        let raw: RawPolicyDocument = serde_yaml::from_str(yaml_str).map_err(make_parse_error)?;
         Ok((raw, None))
     }
 
