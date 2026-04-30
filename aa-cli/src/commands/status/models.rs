@@ -41,3 +41,14 @@ pub struct AgentRow {
     pub status: String,
     pub violations_today: u64,
 }
+
+/// API response item from `GET /api/v1/approvals`.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ApprovalResponse {
+    pub id: String,
+    pub agent_id: String,
+    pub action: String,
+    pub reason: String,
+    pub status: String,
+    pub created_at: String,
+}
