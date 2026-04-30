@@ -7,9 +7,7 @@ use serde::Deserialize;
 use crate::config::ResolvedContext;
 use crate::output::OutputFormat;
 
-use super::format::{
-    format_log_json, format_log_line, is_within_time_range, parse_since, parse_until, LogLineData,
-};
+use super::format::{format_log_json, format_log_line, is_within_time_range, parse_since, parse_until, LogLineData};
 use super::LogsArgs;
 
 /// Paginated response envelope from `GET /api/v1/logs`.
@@ -103,11 +101,7 @@ pub fn run(args: LogsArgs, ctx: &ResolvedContext) -> ExitCode {
             continue;
         }
         if let Some(ref types) = args.r#type {
-            if types.len() > 1
-                && !types
-                    .iter()
-                    .any(|t| t.as_api_str() == entry.event_type)
-            {
+            if types.len() > 1 && !types.iter().any(|t| t.as_api_str() == entry.event_type) {
                 continue;
             }
         }

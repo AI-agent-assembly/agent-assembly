@@ -12,9 +12,7 @@ use tokio_tungstenite::tungstenite::Message;
 use crate::config::ResolvedContext;
 use crate::output::OutputFormat;
 
-use super::format::{
-    format_log_json, format_log_line, is_within_time_range, parse_since, LogLineData,
-};
+use super::format::{format_log_json, format_log_line, is_within_time_range, parse_since, LogLineData};
 use super::LogsArgs;
 
 /// A governance event as received from the WebSocket stream.
@@ -110,8 +108,7 @@ async fn stream_events(args: LogsArgs, ctx: &ResolvedContext) -> ExitCode {
 
     // Ring buffer: when full the oldest event is evicted so the WS
     // reader never blocks and the display always shows the latest events.
-    let buf: Arc<Mutex<VecDeque<LogLineData>>> =
-        Arc::new(Mutex::new(VecDeque::with_capacity(EVENT_BUFFER_CAPACITY)));
+    let buf: Arc<Mutex<VecDeque<LogLineData>>> = Arc::new(Mutex::new(VecDeque::with_capacity(EVENT_BUFFER_CAPACITY)));
     let notify = Arc::new(Notify::new());
     let ws_closed = Arc::new(Notify::new());
 

@@ -208,42 +208,22 @@ mod tests {
     #[test]
     fn is_within_range_since_filter() {
         let since = "2026-04-30T10:00:00Z".parse().unwrap();
-        assert!(is_within_time_range(
-            "2026-04-30T11:00:00Z",
-            Some(&since),
-            None
-        ));
-        assert!(!is_within_time_range(
-            "2026-04-30T09:00:00Z",
-            Some(&since),
-            None
-        ));
+        assert!(is_within_time_range("2026-04-30T11:00:00Z", Some(&since), None));
+        assert!(!is_within_time_range("2026-04-30T09:00:00Z", Some(&since), None));
     }
 
     #[test]
     fn is_within_range_until_filter() {
         let until = "2026-04-30T12:00:00Z".parse().unwrap();
-        assert!(is_within_time_range(
-            "2026-04-30T11:00:00Z",
-            None,
-            Some(&until)
-        ));
-        assert!(!is_within_time_range(
-            "2026-04-30T13:00:00Z",
-            None,
-            Some(&until)
-        ));
+        assert!(is_within_time_range("2026-04-30T11:00:00Z", None, Some(&until)));
+        assert!(!is_within_time_range("2026-04-30T13:00:00Z", None, Some(&until)));
     }
 
     #[test]
     fn is_within_range_both_bounds() {
         let since = "2026-04-30T10:00:00Z".parse().unwrap();
         let until = "2026-04-30T12:00:00Z".parse().unwrap();
-        assert!(is_within_time_range(
-            "2026-04-30T11:00:00Z",
-            Some(&since),
-            Some(&until)
-        ));
+        assert!(is_within_time_range("2026-04-30T11:00:00Z", Some(&since), Some(&until)));
         assert!(!is_within_time_range(
             "2026-04-30T09:00:00Z",
             Some(&since),
