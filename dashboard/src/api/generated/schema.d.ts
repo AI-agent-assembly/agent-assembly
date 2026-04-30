@@ -349,6 +349,8 @@ export interface components {
             id: string;
             /** @description ISO 8601 timestamp of the most recent event. */
             last_event?: string | null;
+            /** @description Governance layer this agent is assigned to (e.g. "advisory", "enforced"). */
+            layer?: string | null;
             /** @description Arbitrary metadata key-value pairs. */
             metadata: {
                 [key: string]: string;

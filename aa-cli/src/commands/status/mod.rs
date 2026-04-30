@@ -75,7 +75,9 @@ mod tests {
                 name: "agent".to_string(),
                 framework: "langgraph".to_string(),
                 status: "Running".to_string(),
+                sessions: 0,
                 violations_today: 0,
+                layer: "-".to_string(),
             }],
             approvals: ApprovalsSummary {
                 pending_count: 0,

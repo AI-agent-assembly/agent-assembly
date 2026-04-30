@@ -76,6 +76,7 @@ fn record_to_response(r: aa_gateway::registry::AgentRecord) -> AgentResponse {
         active_sessions,
         recent_events,
         recent_traces,
+        layer: r.layer,
     }
 }
 
@@ -110,6 +111,8 @@ pub struct AgentResponse {
     pub recent_events: Vec<RecentEventResponse>,
     /// Most recent trace session IDs for this agent.
     pub recent_traces: Vec<RecentTraceResponse>,
+    /// Governance layer this agent is assigned to (e.g. "advisory", "enforced").
+    pub layer: Option<String>,
 }
 
 /// Summary of an active session in the API response.

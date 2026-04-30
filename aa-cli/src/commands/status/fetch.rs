@@ -37,8 +37,9 @@ pub fn build_agent_rows(agents: Vec<AgentResponse>) -> Vec<AgentRow> {
             name: a.name,
             framework: a.framework,
             status: a.status,
-            // Per-agent violation count not yet available from the API.
-            violations_today: 0,
+            sessions: a.session_count,
+            violations_today: a.policy_violations_count,
+            layer: a.layer.unwrap_or_else(|| "-".to_string()),
         })
         .collect()
 }
@@ -165,6 +166,9 @@ mod tests {
             status: "Running".to_string(),
             tool_names: vec!["tool_a".to_string()],
             metadata: BTreeMap::new(),
+            session_count: 3,
+            policy_violations_count: 1,
+            layer: Some("advisory".to_string()),
         }];
         let rows = build_agent_rows(agents);
         assert_eq!(rows.len(), 1);
@@ -172,7 +176,27 @@ mod tests {
         assert_eq!(rows[0].name, "test-agent");
         assert_eq!(rows[0].framework, "langgraph");
         assert_eq!(rows[0].status, "Running");
-        assert_eq!(rows[0].violations_today, 0);
+        assert_eq!(rows[0].sessions, 3);
+        assert_eq!(rows[0].violations_today, 1);
+        assert_eq!(rows[0].layer, "advisory");
+    }
+
+    #[test]
+    fn build_agent_rows_defaults_layer_when_none() {
+        let agents = vec![AgentResponse {
+            id: "def".to_string(),
+            name: "no-layer-agent".to_string(),
+            framework: "custom".to_string(),
+            version: "0.1.0".to_string(),
+            status: "Active".to_string(),
+            tool_names: vec![],
+            metadata: BTreeMap::new(),
+            session_count: 0,
+            policy_violations_count: 0,
+            layer: None,
+        }];
+        let rows = build_agent_rows(agents);
+        assert_eq!(rows[0].layer, "-");
     }
 
     #[test]

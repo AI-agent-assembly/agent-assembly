@@ -31,6 +31,7 @@ fn test_agent(id_byte: u8) -> AgentRecord {
         active_sessions: Vec::new(),
         recent_events: std::collections::VecDeque::new(),
         recent_traces: Vec::new(),
+        layer: None,
     }
 }
 

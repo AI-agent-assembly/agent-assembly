@@ -44,7 +44,15 @@ pub fn render_agents_table(agents: &[AgentRow]) {
 
     let mut table = Table::new();
     table.set_content_arrangement(ContentArrangement::Dynamic);
-    table.set_header(vec!["AGENT_ID", "NAME", "FRAMEWORK", "STATUS", "VIOLATIONS_TODAY"]);
+    table.set_header(vec![
+        "AGENT_ID",
+        "NAME",
+        "STATUS",
+        "FRAMEWORK",
+        "SESSIONS",
+        "VIOLATIONS_TODAY",
+        "LAYER",
+    ]);
     for agent in agents {
         let status_icon = match agent.status.as_str() {
             "Running" => "●",
@@ -55,9 +63,11 @@ pub fn render_agents_table(agents: &[AgentRow]) {
         table.add_row(vec![
             &agent.id,
             &agent.name,
-            &agent.framework,
             &format!("{status_icon} {}", agent.status),
+            &agent.framework,
+            &agent.sessions.to_string(),
             &agent.violations_today.to_string(),
+            &agent.layer,
         ]);
     }
     println!("{table}");

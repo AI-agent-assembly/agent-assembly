@@ -45,6 +45,15 @@ pub struct AgentResponse {
     pub status: String,
     pub tool_names: Vec<String>,
     pub metadata: BTreeMap<String, String>,
+    /// Number of sessions handled by this agent.
+    #[serde(default)]
+    pub session_count: u32,
+    /// Number of policy violations recorded for this agent.
+    #[serde(default)]
+    pub policy_violations_count: u32,
+    /// Governance layer this agent is assigned to.
+    #[serde(default)]
+    pub layer: Option<String>,
 }
 
 /// Flattened agent row for tabular display.
@@ -54,7 +63,9 @@ pub struct AgentRow {
     pub name: String,
     pub framework: String,
     pub status: String,
-    pub violations_today: u64,
+    pub sessions: u32,
+    pub violations_today: u32,
+    pub layer: String,
 }
 
 /// API response item from `GET /api/v1/approvals`.
@@ -174,6 +185,30 @@ mod tests {
         assert_eq!(resp.framework, "langgraph");
         assert_eq!(resp.tool_names.len(), 2);
         assert_eq!(resp.metadata.get("team").unwrap(), "support");
+        // New fields default when missing from JSON.
+        assert_eq!(resp.session_count, 0);
+        assert_eq!(resp.policy_violations_count, 0);
+        assert!(resp.layer.is_none());
+    }
+
+    #[test]
+    fn agent_response_deserializes_with_new_fields() {
+        let json = r#"{
+            "id": "abc123",
+            "name": "full-agent",
+            "framework": "crewai",
+            "version": "2.0.0",
+            "status": "Active",
+            "tool_names": [],
+            "metadata": {},
+            "session_count": 5,
+            "policy_violations_count": 2,
+            "layer": "enforced"
+        }"#;
+        let resp: AgentResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.session_count, 5);
+        assert_eq!(resp.policy_violations_count, 2);
+        assert_eq!(resp.layer.as_deref(), Some("enforced"));
     }
 
     #[test]
