@@ -6,6 +6,7 @@
 
 pub mod anomaly;
 pub mod audit;
+pub mod audit_reader;
 pub mod budget;
 pub mod engine;
 pub mod events;
@@ -15,6 +16,7 @@ pub mod server;
 pub mod service;
 pub mod simulation;
 
+pub use audit_reader::AuditReader;
 pub use engine::{EvaluationResult, PolicyEngine, PolicyLoadError};
 pub use registry::{AgentRecord, AgentRegistry, AgentStatus};
 pub use service::PolicyServiceImpl;
