@@ -6,6 +6,7 @@ use clap::{Args, ValueEnum};
 
 use crate::config::ResolvedContext;
 
+pub mod client;
 pub mod models;
 
 /// Visualization format for trace output.
