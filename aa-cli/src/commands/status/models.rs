@@ -80,3 +80,21 @@ pub struct BudgetRow {
     /// Reporting date.
     pub date: String,
 }
+
+/// Paginated API response wrapper.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct PaginatedResponse<T> {
+    pub items: Vec<T>,
+    pub page: u32,
+    pub per_page: u32,
+    pub total: u64,
+}
+
+/// Complete status snapshot combining all sections.
+#[derive(Debug, Clone, Serialize)]
+pub struct StatusSnapshot {
+    pub runtime: RuntimeHealth,
+    pub agents: Vec<AgentRow>,
+    pub approvals: ApprovalsSummary,
+    pub budget: BudgetRow,
+}
