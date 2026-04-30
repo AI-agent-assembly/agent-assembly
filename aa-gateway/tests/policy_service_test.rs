@@ -279,6 +279,7 @@ budget:
         active_sessions: Vec::new(),
         recent_events: std::collections::VecDeque::new(),
         recent_traces: Vec::new(),
+        layer: None,
     };
     registry.register(record).unwrap();
 
@@ -353,6 +354,7 @@ budget:
         active_sessions: Vec::new(),
         recent_events: std::collections::VecDeque::new(),
         recent_traces: Vec::new(),
+        layer: None,
     };
     registry.register(record).unwrap();
 
