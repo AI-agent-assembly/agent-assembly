@@ -4,7 +4,7 @@ use utoipa::openapi::security::{HttpAuthScheme, HttpBuilder, SecurityScheme};
 use utoipa::openapi::ComponentsBuilder;
 use utoipa::{Modify, OpenApi};
 
-use crate::models::event::{GovernanceEvent};
+use crate::models::event::GovernanceEvent;
 use crate::models::event_type::EventType;
 use crate::models::trace::{TraceResponse, TraceSpan};
 use crate::routes::{agents, alerts, approvals, auth, costs, logs, policies, traces};

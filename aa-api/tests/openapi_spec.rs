@@ -71,7 +71,10 @@ fn ws_events_has_query_params() {
     let spec = aa_api::ApiDoc::openapi();
     let yaml = serde_yaml::to_string(&spec).unwrap();
     // WsQueryParams fields should appear as query parameters
-    assert!(yaml.contains("operationId: ws_events_handler"), "ws operationId missing");
+    assert!(
+        yaml.contains("operationId: ws_events_handler"),
+        "ws operationId missing"
+    );
     assert!(yaml.contains("name: types"), "types query param missing");
     assert!(yaml.contains("name: agent_id"), "agent_id query param missing");
     assert!(yaml.contains("name: since"), "since query param missing");
@@ -81,7 +84,10 @@ fn ws_events_has_query_params() {
 fn governance_event_schema_exists() {
     let spec = aa_api::ApiDoc::openapi();
     let schemas = &spec.components.as_ref().expect("components should exist").schemas;
-    assert!(schemas.contains_key("GovernanceEvent"), "GovernanceEvent schema missing");
+    assert!(
+        schemas.contains_key("GovernanceEvent"),
+        "GovernanceEvent schema missing"
+    );
     assert!(schemas.contains_key("EventType"), "EventType schema missing");
 }
 
