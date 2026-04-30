@@ -1,5 +1,7 @@
 //! Data models for the `aasm status` command.
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
 /// API response from `GET /api/v1/health`.
@@ -16,4 +18,16 @@ pub struct RuntimeHealth {
     pub reachable: bool,
     /// Status string from the health endpoint (e.g. `"ok"`).
     pub status: String,
+}
+
+/// API response item from `GET /api/v1/agents`.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AgentResponse {
+    pub id: String,
+    pub name: String,
+    pub framework: String,
+    pub version: String,
+    pub status: String,
+    pub tool_names: Vec<String>,
+    pub metadata: BTreeMap<String, String>,
 }
