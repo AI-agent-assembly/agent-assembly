@@ -112,4 +112,13 @@ mod tests {
         let w = ValidationWarning::unknown_key("network.blocklist");
         assert_eq!(w.field, "network.blocklist");
     }
+
+    #[test]
+    fn validation_warning_display_formatting() {
+        let w = ValidationWarning::unknown_key("risk_tier");
+        assert_eq!(
+            w.to_string(),
+            "risk_tier — Unknown key 'risk_tier' will be ignored"
+        );
+    }
 }
