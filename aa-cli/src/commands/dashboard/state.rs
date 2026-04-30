@@ -6,6 +6,8 @@ use crate::commands::status::models::{
     AgentRow, ApprovalResponse, ApprovalsSummary, BudgetRow, RuntimeHealth,
 };
 
+use super::dialog::DialogAction;
+
 /// Maximum number of events retained in the scrollback buffer.
 pub const EVENT_LOG_CAPACITY: usize = 200;
 
@@ -80,8 +82,8 @@ pub struct DashboardState {
 
     /// Whether the help overlay is currently visible.
     pub show_help: bool,
-    /// Whether the approve/reject confirmation dialog is visible.
-    pub show_confirm_dialog: bool,
+    /// The pending confirm dialog action, if any.
+    pub confirm_dialog: Option<DialogAction>,
 
     /// Whether the dashboard should quit on the next tick.
     pub should_quit: bool,
@@ -117,7 +119,7 @@ impl DashboardState {
             event_log_scroll: 0,
             approval_selected: 0,
             show_help: false,
-            show_confirm_dialog: false,
+            confirm_dialog: None,
             should_quit: false,
         }
     }
@@ -170,7 +172,7 @@ mod tests {
         assert_eq!(state.approvals_summary.pending_count, 0);
         assert!(state.pending_approvals.is_empty());
         assert!(!state.show_help);
-        assert!(!state.show_confirm_dialog);
+        assert!(state.confirm_dialog.is_none());
         assert!(!state.should_quit);
     }
 

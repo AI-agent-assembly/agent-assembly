@@ -1,5 +1,6 @@
 //! `aasm dashboard` — interactive TUI dashboard for real-time governance monitoring.
 
+pub mod dialog;
 pub mod feed;
 pub mod input;
 pub mod state;
@@ -10,7 +11,7 @@ use std::process::ExitCode;
 use std::time::Duration;
 
 use clap::Args;
-use crossterm::event::{self as ct_event, DisableMouseCapture, EnableMouseCapture, Event};
+use crossterm::event::{self as ct_event, DisableMouseCapture, EnableMouseCapture, Event, KeyCode};
 use crossterm::execute;
 use crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
@@ -19,8 +20,10 @@ use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
 use tokio::sync::mpsc;
 
+use crate::commands::approvals::client as approvals_client;
 use crate::config::ResolvedContext;
 
+use self::dialog::DialogAction;
 use self::feed::FeedMessage;
 use self::input::InputAction;
 use self::state::DashboardState;
@@ -70,21 +73,65 @@ async fn run(_args: DashboardArgs, ctx: &ResolvedContext) -> ExitCode {
 
     // Main event loop: poll terminal events and feed messages.
     loop {
-        // Draw the current state.
+        // Draw the current state, with optional dialog overlay.
+        let confirm_dialog = state.confirm_dialog;
+        let dialog_approval = confirm_dialog.and_then(|_| {
+            state.pending_approvals.get(state.approval_selected).cloned()
+        });
         terminal
-            .draw(|f| ui::draw(f, &state))
+            .draw(|f| {
+                ui::draw(f, &state);
+                if let (Some(action), Some(ref approval)) = (confirm_dialog, &dialog_approval) {
+                    dialog::draw_confirm_dialog(f, approval, action);
+                }
+            })
             .ok();
 
         // Check for terminal input events (non-blocking, 50ms timeout).
         if ct_event::poll(Duration::from_millis(50)).unwrap_or(false) {
             if let Ok(Event::Key(key)) = ct_event::read() {
-                let action = input::handle_key(&mut state, key);
-                match action {
-                    InputAction::Approve | InputAction::Reject => {
-                        state.show_confirm_dialog = true;
-                        // TODO: wire approve/reject API calls (Task 8).
+                // If a confirm dialog is showing, intercept y/n/Esc.
+                if let Some(dialog_action) = state.confirm_dialog {
+                    match key.code {
+                        KeyCode::Char('y') => {
+                            if let Some(ref approval) = dialog_approval {
+                                match dialog_action {
+                                    DialogAction::Approve => {
+                                        let _ = approvals_client::approve_action(
+                                            ctx,
+                                            &approval.id,
+                                            Some("approved via dashboard"),
+                                        )
+                                        .await;
+                                    }
+                                    DialogAction::Reject => {
+                                        let _ = approvals_client::reject_action(
+                                            ctx,
+                                            &approval.id,
+                                            "rejected via dashboard",
+                                        )
+                                        .await;
+                                    }
+                                }
+                            }
+                            state.confirm_dialog = None;
+                        }
+                        KeyCode::Char('n') | KeyCode::Esc => {
+                            state.confirm_dialog = None;
+                        }
+                        _ => {}
                     }
-                    InputAction::None => {}
+                } else {
+                    let action = input::handle_key(&mut state, key);
+                    match action {
+                        InputAction::Approve => {
+                            state.confirm_dialog = Some(DialogAction::Approve);
+                        }
+                        InputAction::Reject => {
+                            state.confirm_dialog = Some(DialogAction::Reject);
+                        }
+                        InputAction::None => {}
+                    }
                 }
             }
         }
