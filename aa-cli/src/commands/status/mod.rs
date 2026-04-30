@@ -55,3 +55,62 @@ pub fn dispatch(args: StatusArgs, ctx: &ResolvedContext, output: OutputFormat) -
         }
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::models::*;
+    use super::*;
+
+    fn healthy_snapshot() -> StatusSnapshot {
+        StatusSnapshot {
+            runtime: RuntimeHealth {
+                reachable: true,
+                status: "ok".to_string(),
+            },
+            agents: vec![AgentRow {
+                id: "a1".to_string(),
+                name: "agent".to_string(),
+                framework: "langgraph".to_string(),
+                status: "Running".to_string(),
+                violations_today: 0,
+            }],
+            approvals: ApprovalsSummary {
+                pending_count: 0,
+                oldest_pending_age: None,
+            },
+            budget: BudgetRow {
+                daily_spend_usd: "0.00".to_string(),
+                monthly_spend_usd: None,
+                date: "2026-04-30".to_string(),
+            },
+        }
+    }
+
+    #[test]
+    fn exit_code_0_when_healthy() {
+        let snapshot = healthy_snapshot();
+        assert_eq!(compute_exit_code(&snapshot), ExitCode::SUCCESS);
+    }
+
+    #[test]
+    fn exit_code_1_when_violations() {
+        let mut snapshot = healthy_snapshot();
+        snapshot.agents[0].violations_today = 3;
+        assert_eq!(compute_exit_code(&snapshot), ExitCode::from(1));
+    }
+
+    #[test]
+    fn exit_code_2_when_unreachable() {
+        let mut snapshot = healthy_snapshot();
+        snapshot.runtime.reachable = false;
+        assert_eq!(compute_exit_code(&snapshot), ExitCode::from(2));
+    }
+
+    #[test]
+    fn exit_code_2_takes_precedence_over_violations() {
+        let mut snapshot = healthy_snapshot();
+        snapshot.runtime.reachable = false;
+        snapshot.agents[0].violations_today = 5;
+        assert_eq!(compute_exit_code(&snapshot), ExitCode::from(2));
+    }
+}
