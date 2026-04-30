@@ -12,6 +12,7 @@ use crate::output::OutputFormat;
 mod inspect;
 mod kill;
 mod list;
+mod resume;
 mod suspend;
 
 /// Arguments for the `aasm agent` subcommand group.
@@ -32,6 +33,8 @@ pub enum AgentCommands {
     Kill(kill::KillArgs),
     /// Suspend a running agent.
     Suspend(suspend::SuspendArgs),
+    /// Resume a suspended agent.
+    Resume(resume::ResumeArgs),
 }
 
 /// Dispatch an agent subcommand.
@@ -41,6 +44,7 @@ pub fn dispatch(args: AgentArgs, ctx: &ResolvedContext, output: OutputFormat) ->
         AgentCommands::Inspect(inspect_args) => inspect::run(inspect_args, ctx, output),
         AgentCommands::Kill(kill_args) => kill::run(kill_args, ctx),
         AgentCommands::Suspend(suspend_args) => suspend::run(suspend_args, ctx, output),
+        AgentCommands::Resume(resume_args) => resume::run(resume_args, ctx, output),
     }
 }
 
