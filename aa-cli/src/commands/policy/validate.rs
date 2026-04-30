@@ -41,3 +41,56 @@ pub fn run(args: ValidateArgs) -> ExitCode {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use std::io::Write;
+
+    #[test]
+    fn valid_policy_exits_success() {
+        let mut tmp = tempfile::NamedTempFile::new().unwrap();
+        writeln!(
+            tmp,
+            r#"apiVersion: agent-assembly/v1
+kind: Policy
+metadata:
+  name: test-policy
+spec:
+  tier: low
+  rules:
+    - id: allow-all
+      description: Allow all
+      match:
+        actions: ["*"]
+      effect: allow
+      audit: true"#
+        )
+        .unwrap();
+
+        let args = ValidateArgs {
+            file: tmp.path().to_path_buf(),
+        };
+        assert_eq!(run(args), ExitCode::SUCCESS);
+    }
+
+    #[test]
+    fn invalid_yaml_exits_failure() {
+        let mut tmp = tempfile::NamedTempFile::new().unwrap();
+        writeln!(tmp, "not: valid: yaml: [[[").unwrap();
+
+        let args = ValidateArgs {
+            file: tmp.path().to_path_buf(),
+        };
+        assert_eq!(run(args), ExitCode::FAILURE);
+    }
+
+    #[test]
+    fn missing_file_exits_failure() {
+        let args = ValidateArgs {
+            file: PathBuf::from("/tmp/nonexistent-policy-file-that-does-not-exist.yaml"),
+        };
+        assert_eq!(run(args), ExitCode::FAILURE);
+    }
+}
