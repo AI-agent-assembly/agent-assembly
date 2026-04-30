@@ -54,7 +54,16 @@ pub fn dispatch(args: TraceArgs, ctx: &ResolvedContext, output: OutputFormat) ->
                 }
             }
         }
-        _ => {
+        OutputFormat::Yaml => {
+            match serde_yaml::to_string(&trace) {
+                Ok(yaml) => print!("{yaml}"),
+                Err(e) => {
+                    eprintln!("error serializing trace: {e}");
+                    return ExitCode::FAILURE;
+                }
+            }
+        }
+        OutputFormat::Table => {
             // TODO: wire tree and timeline formats
             println!("{trace:?}");
         }
