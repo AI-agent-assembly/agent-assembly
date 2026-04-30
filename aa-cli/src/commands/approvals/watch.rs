@@ -4,6 +4,7 @@ use std::io::Write;
 
 use chrono::Utc;
 use clap::Args;
+use crossterm::event::{KeyCode, KeyEvent};
 use crossterm::terminal;
 use futures_util::StreamExt;
 use tokio_tungstenite::tungstenite::Message;
@@ -79,6 +80,39 @@ impl InteractiveState {
     /// Return the ID of the currently selected item, if any.
     pub fn selected_id(&self) -> Option<&str> {
         self.items.get(self.selected).map(|i| i.id.as_str())
+    }
+}
+
+/// Actions that can result from a keypress in interactive mode.
+pub enum KeyAction {
+    /// Approve the currently selected item.
+    Approve,
+    /// Reject the currently selected item (will prompt for reason).
+    Reject,
+    /// Quit the interactive watch.
+    Quit,
+    /// No action needed (navigation was handled internally).
+    None,
+}
+
+/// Handle a keypress event in interactive mode.
+///
+/// Arrow keys adjust the selection. `a` triggers approve, `r` triggers reject,
+/// `q` quits.
+pub fn handle_keypress(key: KeyEvent, state: &mut InteractiveState) -> KeyAction {
+    match key.code {
+        KeyCode::Up => {
+            state.select_prev();
+            KeyAction::None
+        }
+        KeyCode::Down => {
+            state.select_next();
+            KeyAction::None
+        }
+        KeyCode::Char('a') | KeyCode::Char('A') => KeyAction::Approve,
+        KeyCode::Char('r') | KeyCode::Char('R') => KeyAction::Reject,
+        KeyCode::Char('q') | KeyCode::Char('Q') | KeyCode::Esc => KeyAction::Quit,
+        _ => KeyAction::None,
     }
 }
 
