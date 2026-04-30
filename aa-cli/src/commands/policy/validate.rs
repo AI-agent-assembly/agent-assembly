@@ -28,14 +28,14 @@ pub fn run(args: ValidateArgs) -> ExitCode {
     match aa_gateway::policy::PolicyValidator::from_yaml(&yaml) {
         Ok(output) => {
             for w in &output.warnings {
-                eprintln!("warning: {w:?}");
+                eprintln!("warning: {w}");
             }
             println!("Policy is valid: {}", args.file.display());
             ExitCode::SUCCESS
         }
         Err(errors) => {
             for e in &errors {
-                eprintln!("error: {e:?}");
+                eprintln!("error: {e}");
             }
             ExitCode::FAILURE
         }
