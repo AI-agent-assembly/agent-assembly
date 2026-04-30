@@ -58,9 +58,10 @@ fn build_url(ctx: &ResolvedContext, args: &LogsArgs) -> String {
     }
 
     if let Some(ref types) = args.r#type {
-        if let Some(first) = types.first() {
-            url.push_str(&format!("&event_type={}", first.as_api_str()));
+        if types.len() == 1 {
+            url.push_str(&format!("&event_type={}", types[0].as_api_str()));
         }
+        // Multiple types: fetch all and filter client-side (API accepts only one).
     }
 
     url
@@ -100,6 +101,15 @@ pub fn run(args: LogsArgs, ctx: &ResolvedContext) -> ExitCode {
     for entry in &paginated.items {
         if !is_within_time_range(&entry.timestamp, since.as_ref(), until.as_ref()) {
             continue;
+        }
+        if let Some(ref types) = args.r#type {
+            if types.len() > 1
+                && !types
+                    .iter()
+                    .any(|t| t.as_api_str() == entry.event_type)
+            {
+                continue;
+            }
         }
         let line_data = entry.to_line_data();
         if use_json {
@@ -197,5 +207,29 @@ mod tests {
         };
         let url = build_url(&ctx, &args);
         assert!(url.contains("event_type=violation"));
+    }
+
+    #[test]
+    fn build_url_with_multiple_types_omits_server_filter() {
+        use super::super::types::LogEventType;
+
+        let ctx = ResolvedContext {
+            name: None,
+            api_url: "http://localhost:8080".to_string(),
+            api_key: None,
+        };
+        let args = LogsArgs {
+            follow: false,
+            agent: None,
+            r#type: Some(vec![LogEventType::Violation, LogEventType::Budget]),
+            since: None,
+            until: None,
+            limit: 50,
+            no_color: false,
+            output: None,
+        };
+        let url = build_url(&ctx, &args);
+        // Multiple types cannot be sent server-side; filtered client-side instead.
+        assert!(!url.contains("event_type="));
     }
 }
