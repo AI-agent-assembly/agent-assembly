@@ -38,7 +38,9 @@ pub async fn get_trace(
                 spans: session_trace.spans,
             }),
         )),
-        None => Err(ProblemDetail::from_status(StatusCode::NOT_FOUND)
-            .with_detail(format!("Session not found: {session_id}"))),
+        None => {
+            Err(ProblemDetail::from_status(StatusCode::NOT_FOUND)
+                .with_detail(format!("Session not found: {session_id}")))
+        }
     }
 }

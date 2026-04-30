@@ -86,8 +86,14 @@ fn bounded_capacity_evicts_oldest_session() {
         .record_span("session-4", "agent-1", make_span("s4", "op", 13))
         .unwrap();
 
-    assert!(store.get_trace("session-1").unwrap().is_none(), "session-1 should be evicted");
-    assert!(store.get_trace("session-4").unwrap().is_some(), "session-4 should exist");
+    assert!(
+        store.get_trace("session-1").unwrap().is_none(),
+        "session-1 should be evicted"
+    );
+    assert!(
+        store.get_trace("session-4").unwrap().is_some(),
+        "session-4 should exist"
+    );
 
     let sessions = store.list_sessions(10).unwrap();
     assert_eq!(sessions.len(), 3);

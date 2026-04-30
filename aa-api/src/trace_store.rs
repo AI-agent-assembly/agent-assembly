@@ -94,10 +94,12 @@ impl TraceStore for InMemoryTraceStore {
             order.push_back(session_id.to_string());
         }
 
-        let mut entry = self
-            .sessions
-            .entry(session_id.to_string())
-            .or_insert_with(|| (agent_id.to_string(), VecDeque::with_capacity(self.max_spans_per_session)));
+        let mut entry = self.sessions.entry(session_id.to_string()).or_insert_with(|| {
+            (
+                agent_id.to_string(),
+                VecDeque::with_capacity(self.max_spans_per_session),
+            )
+        });
 
         let (_, spans) = entry.value_mut();
         if spans.len() >= self.max_spans_per_session {
