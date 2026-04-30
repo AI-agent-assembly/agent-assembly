@@ -32,10 +32,7 @@ fn render_detail(agent: &AgentResponse) {
         "deregistered" => Color::Red,
         _ => Color::Reset,
     };
-    table.add_row(vec![
-        Cell::new("Status"),
-        Cell::new(&agent.status).fg(status_color),
-    ]);
+    table.add_row(vec![Cell::new("Status"), Cell::new(&agent.status).fg(status_color)]);
 
     let tools = if agent.tool_names.is_empty() {
         "(none)".to_string()
