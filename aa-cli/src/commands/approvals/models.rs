@@ -48,6 +48,23 @@ pub fn compute_timeout_color(remaining_secs: i64) -> TimeoutColor {
     }
 }
 
+/// Format remaining seconds as a human-readable countdown string.
+///
+/// Returns strings like `"2m 30s"`, `"45s"`, or `"expired"` for
+/// non-positive values.
+pub fn format_countdown(remaining_secs: i64) -> String {
+    if remaining_secs <= 0 {
+        return "expired".to_string();
+    }
+    let mins = remaining_secs / 60;
+    let secs = remaining_secs % 60;
+    if mins > 0 {
+        format!("{mins}m {secs:02}s")
+    } else {
+        format!("{secs}s")
+    }
+}
+
 /// Generic paginated response wrapper matching the aa-api JSON envelope.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PaginatedResponse<T: DeserializeOwned> {
