@@ -61,3 +61,20 @@ pub fn load() -> Result<CliConfig, CliError> {
     let config: CliConfig = serde_yaml::from_str(&contents)?;
     Ok(config)
 }
+
+/// Save the CLI configuration to `~/.aa/config.yaml`.
+///
+/// Creates the `~/.aa/` directory if it does not exist.
+pub fn save(config: &CliConfig) -> Result<(), CliError> {
+    let dir = config_dir();
+    if !dir.exists() {
+        std::fs::create_dir_all(&dir).map_err(|e| CliError::Config {
+            path: dir.clone(),
+            source: e,
+        })?;
+    }
+    let path = config_path();
+    let yaml = serde_yaml::to_string(config)?;
+    std::fs::write(&path, yaml).map_err(|e| CliError::Config { path, source: e })?;
+    Ok(())
+}
