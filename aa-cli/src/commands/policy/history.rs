@@ -1,10 +1,12 @@
 //! Policy version history subcommands — apply, history, rollback, diff.
 
+use std::io::IsTerminal;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
 use aa_gateway::policy::history::{FsHistoryStore, HistoryConfig, PolicyHistoryStore};
 use clap::Args;
+use owo_colors::OwoColorize;
 
 /// Arguments for `aasm policy apply`.
 #[derive(Args)]
@@ -145,7 +147,7 @@ pub fn run_diff(args: DiffArgs) -> ExitCode {
                 if diff.lines().count() <= 2 {
                     println!("No differences between the two versions.");
                 } else {
-                    print!("{}", diff);
+                    print_colored_diff(&diff);
                 }
                 ExitCode::SUCCESS
             }
@@ -155,4 +157,96 @@ pub fn run_diff(args: DiffArgs) -> ExitCode {
             }
         }
     })
+}
+
+/// Print a unified diff with ANSI colors.
+///
+/// Colors are suppressed when stdout is not a TTY so piped output
+/// remains machine-readable.
+fn print_colored_diff(diff: &str) {
+    let use_color = std::io::stdout().is_terminal();
+    for line in diff.lines() {
+        if use_color {
+            println!("{}", colorize_diff_line(line));
+        } else {
+            println!("{line}");
+        }
+    }
+}
+
+/// Apply color to a single diff line based on its prefix.
+fn colorize_diff_line(line: &str) -> String {
+    if line.starts_with("---") {
+        line.red().to_string()
+    } else if line.starts_with("+++") {
+        line.green().to_string()
+    } else if line.starts_with("@@") {
+        line.cyan().to_string()
+    } else if line.starts_with('-') {
+        line.red().to_string()
+    } else if line.starts_with('+') {
+        line.green().to_string()
+    } else {
+        line.to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn colorize_removal_header() {
+        let out = colorize_diff_line("--- abc123def456");
+        // Must contain ANSI red escape and the original text.
+        assert!(out.contains("--- abc123def456"));
+        assert!(out.contains("\x1b["));
+    }
+
+    #[test]
+    fn colorize_addition_header() {
+        let out = colorize_diff_line("+++ 789abc012def");
+        assert!(out.contains("+++ 789abc012def"));
+        assert!(out.contains("\x1b["));
+    }
+
+    #[test]
+    fn colorize_hunk_marker() {
+        let out = colorize_diff_line("@@ -1,3 +1,3 @@");
+        assert!(out.contains("@@ -1,3 +1,3 @@"));
+        assert!(out.contains("\x1b["));
+    }
+
+    #[test]
+    fn colorize_removed_line() {
+        let out = colorize_diff_line("-max_actions_per_minute: 100");
+        assert!(out.contains("-max_actions_per_minute: 100"));
+        assert!(out.contains("\x1b["));
+    }
+
+    #[test]
+    fn colorize_added_line() {
+        let out = colorize_diff_line("+max_actions_per_minute: 200");
+        assert!(out.contains("+max_actions_per_minute: 200"));
+        assert!(out.contains("\x1b["));
+    }
+
+    #[test]
+    fn colorize_context_line_unchanged() {
+        let out = colorize_diff_line(" tier: low");
+        // Context lines get no ANSI escapes.
+        assert_eq!(out, " tier: low");
+        assert!(!out.contains("\x1b["));
+    }
+
+    #[test]
+    fn colorize_empty_line() {
+        let out = colorize_diff_line("");
+        assert_eq!(out, "");
+    }
+
+    #[test]
+    fn print_colored_diff_does_not_panic_on_empty() {
+        print_colored_diff("");
+    }
 }
