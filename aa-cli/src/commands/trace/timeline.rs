@@ -106,4 +106,35 @@ mod tests {
     fn compute_max_duration_empty() {
         assert_eq!(compute_max_duration(&[]), 0);
     }
+
+    #[test]
+    fn render_bar_full_width_for_max_duration() {
+        let bar = render_bar(1000, 1000, 40);
+        // Full bar = 40 block characters
+        assert_eq!(bar.chars().count(), 40);
+    }
+
+    #[test]
+    fn render_bar_half_width() {
+        let bar = render_bar(500, 1000, 40);
+        assert_eq!(bar.chars().count(), 20);
+    }
+
+    #[test]
+    fn render_bar_minimum_one_for_nonzero() {
+        let bar = render_bar(1, 10000, 40);
+        assert!(bar.chars().count() >= 1);
+    }
+
+    #[test]
+    fn render_bar_zero_duration() {
+        let bar = render_bar(0, 1000, 40);
+        assert_eq!(bar.chars().count(), 0);
+    }
+
+    #[test]
+    fn render_bar_zero_max_returns_empty() {
+        let bar = render_bar(100, 0, 40);
+        assert!(bar.is_empty());
+    }
 }
