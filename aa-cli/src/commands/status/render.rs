@@ -141,6 +141,9 @@ mod tests {
             runtime: RuntimeHealth {
                 reachable: true,
                 status: "ok".to_string(),
+                uptime_secs: 120,
+                active_connections: 3,
+                pipeline_lag_ms: 0,
             },
             agents: vec![],
             approvals: ApprovalsSummary {

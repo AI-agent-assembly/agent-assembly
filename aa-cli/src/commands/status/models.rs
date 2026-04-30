@@ -9,6 +9,15 @@ use serde::{Deserialize, Serialize};
 pub struct HealthResponse {
     /// Liveness status string, always `"ok"` when the service is running.
     pub status: String,
+    /// Server uptime in seconds since startup.
+    #[serde(default)]
+    pub uptime_secs: u64,
+    /// Number of currently active WebSocket/SSE connections.
+    #[serde(default)]
+    pub active_connections: i64,
+    /// Pipeline processing lag in milliseconds.
+    #[serde(default)]
+    pub pipeline_lag_ms: u64,
 }
 
 /// Computed runtime health for display.
@@ -18,6 +27,12 @@ pub struct RuntimeHealth {
     pub reachable: bool,
     /// Status string from the health endpoint (e.g. `"ok"`).
     pub status: String,
+    /// Server uptime in seconds since startup.
+    pub uptime_secs: u64,
+    /// Number of currently active WebSocket/SSE connections.
+    pub active_connections: i64,
+    /// Pipeline processing lag in milliseconds.
+    pub pipeline_lag_ms: u64,
 }
 
 /// API response item from `GET /api/v1/agents`.

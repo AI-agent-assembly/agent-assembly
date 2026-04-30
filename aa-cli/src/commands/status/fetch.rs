@@ -14,10 +14,16 @@ pub fn build_runtime_health(resp: Option<HealthResponse>) -> RuntimeHealth {
         Some(h) => RuntimeHealth {
             reachable: true,
             status: h.status,
+            uptime_secs: h.uptime_secs,
+            active_connections: h.active_connections,
+            pipeline_lag_ms: h.pipeline_lag_ms,
         },
         None => RuntimeHealth {
             reachable: false,
             status: "unreachable".to_string(),
+            uptime_secs: 0,
+            active_connections: 0,
+            pipeline_lag_ms: 0,
         },
     }
 }
