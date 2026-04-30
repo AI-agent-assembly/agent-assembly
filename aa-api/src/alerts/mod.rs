@@ -66,11 +66,7 @@ pub fn severity_from_threshold(threshold_pct: u8) -> AlertSeverity {
 
 /// Format an `AgentId` as a hex string for display in API responses.
 fn format_agent_id(agent_id: &aa_core::AgentId) -> String {
-    agent_id
-        .as_bytes()
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect()
+    agent_id.as_bytes().iter().map(|b| format!("{b:02x}")).collect()
 }
 
 /// Build a human-readable alert message from a `BudgetAlert`.
