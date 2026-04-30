@@ -9,7 +9,9 @@ use tokio_tungstenite::tungstenite::Message;
 use crate::config::ResolvedContext;
 use crate::output::OutputFormat;
 
-use super::format::{format_log_json, format_log_line, LogLineData};
+use super::format::{
+    format_log_json, format_log_line, is_within_time_range, parse_since, LogLineData,
+};
 use super::LogsArgs;
 
 /// A governance event as received from the WebSocket stream.
@@ -87,6 +89,12 @@ async fn stream_events(args: LogsArgs, ctx: &ResolvedContext) -> ExitCode {
     let use_json = matches!(args.output, Some(OutputFormat::Json));
     let use_color = !args.no_color && !use_json;
 
+    if args.until.is_some() {
+        eprintln!("warning: --until is ignored in follow mode (real-time stream has no end bound)");
+    }
+
+    let since = args.since.as_deref().and_then(parse_since);
+
     let (ws_stream, _) = match tokio_tungstenite::connect_async(&url).await {
         Ok(conn) => conn,
         Err(e) => {
@@ -131,6 +139,9 @@ async fn stream_events(args: LogsArgs, ctx: &ResolvedContext) -> ExitCode {
             entry = rx.recv() => {
                 match entry {
                     Some(line_data) => {
+                        if !is_within_time_range(&line_data.timestamp, since.as_ref(), None) {
+                            continue;
+                        }
                         if use_json {
                             println!("{}", format_log_json(&line_data));
                         } else {

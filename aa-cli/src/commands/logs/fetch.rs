@@ -7,7 +7,9 @@ use serde::Deserialize;
 use crate::config::ResolvedContext;
 use crate::output::OutputFormat;
 
-use super::format::{format_log_json, format_log_line, LogLineData};
+use super::format::{
+    format_log_json, format_log_line, is_within_time_range, parse_since, parse_until, LogLineData,
+};
 use super::LogsArgs;
 
 /// Paginated response envelope from `GET /api/v1/logs`.
@@ -71,6 +73,9 @@ pub fn run(args: LogsArgs, ctx: &ResolvedContext) -> ExitCode {
     let use_json = matches!(args.output, Some(OutputFormat::Json));
     let use_color = !args.no_color && !use_json;
 
+    let since = args.since.as_deref().and_then(parse_since);
+    let until = args.until.as_deref().and_then(parse_until);
+
     let response = match reqwest::blocking::get(&url) {
         Ok(r) => r,
         Err(e) => {
@@ -93,6 +98,9 @@ pub fn run(args: LogsArgs, ctx: &ResolvedContext) -> ExitCode {
     };
 
     for entry in &paginated.items {
+        if !is_within_time_range(&entry.timestamp, since.as_ref(), until.as_ref()) {
+            continue;
+        }
         let line_data = entry.to_line_data();
         if use_json {
             println!("{}", format_log_json(&line_data));
