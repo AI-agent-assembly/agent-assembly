@@ -202,4 +202,33 @@ mod tests {
         let result = approve_action(&ctx, "abc-123", Some("looks good")).await.unwrap();
         assert_eq!(result.status, "approved");
     }
+
+    #[tokio::test]
+    async fn reject_action_sends_post_and_returns_rejected() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+        let body = serde_json::json!({
+            "id": "abc-123",
+            "agent_id": "support-agent",
+            "action": "process_refund",
+            "reason": "not authorized",
+            "status": "rejected",
+            "created_at": "2026-04-30T10:00:00Z"
+        });
+        Mock::given(method("POST"))
+            .and(path("/api/v1/approvals/abc-123/reject"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+            .mount(&mock_server)
+            .await;
+
+        let ctx = ResolvedContext {
+            name: None,
+            api_url: mock_server.uri(),
+            api_key: None,
+        };
+        let result = reject_action(&ctx, "abc-123", "not authorized").await.unwrap();
+        assert_eq!(result.status, "rejected");
+    }
 }
