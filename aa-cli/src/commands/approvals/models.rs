@@ -124,4 +124,24 @@ mod tests {
         assert_eq!(resp.total, 1);
         assert_eq!(resp.items[0].id, "abc-123");
     }
+
+    #[test]
+    fn compute_timeout_color_red_below_60() {
+        assert_eq!(compute_timeout_color(0), TimeoutColor::Red);
+        assert_eq!(compute_timeout_color(59), TimeoutColor::Red);
+        assert_eq!(compute_timeout_color(-10), TimeoutColor::Red);
+    }
+
+    #[test]
+    fn compute_timeout_color_yellow_60_to_180() {
+        assert_eq!(compute_timeout_color(60), TimeoutColor::Yellow);
+        assert_eq!(compute_timeout_color(120), TimeoutColor::Yellow);
+        assert_eq!(compute_timeout_color(180), TimeoutColor::Yellow);
+    }
+
+    #[test]
+    fn compute_timeout_color_green_above_180() {
+        assert_eq!(compute_timeout_color(181), TimeoutColor::Green);
+        assert_eq!(compute_timeout_color(300), TimeoutColor::Green);
+    }
 }
