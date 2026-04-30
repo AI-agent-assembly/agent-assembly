@@ -108,6 +108,34 @@ fn render_detail(agent: &AgentResponse) {
     }
 }
 
+/// Run the `aasm agent inspect` command.
+pub fn run(args: InspectArgs, ctx: &ResolvedContext, output: OutputFormat) -> ExitCode {
+    let rt = tokio::runtime::Runtime::new().expect("failed to create tokio runtime");
+
+    let path = format!("/api/v1/agents/{}", args.agent_id);
+    let agent: AgentResponse = match rt.block_on(client::get_json(ctx, &path)) {
+        Ok(a) => a,
+        Err(e) => {
+            eprintln!("error: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+
+    match output {
+        OutputFormat::Table => render_detail(&agent),
+        OutputFormat::Json => match serde_json::to_string_pretty(&agent) {
+            Ok(json) => println!("{json}"),
+            Err(e) => eprintln!("error serializing JSON: {e}"),
+        },
+        OutputFormat::Yaml => match serde_yaml::to_string(&agent) {
+            Ok(yaml) => print!("{yaml}"),
+            Err(e) => eprintln!("error serializing YAML: {e}"),
+        },
+    }
+
+    ExitCode::SUCCESS
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
@@ -155,32 +183,4 @@ mod tests {
         ];
         render_detail(&agent);
     }
-}
-
-/// Run the `aasm agent inspect` command.
-pub fn run(args: InspectArgs, ctx: &ResolvedContext, output: OutputFormat) -> ExitCode {
-    let rt = tokio::runtime::Runtime::new().expect("failed to create tokio runtime");
-
-    let path = format!("/api/v1/agents/{}", args.agent_id);
-    let agent: AgentResponse = match rt.block_on(client::get_json(ctx, &path)) {
-        Ok(a) => a,
-        Err(e) => {
-            eprintln!("error: {e}");
-            return ExitCode::FAILURE;
-        }
-    };
-
-    match output {
-        OutputFormat::Table => render_detail(&agent),
-        OutputFormat::Json => match serde_json::to_string_pretty(&agent) {
-            Ok(json) => println!("{json}"),
-            Err(e) => eprintln!("error serializing JSON: {e}"),
-        },
-        OutputFormat::Yaml => match serde_yaml::to_string(&agent) {
-            Ok(yaml) => print!("{yaml}"),
-            Err(e) => eprintln!("error serializing YAML: {e}"),
-        },
-    }
-
-    ExitCode::SUCCESS
 }
