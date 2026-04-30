@@ -110,3 +110,105 @@ fn format_duration(dur: chrono::Duration) -> String {
         format!("{minutes}m")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+
+    use super::*;
+
+    #[test]
+    fn build_runtime_health_reachable() {
+        let resp = Some(HealthResponse {
+            status: "ok".to_string(),
+        });
+        let health = build_runtime_health(resp);
+        assert!(health.reachable);
+        assert_eq!(health.status, "ok");
+    }
+
+    #[test]
+    fn build_runtime_health_unreachable() {
+        let health = build_runtime_health(None);
+        assert!(!health.reachable);
+        assert_eq!(health.status, "unreachable");
+    }
+
+    #[test]
+    fn build_agent_rows_maps_fields() {
+        let agents = vec![AgentResponse {
+            id: "abc".to_string(),
+            name: "test-agent".to_string(),
+            framework: "langgraph".to_string(),
+            version: "1.0.0".to_string(),
+            status: "Running".to_string(),
+            tool_names: vec!["tool_a".to_string()],
+            metadata: BTreeMap::new(),
+        }];
+        let rows = build_agent_rows(agents);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].id, "abc");
+        assert_eq!(rows[0].name, "test-agent");
+        assert_eq!(rows[0].framework, "langgraph");
+        assert_eq!(rows[0].status, "Running");
+        assert_eq!(rows[0].violations_today, 0);
+    }
+
+    #[test]
+    fn build_approvals_summary_with_pending() {
+        let approvals = vec![
+            ApprovalResponse {
+                id: "ap-1".to_string(),
+                agent_id: "a1".to_string(),
+                action: "refund".to_string(),
+                reason: "amount".to_string(),
+                status: "pending".to_string(),
+                created_at: "2026-04-30T08:00:00Z".to_string(),
+            },
+            ApprovalResponse {
+                id: "ap-2".to_string(),
+                agent_id: "a2".to_string(),
+                action: "delete".to_string(),
+                reason: "test".to_string(),
+                status: "approved".to_string(),
+                created_at: "2026-04-30T07:00:00Z".to_string(),
+            },
+        ];
+        let summary = build_approvals_summary(&approvals);
+        assert_eq!(summary.pending_count, 1);
+        assert!(summary.oldest_pending_age.is_some());
+    }
+
+    #[test]
+    fn build_approvals_summary_no_pending() {
+        let approvals = vec![ApprovalResponse {
+            id: "ap-1".to_string(),
+            agent_id: "a1".to_string(),
+            action: "refund".to_string(),
+            reason: "done".to_string(),
+            status: "approved".to_string(),
+            created_at: "2026-04-30T08:00:00Z".to_string(),
+        }];
+        let summary = build_approvals_summary(&approvals);
+        assert_eq!(summary.pending_count, 0);
+        assert!(summary.oldest_pending_age.is_none());
+    }
+
+    #[test]
+    fn format_duration_minutes_only() {
+        let dur = chrono::Duration::minutes(5);
+        assert_eq!(format_duration(dur), "5m");
+    }
+
+    #[test]
+    fn format_duration_hours_and_minutes() {
+        let dur = chrono::Duration::hours(2) + chrono::Duration::minutes(15);
+        assert_eq!(format_duration(dur), "2h 15m");
+    }
+
+    #[test]
+    fn format_duration_days() {
+        let dur = chrono::Duration::days(1) + chrono::Duration::hours(3);
+        assert_eq!(format_duration(dur), "1d 3h");
+    }
+}
