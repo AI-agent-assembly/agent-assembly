@@ -75,6 +75,9 @@ pub struct AgentResponse {
     /// Most recent events emitted by this agent.
     #[serde(default)]
     pub recent_events: Vec<RecentEventResponse>,
+    /// Most recent trace session IDs for this agent.
+    #[serde(default)]
+    pub recent_traces: Vec<RecentTraceResponse>,
 }
 
 /// Summary of an active session returned by the API.
@@ -162,6 +165,7 @@ mod tests {
             policy_violations_count: Some(2),
             active_sessions: vec![],
             recent_events: vec![],
+            recent_traces: vec![],
         };
 
         let json = serde_json::to_string(&agent).unwrap();
@@ -274,6 +278,7 @@ mod tests {
             policy_violations_count: Some(0),
             active_sessions: vec![],
             recent_events: vec![],
+            recent_traces: vec![],
         };
 
         let json = serde_json::to_string(&agent).unwrap();
