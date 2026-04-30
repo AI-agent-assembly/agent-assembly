@@ -190,3 +190,63 @@ fn colorize_diff_line(line: &str) -> String {
         line.to_string()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn colorize_removal_header() {
+        let out = colorize_diff_line("--- abc123def456");
+        // Must contain ANSI red escape and the original text.
+        assert!(out.contains("--- abc123def456"));
+        assert!(out.contains("\x1b["));
+    }
+
+    #[test]
+    fn colorize_addition_header() {
+        let out = colorize_diff_line("+++ 789abc012def");
+        assert!(out.contains("+++ 789abc012def"));
+        assert!(out.contains("\x1b["));
+    }
+
+    #[test]
+    fn colorize_hunk_marker() {
+        let out = colorize_diff_line("@@ -1,3 +1,3 @@");
+        assert!(out.contains("@@ -1,3 +1,3 @@"));
+        assert!(out.contains("\x1b["));
+    }
+
+    #[test]
+    fn colorize_removed_line() {
+        let out = colorize_diff_line("-max_actions_per_minute: 100");
+        assert!(out.contains("-max_actions_per_minute: 100"));
+        assert!(out.contains("\x1b["));
+    }
+
+    #[test]
+    fn colorize_added_line() {
+        let out = colorize_diff_line("+max_actions_per_minute: 200");
+        assert!(out.contains("+max_actions_per_minute: 200"));
+        assert!(out.contains("\x1b["));
+    }
+
+    #[test]
+    fn colorize_context_line_unchanged() {
+        let out = colorize_diff_line(" tier: low");
+        // Context lines get no ANSI escapes.
+        assert_eq!(out, " tier: low");
+        assert!(!out.contains("\x1b["));
+    }
+
+    #[test]
+    fn colorize_empty_line() {
+        let out = colorize_diff_line("");
+        assert_eq!(out, "");
+    }
+
+    #[test]
+    fn print_colored_diff_does_not_panic_on_empty() {
+        print_colored_diff("");
+    }
+}
