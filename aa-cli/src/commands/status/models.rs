@@ -61,3 +61,11 @@ pub struct ApprovalsSummary {
     /// Human-readable age of the oldest pending approval (e.g. `"2h 15m"`).
     pub oldest_pending_age: Option<String>,
 }
+
+/// API response from `GET /api/v1/costs`.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct CostResponse {
+    pub daily_spend_usd: String,
+    pub monthly_spend_usd: Option<String>,
+    pub date: String,
+}
