@@ -83,15 +83,21 @@ pub struct CostResponse {
     pub per_agent: Vec<AgentCostEntry>,
 }
 
-/// Per-agent budget row for display.
+/// Budget display model combining global spend, limits, and per-agent breakdown.
 #[derive(Debug, Clone, Serialize)]
 pub struct BudgetRow {
-    /// Total daily spend in USD (aggregated, since per-agent is not yet available).
+    /// Total daily spend in USD.
     pub daily_spend_usd: String,
     /// Monthly spend if available.
     pub monthly_spend_usd: Option<String>,
+    /// Configured daily budget limit in USD.
+    pub daily_limit_usd: Option<String>,
+    /// Configured monthly budget limit in USD.
+    pub monthly_limit_usd: Option<String>,
     /// Reporting date.
     pub date: String,
+    /// Per-agent cost breakdown sorted by spend descending.
+    pub per_agent: Vec<AgentCostEntry>,
 }
 
 /// Paginated API response wrapper.
