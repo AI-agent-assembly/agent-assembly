@@ -106,7 +106,15 @@ pub fn compliance_header(format: ComplianceFormat) -> String {
 /// Write audit entries as CSV to the given writer.
 pub fn write_csv<W: Write>(entries: &[AuditEntry], mut writer: W) -> Result<(), Box<dyn std::error::Error>> {
     let mut wtr = csv::Writer::from_writer(&mut writer);
-    wtr.write_record(["timestamp", "agent_id", "session_id", "event_type", "tool", "result", "policy"])?;
+    wtr.write_record([
+        "timestamp",
+        "agent_id",
+        "session_id",
+        "event_type",
+        "tool",
+        "result",
+        "policy",
+    ])?;
 
     for entry in entries {
         let result = extract_result(entry).unwrap_or_default();

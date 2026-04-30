@@ -96,11 +96,7 @@ pub fn apply_filters(entries: &[AuditEntry], args: &ListArgs) -> Vec<AuditEntry>
     entries
         .iter()
         .filter(|e| is_within_time_range(&e.timestamp, since.as_ref(), until.as_ref()))
-        .filter(|e| {
-            args.result
-                .as_ref()
-                .map_or(true, |r| matches_result_filter(e, r))
-        })
+        .filter(|e| args.result.as_ref().map_or(true, |r| matches_result_filter(e, r)))
         .cloned()
         .collect()
 }

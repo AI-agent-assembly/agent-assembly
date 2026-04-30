@@ -204,8 +204,7 @@ async fn audit_export_json_to_file_creates_output() {
 
     // Verify the file contains valid JSON.
     let contents = std::fs::read_to_string(tmp.path()).unwrap();
-    let entries: Vec<aa_cli::commands::audit::models::AuditEntry> =
-        serde_json::from_str(&contents).unwrap();
+    let entries: Vec<aa_cli::commands::audit::models::AuditEntry> = serde_json::from_str(&contents).unwrap();
     assert_eq!(entries.len(), 2);
 }
 
