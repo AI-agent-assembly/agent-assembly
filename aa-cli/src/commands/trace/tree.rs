@@ -29,3 +29,28 @@ pub fn render_event_line(event: &TraceEvent) -> String {
         format_duration(event.duration_ms),
     )
 }
+
+/// Recursively render a list of events as a tree with box-drawing prefixes.
+///
+/// `prefix` is the indentation string inherited from the parent level.
+fn render_tree_recursive(events: &[TraceEvent], prefix: &str, output: &mut String) {
+    let count = events.len();
+    for (i, event) in events.iter().enumerate() {
+        let is_last = i == count - 1;
+        let connector = if is_last { "└─ " } else { "├─ " };
+        let child_prefix = if is_last {
+            format!("{prefix}   ")
+        } else {
+            format!("{prefix}│  ")
+        };
+
+        output.push_str(prefix);
+        output.push_str(connector);
+        output.push_str(&render_event_line(event));
+        output.push('\n');
+
+        if !event.children.is_empty() {
+            render_tree_recursive(&event.children, &child_prefix, output);
+        }
+    }
+}
