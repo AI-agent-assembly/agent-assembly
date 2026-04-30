@@ -147,4 +147,38 @@ mod tests {
         assert!(output.contains("query_db"));
         assert!(output.contains("3 records"));
     }
+
+    #[test]
+    fn render_event_line_policy_deny_includes_reason() {
+        // Force color output so ANSI codes are emitted regardless of TTY.
+        colored::control::set_override(true);
+
+        let event = TraceEvent {
+            kind: TraceEventKind::PolicyDeny,
+            label: "process_refund".to_string(),
+            duration_ms: 1,
+            children: vec![],
+            violation_reason: Some("amount exceeds limit".to_string()),
+        };
+        let line = render_event_line(&event);
+        assert!(line.contains("amount exceeds limit"));
+        assert!(line.contains("DENY"));
+        // ANSI red escape code
+        assert!(line.contains("\x1b[31m"));
+
+        colored::control::unset_override();
+    }
+
+    #[test]
+    fn render_event_line_policy_deny_default_reason() {
+        let event = TraceEvent {
+            kind: TraceEventKind::PolicyDeny,
+            label: "send_email".to_string(),
+            duration_ms: 0,
+            children: vec![],
+            violation_reason: None,
+        };
+        let line = render_event_line(&event);
+        assert!(line.contains("no reason provided"));
+    }
 }
