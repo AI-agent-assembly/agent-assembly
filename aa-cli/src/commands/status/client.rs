@@ -2,9 +2,7 @@
 
 use reqwest::Client;
 
-use super::models::{
-    AgentResponse, ApprovalResponse, CostResponse, HealthResponse, PaginatedResponse,
-};
+use super::models::{AgentResponse, ApprovalResponse, CostResponse, HealthResponse, PaginatedResponse};
 use crate::error::CliError;
 
 /// Client for making status-related API requests.

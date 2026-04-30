@@ -64,12 +64,7 @@ pub fn format_bar_chart(percentage: u32) -> String {
     let pct = percentage.min(100);
     let filled = (pct as usize * 20) / 100;
     let empty = 20 - filled;
-    format!(
-        "{}{} {:>3}%",
-        "█".repeat(filled),
-        "░".repeat(empty),
-        pct,
-    )
+    format!("{}{} {:>3}%", "█".repeat(filled), "░".repeat(empty), pct,)
 }
 
 /// Render the Budget Status section to stdout.
@@ -96,12 +91,10 @@ pub fn render_status_json(snapshot: &StatusSnapshot) {
 pub fn render_all(snapshot: &StatusSnapshot, format: OutputFormat) {
     match format {
         OutputFormat::Json => render_status_json(snapshot),
-        OutputFormat::Yaml => {
-            match serde_yaml::to_string(snapshot) {
-                Ok(yaml) => print!("{yaml}"),
-                Err(e) => eprintln!("error serializing status to YAML: {e}"),
-            }
-        }
+        OutputFormat::Yaml => match serde_yaml::to_string(snapshot) {
+            Ok(yaml) => print!("{yaml}"),
+            Err(e) => eprintln!("error serializing status to YAML: {e}"),
+        },
         OutputFormat::Table => {
             render_runtime_health(&snapshot.runtime);
             render_agents_table(&snapshot.agents);

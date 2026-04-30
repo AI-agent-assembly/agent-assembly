@@ -4,8 +4,8 @@ use chrono::Utc;
 
 use super::client::StatusClient;
 use super::models::{
-    AgentResponse, AgentRow, ApprovalResponse, ApprovalsSummary, BudgetRow, CostResponse,
-    HealthResponse, RuntimeHealth, StatusSnapshot,
+    AgentResponse, AgentRow, ApprovalResponse, ApprovalsSummary, BudgetRow, CostResponse, HealthResponse,
+    RuntimeHealth, StatusSnapshot,
 };
 
 /// Convert a health API response into a display-ready `RuntimeHealth`.
