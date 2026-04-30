@@ -33,6 +33,21 @@ pub enum TimeoutColor {
     Green,
 }
 
+/// Determine the [`TimeoutColor`] for the given remaining seconds.
+///
+/// - `remaining <= 0` or `remaining < 60` → [`TimeoutColor::Red`]
+/// - `60 <= remaining <= 180` → [`TimeoutColor::Yellow`]
+/// - `remaining > 180` → [`TimeoutColor::Green`]
+pub fn compute_timeout_color(remaining_secs: i64) -> TimeoutColor {
+    if remaining_secs < 60 {
+        TimeoutColor::Red
+    } else if remaining_secs <= 180 {
+        TimeoutColor::Yellow
+    } else {
+        TimeoutColor::Green
+    }
+}
+
 /// Generic paginated response wrapper matching the aa-api JSON envelope.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PaginatedResponse<T: DeserializeOwned> {
