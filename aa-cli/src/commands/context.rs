@@ -71,11 +71,7 @@ fn run_list() -> ExitCode {
     let default_name = cfg.default_context.as_deref().unwrap_or("");
     for (name, ctx) in &cfg.contexts {
         let marker = if name == default_name { " *" } else { "" };
-        let key_status = if ctx.api_key.is_some() {
-            " (key set)"
-        } else {
-            ""
-        };
+        let key_status = if ctx.api_key.is_some() { " (key set)" } else { "" };
         println!("{name}{marker}  {}{key_status}", ctx.api_url);
     }
     ExitCode::SUCCESS

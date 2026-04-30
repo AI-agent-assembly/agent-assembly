@@ -33,9 +33,7 @@ pub struct CliConfig {
 
 /// Return the config directory path (`~/.aa/`).
 pub fn config_dir() -> PathBuf {
-    dirs::home_dir()
-        .expect("cannot determine home directory")
-        .join(".aa")
+    dirs::home_dir().expect("cannot determine home directory").join(".aa")
 }
 
 /// Return the config file path (`~/.aa/config.yaml`).
@@ -126,9 +124,7 @@ pub fn resolve_context(
         return Ok(ResolvedContext {
             name: Some(name.clone()),
             api_url: ctx.api_url.clone(),
-            api_key: api_key_flag
-                .map(String::from)
-                .or_else(|| ctx.api_key.clone()),
+            api_key: api_key_flag.map(String::from).or_else(|| ctx.api_key.clone()),
         });
     }
 
@@ -204,8 +200,7 @@ mod tests {
     #[test]
     fn resolve_api_url_flag_overrides_everything() {
         let cfg = sample_config();
-        let resolved =
-            resolve_context(&cfg, Some("production"), Some("http://custom:9090"), None).unwrap();
+        let resolved = resolve_context(&cfg, Some("production"), Some("http://custom:9090"), None).unwrap();
         assert!(resolved.name.is_none());
         assert_eq!(resolved.api_url, "http://custom:9090");
     }
@@ -213,8 +208,7 @@ mod tests {
     #[test]
     fn resolve_api_key_flag_overrides_config_key() {
         let cfg = sample_config();
-        let resolved =
-            resolve_context(&cfg, Some("production"), None, Some("override-key")).unwrap();
+        let resolved = resolve_context(&cfg, Some("production"), None, Some("override-key")).unwrap();
         assert_eq!(resolved.api_key.as_deref(), Some("override-key"));
     }
 

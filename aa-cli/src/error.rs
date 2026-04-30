@@ -7,10 +7,7 @@ use std::path::PathBuf;
 pub enum CliError {
     /// Failed to read or write the configuration file.
     #[error("config error at {path}: {source}")]
-    Config {
-        path: PathBuf,
-        source: std::io::Error,
-    },
+    Config { path: PathBuf, source: std::io::Error },
 
     /// The configuration file contains invalid YAML.
     #[error("invalid config YAML: {0}")]
