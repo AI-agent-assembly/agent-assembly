@@ -280,8 +280,19 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** @description Summary of an active session in the API response. */
+        ActiveSessionResponse: {
+            /** @description Hex-encoded session UUID. */
+            session_id: string;
+            /** @description ISO 8601 timestamp when the session started. */
+            started_at: string;
+            /** @description Current status of the session. */
+            status: string;
+        };
         /** @description JSON representation of an agent returned by the API. */
         AgentResponse: {
+            /** @description Currently active sessions for this agent. */
+            active_sessions: components["schemas"]["ActiveSessionResponse"][];
             /** @description Agent framework (e.g. "langgraph", "crewai"). */
             framework: string;
             /** @description Hex-encoded agent UUID. */
@@ -304,6 +315,8 @@ export interface components {
              * @description Number of policy violations recorded.
              */
             policy_violations_count: number;
+            /** @description Most recent events emitted by this agent. */
+            recent_events: components["schemas"]["RecentEventResponse"][];
             /**
              * Format: int32
              * @description Number of sessions handled.
@@ -425,6 +438,15 @@ export interface components {
             title: string;
             /** @description URI reference identifying the problem type. */
             type: string;
+        };
+        /** @description Summary of a recent event in the API response. */
+        RecentEventResponse: {
+            /** @description Event type classification (e.g. "violation", "approval", "budget"). */
+            event_type: string;
+            /** @description Short human-readable summary. */
+            summary: string;
+            /** @description ISO 8601 timestamp when the event occurred. */
+            timestamp: string;
         };
         /**
          * @description Authorization scope level for API operations.
