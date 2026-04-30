@@ -101,4 +101,27 @@ mod tests {
         assert_eq!(resp.status, "pending");
         assert_eq!(resp.created_at, "2026-04-30T10:00:00Z");
     }
+
+    #[test]
+    fn paginated_response_deserializes_from_json() {
+        let json = r#"{
+            "items": [{
+                "id": "abc-123",
+                "agent_id": "support-agent",
+                "action": "process_refund",
+                "reason": "amount > $100",
+                "status": "pending",
+                "created_at": "2026-04-30T10:00:00Z"
+            }],
+            "page": 1,
+            "per_page": 20,
+            "total": 1
+        }"#;
+        let resp: PaginatedResponse<ApprovalResponse> = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.items.len(), 1);
+        assert_eq!(resp.page, 1);
+        assert_eq!(resp.per_page, 20);
+        assert_eq!(resp.total, 1);
+        assert_eq!(resp.items[0].id, "abc-123");
+    }
 }
