@@ -1,6 +1,7 @@
 //! `aasm status` — kubectl-style tabular overview of governance state.
 
 pub mod client;
+pub mod fetch;
 pub mod models;
 
 use std::process::ExitCode;
