@@ -98,3 +98,70 @@ pub struct StatusSnapshot {
     pub approvals: ApprovalsSummary,
     pub budget: BudgetRow,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn health_response_deserializes() {
+        let json = r#"{"status":"ok"}"#;
+        let resp: HealthResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.status, "ok");
+    }
+
+    #[test]
+    fn agent_response_deserializes() {
+        let json = r#"{
+            "id": "abc123",
+            "name": "support-agent",
+            "framework": "langgraph",
+            "version": "1.0.0",
+            "status": "Running",
+            "tool_names": ["query_db", "send_slack"],
+            "metadata": {"team": "support"}
+        }"#;
+        let resp: AgentResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.id, "abc123");
+        assert_eq!(resp.name, "support-agent");
+        assert_eq!(resp.framework, "langgraph");
+        assert_eq!(resp.tool_names.len(), 2);
+        assert_eq!(resp.metadata.get("team").unwrap(), "support");
+    }
+
+    #[test]
+    fn approval_response_deserializes() {
+        let json = r#"{
+            "id": "ap-001",
+            "agent_id": "abc123",
+            "action": "process_refund",
+            "reason": "amount exceeds $100",
+            "status": "pending",
+            "created_at": "2026-04-30T10:00:00Z"
+        }"#;
+        let resp: ApprovalResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.id, "ap-001");
+        assert_eq!(resp.status, "pending");
+        assert_eq!(resp.created_at, "2026-04-30T10:00:00Z");
+    }
+
+    #[test]
+    fn cost_response_deserializes() {
+        let json = r#"{
+            "daily_spend_usd": "8.10",
+            "monthly_spend_usd": "142.50",
+            "date": "2026-04-30"
+        }"#;
+        let resp: CostResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.daily_spend_usd, "8.10");
+        assert_eq!(resp.monthly_spend_usd.as_deref(), Some("142.50"));
+        assert_eq!(resp.date, "2026-04-30");
+    }
+
+    #[test]
+    fn cost_response_deserializes_without_monthly() {
+        let json = r#"{"daily_spend_usd": "0.00", "date": "2026-04-30"}"#;
+        let resp: CostResponse = serde_json::from_str(json).unwrap();
+        assert!(resp.monthly_spend_usd.is_none());
+    }
+}
