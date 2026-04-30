@@ -7,6 +7,7 @@ use aa_gateway::budget::tracker::BudgetTracker;
 use aa_gateway::engine::PolicyEngine;
 use aa_gateway::policy::history::PolicyHistoryStore;
 use aa_gateway::registry::AgentRegistry;
+use aa_gateway::AuditReader;
 use aa_runtime::approval::ApprovalQueue;
 
 use crate::alerts::AlertStore;
@@ -51,4 +52,6 @@ pub struct AppState {
     pub jwt_verifier: Arc<JwtVerifier>,
     /// Session trace storage for the trace query endpoint.
     pub trace_store: Arc<dyn TraceStore>,
+    /// Audit log reader for querying JSONL entries.
+    pub audit_reader: Arc<AuditReader>,
 }
