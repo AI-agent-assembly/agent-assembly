@@ -1,8 +1,14 @@
 //! `aasm approvals watch` — live-updating approval request stream.
 
+use std::io::Write;
+
+use chrono::Utc;
 use clap::Args;
+use crossterm::terminal;
 use futures_util::StreamExt;
 use tokio_tungstenite::tungstenite::Message;
+
+use super::models::{compute_timeout_color, format_countdown, TimeoutColor};
 
 use crate::config::ResolvedContext;
 use crate::error::CliError;
@@ -74,6 +80,58 @@ impl InteractiveState {
     pub fn selected_id(&self) -> Option<&str> {
         self.items.get(self.selected).map(|i| i.id.as_str())
     }
+}
+
+/// Render the interactive view to stdout.
+///
+/// Clears the terminal and draws the approval list with the current selection
+/// highlighted, plus a help bar at the bottom.
+pub fn render_interactive_view(state: &InteractiveState) {
+    let mut stdout = std::io::stdout();
+
+    // Clear screen and move cursor to top-left.
+    let _ = crossterm::execute!(
+        stdout,
+        terminal::Clear(terminal::ClearType::All),
+        crossterm::cursor::MoveTo(0, 0)
+    );
+
+    println!("  aasm approvals watch (interactive)");
+    println!("  [a] approve  [r] reject  [Up/Down] navigate  [q] quit");
+    println!();
+
+    if state.items.is_empty() {
+        println!("  No pending approvals.");
+        let _ = stdout.flush();
+        return;
+    }
+
+    let now = Utc::now().timestamp();
+
+    for (i, item) in state.items.iter().enumerate() {
+        let marker = if i == state.selected { ">" } else { " " };
+        let submitted_epoch = chrono::DateTime::parse_from_rfc3339(&item.created_at)
+            .map(|dt| dt.timestamp())
+            .unwrap_or(0);
+        let remaining = (submitted_epoch + 300) - now;
+        let color_code = match compute_timeout_color(remaining) {
+            TimeoutColor::Red => "\x1b[31m",
+            TimeoutColor::Yellow => "\x1b[33m",
+            TimeoutColor::Green => "\x1b[32m",
+        };
+        let countdown = format_countdown(remaining);
+
+        println!(
+            "  {marker} {id}  {agent:<20} {action:<30} {color}{cd}\x1b[0m",
+            id = &item.id[..8.min(item.id.len())],
+            agent = item.agent_id,
+            action = item.action,
+            color = color_code,
+            cd = countdown,
+        );
+    }
+
+    let _ = stdout.flush();
 }
 
 /// Run the watch stream in non-interactive mode, printing events as they arrive.
