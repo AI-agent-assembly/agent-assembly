@@ -14,17 +14,22 @@ use super::LogsArgs;
 #[derive(Debug, Deserialize)]
 pub struct PaginatedResponse {
     pub items: Vec<LogEntry>,
+    #[allow(dead_code)]
     pub page: u32,
+    #[allow(dead_code)]
     pub per_page: u32,
+    #[allow(dead_code)]
     pub total: u64,
 }
 
 /// A single audit log entry as returned by the REST API.
 #[derive(Debug, Deserialize)]
 pub struct LogEntry {
+    #[allow(dead_code)]
     pub seq: u64,
     pub timestamp: String,
     pub agent_id: String,
+    #[allow(dead_code)]
     pub session_id: String,
     pub event_type: String,
     pub payload: String,
@@ -75,11 +80,7 @@ pub fn run(args: LogsArgs, ctx: &ResolvedContext) -> ExitCode {
     };
 
     if !response.status().is_success() {
-        eprintln!(
-            "error: API returned status {} for {}",
-            response.status(),
-            url
-        );
+        eprintln!("error: API returned status {} for {}", response.status(), url);
         return ExitCode::FAILURE;
     }
 

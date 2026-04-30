@@ -114,8 +114,8 @@ async fn stream_events(args: LogsArgs, ctx: &ResolvedContext) -> ExitCode {
                     // Try to send; if the channel is full, drop the oldest
                     // entry first to make room.
                     if tx.try_send(line_data).is_err() {
-                        // Channel full — drain one entry and retry.
-                        let _ = rx_drain_hint();
+                        // Channel full — oldest event is implicitly dropped.
+                        rx_drain_hint();
                     }
                 }
                 Ok(Message::Close(_)) => break,

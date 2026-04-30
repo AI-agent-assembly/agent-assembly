@@ -158,8 +158,16 @@ mod tests {
     #[test]
     fn parse_combined_flags() {
         let args = parse(&[
-            "aasm", "logs", "-f", "--agent", "aa001", "--type", "violation,approval",
-            "--no-color", "--output", "json",
+            "aasm",
+            "logs",
+            "-f",
+            "--agent",
+            "aa001",
+            "--type",
+            "violation,approval",
+            "--no-color",
+            "--output",
+            "json",
         ]);
         assert!(args.follow);
         assert_eq!(args.agent.as_deref(), Some("aa001"));
