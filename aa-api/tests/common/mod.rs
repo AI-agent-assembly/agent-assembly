@@ -1,8 +1,9 @@
 //! Shared test utilities for aa-api integration tests.
 
 use std::path::Path;
-use std::sync::atomic::{AtomicU64, AtomicUsize};
+use std::sync::atomic::{AtomicI64, AtomicU64, AtomicUsize};
 use std::sync::Arc;
+use std::time::Instant;
 
 use aa_api::alerts::store::InMemoryAlertStore;
 use aa_api::auth::api_key::{ApiKey, ApiKeyEntry, ApiKeyStore};
@@ -135,6 +136,8 @@ spec:
         jwt_verifier,
         trace_store: Arc::new(InMemoryTraceStore::new()),
         audit_reader,
+        startup_time: Instant::now(),
+        active_connections: Arc::new(AtomicI64::new(0)),
     }
 }
 
