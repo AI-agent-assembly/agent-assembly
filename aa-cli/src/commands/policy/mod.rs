@@ -4,6 +4,8 @@ use std::process::ExitCode;
 
 use clap::{Args, Subcommand};
 
+use crate::config::ResolvedContext;
+
 pub mod get;
 pub mod history;
 pub mod simulate;
@@ -36,9 +38,9 @@ pub enum PolicyCommands {
 }
 
 /// Dispatch a policy subcommand.
-pub fn dispatch(args: PolicyArgs) -> ExitCode {
+pub fn dispatch(args: PolicyArgs, ctx: &ResolvedContext) -> ExitCode {
     match args.command {
-        PolicyCommands::Apply(apply_args) => history::run_apply(apply_args),
+        PolicyCommands::Apply(apply_args) => history::run_apply(apply_args, ctx),
         PolicyCommands::History(history_args) => history::run_history(history_args),
         PolicyCommands::Rollback(rollback_args) => history::run_rollback(rollback_args),
         PolicyCommands::Diff(diff_args) => history::run_diff(diff_args),
