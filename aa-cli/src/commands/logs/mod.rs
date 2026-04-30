@@ -58,3 +58,113 @@ pub fn dispatch(args: LogsArgs, ctx: &ResolvedContext) -> ExitCode {
         fetch::run(args, ctx)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use clap::Parser;
+
+    /// Minimal top-level parser for testing `logs` subcommand argument parsing.
+    #[derive(Parser)]
+    #[command(name = "aasm")]
+    struct TestCli {
+        #[command(subcommand)]
+        command: TestCommands,
+    }
+
+    #[derive(clap::Subcommand)]
+    enum TestCommands {
+        Logs(super::LogsArgs),
+    }
+
+    fn parse(args: &[&str]) -> super::LogsArgs {
+        let cli = TestCli::parse_from(args);
+        match cli.command {
+            TestCommands::Logs(a) => a,
+        }
+    }
+
+    #[test]
+    fn parse_defaults() {
+        let args = parse(&["aasm", "logs"]);
+        assert!(!args.follow);
+        assert!(args.agent.is_none());
+        assert!(args.r#type.is_none());
+        assert!(args.since.is_none());
+        assert!(args.until.is_none());
+        assert_eq!(args.limit, 50);
+        assert!(!args.no_color);
+        assert!(args.output.is_none());
+    }
+
+    #[test]
+    fn parse_follow_short_flag() {
+        let args = parse(&["aasm", "logs", "-f"]);
+        assert!(args.follow);
+    }
+
+    #[test]
+    fn parse_follow_long_flag() {
+        let args = parse(&["aasm", "logs", "--follow"]);
+        assert!(args.follow);
+    }
+
+    #[test]
+    fn parse_agent_filter() {
+        let args = parse(&["aasm", "logs", "--agent", "aa001"]);
+        assert_eq!(args.agent.as_deref(), Some("aa001"));
+    }
+
+    #[test]
+    fn parse_single_type_filter() {
+        let args = parse(&["aasm", "logs", "--type", "violation"]);
+        let types = args.r#type.unwrap();
+        assert_eq!(types.len(), 1);
+        assert_eq!(types[0].as_api_str(), "violation");
+    }
+
+    #[test]
+    fn parse_comma_separated_type_filter() {
+        let args = parse(&["aasm", "logs", "--type", "violation,budget"]);
+        let types = args.r#type.unwrap();
+        assert_eq!(types.len(), 2);
+        assert_eq!(types[0].as_api_str(), "violation");
+        assert_eq!(types[1].as_api_str(), "budget");
+    }
+
+    #[test]
+    fn parse_invalid_type_rejected() {
+        let result = TestCli::try_parse_from(["aasm", "logs", "--type", "invalid"]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn parse_limit() {
+        let args = parse(&["aasm", "logs", "--limit", "100"]);
+        assert_eq!(args.limit, 100);
+    }
+
+    #[test]
+    fn parse_no_color() {
+        let args = parse(&["aasm", "logs", "--no-color"]);
+        assert!(args.no_color);
+    }
+
+    #[test]
+    fn parse_output_json() {
+        let args = parse(&["aasm", "logs", "--output", "json"]);
+        assert!(matches!(args.output, Some(crate::output::OutputFormat::Json)));
+    }
+
+    #[test]
+    fn parse_combined_flags() {
+        let args = parse(&[
+            "aasm", "logs", "-f", "--agent", "aa001", "--type", "violation,approval",
+            "--no-color", "--output", "json",
+        ]);
+        assert!(args.follow);
+        assert_eq!(args.agent.as_deref(), Some("aa001"));
+        assert_eq!(args.r#type.as_ref().unwrap().len(), 2);
+        assert!(args.no_color);
+        assert!(matches!(args.output, Some(crate::output::OutputFormat::Json)));
+    }
+}
