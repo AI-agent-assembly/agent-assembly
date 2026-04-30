@@ -512,6 +512,12 @@ paths:
       responses:
         '101':
           description: WebSocket upgrade successful. Server streams GovernanceEvent JSON text frames.
+        '200':
+          description: Event message schema (delivered as WebSocket text frames, not as an HTTP response body).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GovernanceEvent'
         '400':
           description: Bad request (invalid query parameters)
 components:

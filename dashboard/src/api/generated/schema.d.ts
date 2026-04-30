@@ -1020,6 +1020,15 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Event message schema (delivered as WebSocket text frames, not as an HTTP response body). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GovernanceEvent"];
+                };
+            };
             /** @description Bad request (invalid query parameters) */
             400: {
                 headers: {

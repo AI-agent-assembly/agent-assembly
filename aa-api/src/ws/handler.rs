@@ -47,6 +47,7 @@ const PING_INTERVAL: Duration = Duration::from_secs(30);
     params(WsQueryParams),
     responses(
         (status = 101, description = "WebSocket upgrade successful. Server streams GovernanceEvent JSON text frames."),
+        (status = 200, description = "Event message schema (delivered as WebSocket text frames, not as an HTTP response body).", body = GovernanceEvent),
         (status = 400, description = "Bad request (invalid query parameters)")
     ),
     tag = "events"
