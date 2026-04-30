@@ -332,6 +332,13 @@ export interface components {
             /** @description Current status of the session. */
             status: string;
         };
+        /** @description Per-agent cost entry within the budget summary. */
+        AgentCostEntry: {
+            /** @description Agent identifier (hex-encoded). */
+            agent_id: string;
+            /** @description Daily spend for this agent in USD. */
+            daily_spend_usd: string;
+        };
         /** @description JSON representation of an agent returned by the API. */
         AgentResponse: {
             /** @description Currently active sessions for this agent. */
@@ -453,12 +460,18 @@ export interface components {
         };
         /** @description JSON representation of the cost/budget summary. */
         CostSummary: {
+            /** @description Configured daily budget limit in USD, if set. */
+            daily_limit_usd?: string | null;
             /** @description Total spend today in USD. */
             daily_spend_usd: string;
             /** @description Calendar date (YYYY-MM-DD) the daily spend applies to. */
             date: string;
+            /** @description Configured monthly budget limit in USD, if set. */
+            monthly_limit_usd?: string | null;
             /** @description Total spend this month in USD (if monthly tracking is enabled). */
             monthly_spend_usd?: string | null;
+            /** @description Per-agent cost breakdown for the current day. */
+            per_agent?: components["schemas"]["AgentCostEntry"][];
         };
         /** @description Request body for creating a new policy. */
         CreatePolicyRequest: {

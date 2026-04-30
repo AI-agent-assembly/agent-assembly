@@ -84,7 +84,10 @@ mod tests {
             budget: BudgetRow {
                 daily_spend_usd: "0.00".to_string(),
                 monthly_spend_usd: None,
+                daily_limit_usd: None,
+                monthly_limit_usd: None,
                 date: "2026-04-30".to_string(),
+                per_agent: vec![],
             },
         }
     }

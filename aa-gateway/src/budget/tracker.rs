@@ -171,6 +171,16 @@ impl BudgetTracker {
         self.timezone
     }
 
+    /// Returns the configured daily budget limit in USD, if set.
+    pub fn daily_limit_usd(&self) -> Option<Decimal> {
+        self.daily_limit_usd
+    }
+
+    /// Returns the configured monthly budget limit in USD, if set.
+    pub fn monthly_limit_usd(&self) -> Option<Decimal> {
+        self.monthly_limit_usd
+    }
+
     /// Returns `true` if the agent has met or exceeded the given daily limit.
     ///
     /// Automatically resets spend to zero when the stored date is before today
@@ -349,6 +359,35 @@ mod tests {
     fn new_tracker_has_empty_per_agent_map() {
         let t = new_tracker();
         assert!(t.per_agent.is_empty());
+    }
+
+    #[test]
+    fn daily_limit_usd_returns_configured_limit() {
+        let t = tracker_with_limit("50.00");
+        assert_eq!(t.daily_limit_usd(), Some(Decimal::new(5000, 2)));
+    }
+
+    #[test]
+    fn daily_limit_usd_returns_none_when_unset() {
+        let t = new_tracker();
+        assert_eq!(t.daily_limit_usd(), None);
+    }
+
+    #[test]
+    fn monthly_limit_usd_returns_configured_limit() {
+        let t = BudgetTracker::new(
+            PricingTable::default_table(),
+            None,
+            Some("1000.00".parse().unwrap()),
+            chrono_tz::UTC,
+        );
+        assert_eq!(t.monthly_limit_usd(), Some(Decimal::new(100000, 2)));
+    }
+
+    #[test]
+    fn monthly_limit_usd_returns_none_when_unset() {
+        let t = new_tracker();
+        assert_eq!(t.monthly_limit_usd(), None);
     }
 
     #[test]

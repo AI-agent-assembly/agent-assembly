@@ -80,7 +80,10 @@ pub async fn fetch_all(client: &StatusClient) -> StatusSnapshot {
         Err(_) => BudgetRow {
             daily_spend_usd: "--".to_string(),
             monthly_spend_usd: None,
+            daily_limit_usd: None,
+            monthly_limit_usd: None,
             date: "--".to_string(),
+            per_agent: vec![],
         },
     };
 
@@ -97,7 +100,10 @@ pub fn build_budget_row(cost: CostResponse) -> BudgetRow {
     BudgetRow {
         daily_spend_usd: cost.daily_spend_usd,
         monthly_spend_usd: cost.monthly_spend_usd,
+        daily_limit_usd: cost.daily_limit_usd,
+        monthly_limit_usd: cost.monthly_limit_usd,
         date: cost.date,
+        per_agent: cost.per_agent,
     }
 }
 

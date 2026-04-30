@@ -68,6 +68,7 @@ use crate::routes::{agents, alerts, approvals, auth, costs, logs, policies, trac
         approvals::ApprovalResponse,
         approvals::DecideRequest,
         costs::CostSummary,
+        costs::AgentCostEntry,
         alerts::AlertResponse,
         auth::TokenRequest,
         auth::TokenResponse,
