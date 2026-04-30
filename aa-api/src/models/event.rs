@@ -5,6 +5,9 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 use super::event_type::EventType;
+// Used in #[schema(value_type = ...)] attribute for OpenAPI generation.
+#[allow(unused_imports)]
+use super::ws_payloads::EventPayload;
 
 /// Unique identifier for a governance event in the replay buffer.
 pub type EventId = u64;
@@ -24,7 +27,9 @@ pub struct GovernanceEvent {
     pub event_type: EventType,
     /// Agent that produced or is associated with the event.
     pub agent_id: String,
-    /// Event-specific payload serialised as a JSON value.
+    /// Event-specific payload whose schema depends on `event_type`:
+    /// `ViolationPayload`, `ApprovalPayload`, or `BudgetAlertPayload`.
+    #[schema(value_type = EventPayload)]
     pub payload: serde_json::Value,
     /// Timestamp when the event was received by the API layer (ISO 8601).
     #[schema(value_type = String)]

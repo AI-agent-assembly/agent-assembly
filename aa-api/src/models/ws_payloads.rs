@@ -66,3 +66,20 @@ pub struct BudgetAlertPayload {
     /// Configured daily limit in USD.
     pub limit_usd: f64,
 }
+
+/// Discriminated union of all possible `GovernanceEvent.payload` shapes.
+///
+/// The concrete variant is determined by the sibling `event_type` field:
+/// - `"violation"` → [`ViolationPayload`]
+/// - `"approval"` → [`ApprovalPayload`]
+/// - `"budget"` → [`BudgetAlertPayload`]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(untagged)]
+pub enum EventPayload {
+    /// Pipeline / violation event payload.
+    Violation(ViolationPayload),
+    /// Approval request event payload.
+    Approval(ApprovalPayload),
+    /// Budget threshold alert payload.
+    Budget(BudgetAlertPayload),
+}
