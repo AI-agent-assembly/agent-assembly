@@ -11,6 +11,7 @@ pub mod agent;
 pub mod completion;
 pub mod context;
 pub mod policy;
+pub mod trace;
 pub mod version;
 
 /// Top-level subcommands for the `aasm` CLI.
@@ -26,6 +27,8 @@ pub enum Commands {
     Completion(completion::CompletionArgs),
     /// Show CLI and gateway version information.
     Version,
+    /// Visualize a session trace (tree or timeline).
+    Trace(trace::TraceArgs),
 }
 
 /// Dispatch the parsed CLI command to the appropriate handler.
@@ -36,5 +39,6 @@ pub fn dispatch(cmd: Commands, ctx: &ResolvedContext, output: OutputFormat) -> E
         Commands::Context(args) => context::dispatch(args),
         Commands::Completion(args) => completion::run(args),
         Commands::Version => version::run(ctx),
+        Commands::Trace(args) => trace::dispatch(args, ctx, output),
     }
 }
