@@ -54,3 +54,62 @@ fn health_get_has_operation_id() {
         "health operationId missing from spec"
     );
 }
+
+#[test]
+fn ws_events_path_exists() {
+    let spec = aa_api::ApiDoc::openapi();
+    let paths = &spec.paths;
+    assert!(
+        paths.paths.contains_key("/api/v1/ws/events"),
+        "expected /api/v1/ws/events in paths, got: {:?}",
+        paths.paths.keys().collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn ws_events_has_query_params() {
+    let spec = aa_api::ApiDoc::openapi();
+    let yaml = serde_yaml::to_string(&spec).unwrap();
+    // WsQueryParams fields should appear as query parameters
+    assert!(
+        yaml.contains("operationId: ws_events_handler"),
+        "ws operationId missing"
+    );
+    assert!(yaml.contains("name: types"), "types query param missing");
+    assert!(yaml.contains("name: agent_id"), "agent_id query param missing");
+    assert!(yaml.contains("name: since"), "since query param missing");
+}
+
+#[test]
+fn governance_event_schema_exists() {
+    let spec = aa_api::ApiDoc::openapi();
+    let schemas = &spec.components.as_ref().expect("components should exist").schemas;
+    assert!(
+        schemas.contains_key("GovernanceEvent"),
+        "GovernanceEvent schema missing"
+    );
+    assert!(schemas.contains_key("EventType"), "EventType schema missing");
+    assert!(
+        schemas.contains_key("ViolationPayload"),
+        "ViolationPayload schema missing"
+    );
+    assert!(
+        schemas.contains_key("ApprovalPayload"),
+        "ApprovalPayload schema missing"
+    );
+    assert!(
+        schemas.contains_key("BudgetAlertPayload"),
+        "BudgetAlertPayload schema missing"
+    );
+    assert!(schemas.contains_key("EventPayload"), "EventPayload schema missing");
+}
+
+#[test]
+fn event_type_enum_variants() {
+    let spec = aa_api::ApiDoc::openapi();
+    let yaml = serde_yaml::to_string(&spec).unwrap();
+    // EventType enum should list all three variants in snake_case
+    assert!(yaml.contains("violation"), "violation variant missing from EventType");
+    assert!(yaml.contains("approval"), "approval variant missing from EventType");
+    assert!(yaml.contains("budget"), "budget variant missing from EventType");
+}

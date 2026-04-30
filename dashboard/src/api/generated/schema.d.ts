@@ -276,6 +276,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/ws/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * `GET /api/v1/ws/events` — upgrade to WebSocket and stream events.
+         * @description Initiates a WebSocket connection for real-time governance event streaming.
+         *
+         *     ## Protocol
+         *
+         *     1. Client sends an HTTP GET with `Upgrade: websocket` headers.
+         *     2. Server responds with `101 Switching Protocols` and upgrades the connection.
+         *     3. Server sends `GovernanceEvent` JSON objects as text frames.
+         *     4. Server sends periodic ping frames (every 30s); client must respond with pong.
+         *     5. Either side may close the connection with a close frame.
+         *
+         *     ## Replay
+         *
+         *     The server maintains a circular buffer of the last 1000 events. Pass the
+         *     `since` query parameter with a previously received event `id` to replay
+         *     all buffered events after that id before switching to live streaming.
+         *
+         *     ## Event Types
+         *
+         *     Filter events using the `types` query parameter (comma-separated):
+         *     - `violation` — audit / pipeline events (policy violations)
+         *     - `approval` — human-in-the-loop approval requests
+         *     - `budget` — budget threshold alerts
+         *
+         *     All types are streamed when the parameter is omitted.
+         */
+        get: operations["ws_events_handler"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -314,6 +357,30 @@ export interface components {
             /** @description ISO 8601 timestamp when the alert was raised. */
             timestamp: string;
         };
+        /**
+         * @description Payload for `event_type: "approval"` events.
+         *
+         *     Represents a human-in-the-loop approval request submitted by the
+         *     policy engine when an action requires explicit authorisation.
+         */
+        ApprovalPayload: {
+            /** @description Human-readable description of the action awaiting approval. */
+            action: string;
+            /** @description Policy condition that triggered this request. */
+            condition_triggered: string;
+            /** @description Unique ID for the approval request (UUID v4). */
+            request_id: string;
+            /**
+             * Format: int64
+             * @description Unix epoch timestamp (seconds) when the request was submitted.
+             */
+            submitted_at: number;
+            /**
+             * Format: int64
+             * @description Seconds before the request times out.
+             */
+            timeout_secs: number;
+        };
         /** @description JSON representation of a pending approval request. */
         ApprovalResponse: {
             /** @description The governance action requiring approval. */
@@ -328,6 +395,29 @@ export interface components {
             reason: string;
             /** @description Current status: "pending", "approved", or "rejected". */
             status: string;
+        };
+        /**
+         * @description Payload for `event_type: "budget"` events.
+         *
+         *     Emitted when an agent's spend crosses a configured daily threshold
+         *     (80 % or 95 % of the daily limit).
+         */
+        BudgetAlertPayload: {
+            /**
+             * Format: double
+             * @description Configured daily limit in USD.
+             */
+            limit_usd: number;
+            /**
+             * Format: double
+             * @description Current total spend in USD at the time of the alert.
+             */
+            spent_usd: number;
+            /**
+             * Format: int32
+             * @description Threshold percentage that was crossed (e.g. `80` or `95`).
+             */
+            threshold_pct: number;
         };
         /** @description JSON representation of the cost/budget summary. */
         CostSummary: {
@@ -349,6 +439,44 @@ export interface components {
             by?: string | null;
             /** @description Optional reason for the decision. */
             reason?: string | null;
+        };
+        /**
+         * @description Discriminated union of all possible `GovernanceEvent.payload` shapes.
+         *
+         *     The concrete variant is determined by the sibling `event_type` field:
+         *     - `"violation"` → [`ViolationPayload`]
+         *     - `"approval"` → [`ApprovalPayload`]
+         *     - `"budget"` → [`BudgetAlertPayload`]
+         */
+        EventPayload: components["schemas"]["ViolationPayload"] | components["schemas"]["ApprovalPayload"] | components["schemas"]["BudgetAlertPayload"];
+        /**
+         * @description Classification of governance events for client-side filtering.
+         *
+         *     Clients specify a comma-separated list of these values in the `types`
+         *     query parameter to receive only matching events on the WebSocket.
+         * @enum {string}
+         */
+        EventType: "violation" | "approval" | "budget";
+        /**
+         * @description A governance event delivered to WebSocket subscribers.
+         *
+         *     This is the unified JSON representation sent over the wire.
+         *     It wraps events from all three domain channels (pipeline,
+         *     approval, budget) into a single schema that clients can
+         *     filter by [`EventType`].
+         */
+        GovernanceEvent: {
+            /** @description Agent that produced or is associated with the event. */
+            agent_id: string;
+            event_type: components["schemas"]["EventType"];
+            /**
+             * Format: int64
+             * @description Monotonically increasing event identifier.
+             */
+            id: number;
+            payload: components["schemas"]["EventPayload"];
+            /** @description Timestamp when the event was received by the API layer (ISO 8601). */
+            timestamp: string;
         };
         /** @description Response body for the health endpoint. */
         HealthResponse: {
@@ -460,6 +588,37 @@ export interface components {
             span_id: string;
             /** @description Start time of the span (ISO 8601). */
             start_time: string;
+        };
+        /**
+         * @description Payload for `event_type: "violation"` events.
+         *
+         *     Represents a governance audit event from the pipeline — either an
+         *     action that violated policy or an interception layer degradation.
+         */
+        ViolationPayload: {
+            /** @enum {string} */
+            kind: "audit";
+            /**
+             * Format: int64
+             * @description Unix milliseconds when the pipeline received the event.
+             */
+            received_at_ms: number;
+            /**
+             * Format: int64
+             * @description Monotonic sequence number assigned by the pipeline.
+             */
+            sequence_number: number;
+            /** @description Source that delivered the event: `"sdk"`, `"ebpf"`, or `"proxy"`. */
+            source: string;
+        } | {
+            /** @enum {string} */
+            kind: "layer_degradation";
+            /** @description Name of the degraded layer (e.g. `"ebpf"`, `"proxy"`). */
+            layer: string;
+            /** @description Human-readable reason for the degradation. */
+            reason: string;
+            /** @description Remaining active layers after degradation. */
+            remaining_layers: string[];
         };
     };
     responses: never;
@@ -911,6 +1070,53 @@ export interface operations {
             };
             /** @description Session not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ws_events_handler: {
+        parameters: {
+            query?: {
+                /**
+                 * @description Comma-separated event type filter (e.g. `violation,budget`).
+                 *     All types are included when omitted.
+                 */
+                types?: string | null;
+                /** @description Filter events by agent identifier (hex-encoded). */
+                agent_id?: string | null;
+                /**
+                 * @description Replay buffered events whose id is greater than this value.
+                 *     The server keeps the last 1000 events in a circular buffer.
+                 */
+                since?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description WebSocket upgrade successful. Server streams GovernanceEvent JSON text frames. */
+            101: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Event message schema (delivered as WebSocket text frames, not as an HTTP response body). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GovernanceEvent"];
+                };
+            };
+            /** @description Bad request (invalid query parameters) */
+            400: {
                 headers: {
                     [name: string]: unknown;
                 };

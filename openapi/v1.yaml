@@ -450,6 +450,76 @@ paths:
                 $ref: '#/components/schemas/TraceResponse'
         '404':
           description: Session not found
+  /api/v1/ws/events:
+    get:
+      tags:
+      - events
+      summary: '`GET /api/v1/ws/events` — upgrade to WebSocket and stream events.'
+      description: |-
+        Initiates a WebSocket connection for real-time governance event streaming.
+
+        ## Protocol
+
+        1. Client sends an HTTP GET with `Upgrade: websocket` headers.
+        2. Server responds with `101 Switching Protocols` and upgrades the connection.
+        3. Server sends `GovernanceEvent` JSON objects as text frames.
+        4. Server sends periodic ping frames (every 30s); client must respond with pong.
+        5. Either side may close the connection with a close frame.
+
+        ## Replay
+
+        The server maintains a circular buffer of the last 1000 events. Pass the
+        `since` query parameter with a previously received event `id` to replay
+        all buffered events after that id before switching to live streaming.
+
+        ## Event Types
+
+        Filter events using the `types` query parameter (comma-separated):
+        - `violation` — audit / pipeline events (policy violations)
+        - `approval` — human-in-the-loop approval requests
+        - `budget` — budget threshold alerts
+
+        All types are streamed when the parameter is omitted.
+      operationId: ws_events_handler
+      parameters:
+      - name: types
+        in: query
+        description: |-
+          Comma-separated event type filter (e.g. `violation,budget`).
+          All types are included when omitted.
+        required: false
+        schema:
+          type: string
+          nullable: true
+      - name: agent_id
+        in: query
+        description: Filter events by agent identifier (hex-encoded).
+        required: false
+        schema:
+          type: string
+          nullable: true
+      - name: since
+        in: query
+        description: |-
+          Replay buffered events whose id is greater than this value.
+          The server keeps the last 1000 events in a circular buffer.
+        required: false
+        schema:
+          type: integer
+          format: int64
+          nullable: true
+          minimum: 0
+      responses:
+        '101':
+          description: WebSocket upgrade successful. Server streams GovernanceEvent JSON text frames.
+        '200':
+          description: Event message schema (delivered as WebSocket text frames, not as an HTTP response body).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GovernanceEvent'
+        '400':
+          description: Bad request (invalid query parameters)
 components:
   schemas:
     AgentResponse:
@@ -518,6 +588,39 @@ components:
         timestamp:
           type: string
           description: ISO 8601 timestamp when the alert was raised.
+    ApprovalPayload:
+      type: object
+      description: |-
+        Payload for `event_type: "approval"` events.
+
+        Represents a human-in-the-loop approval request submitted by the
+        policy engine when an action requires explicit authorisation.
+      required:
+      - request_id
+      - action
+      - condition_triggered
+      - submitted_at
+      - timeout_secs
+      properties:
+        action:
+          type: string
+          description: Human-readable description of the action awaiting approval.
+        condition_triggered:
+          type: string
+          description: Policy condition that triggered this request.
+        request_id:
+          type: string
+          description: Unique ID for the approval request (UUID v4).
+        submitted_at:
+          type: integer
+          format: int64
+          description: Unix epoch timestamp (seconds) when the request was submitted.
+          minimum: 0
+        timeout_secs:
+          type: integer
+          format: int64
+          description: Seconds before the request times out.
+          minimum: 0
     ApprovalResponse:
       type: object
       description: JSON representation of a pending approval request.
@@ -547,6 +650,31 @@ components:
         status:
           type: string
           description: 'Current status: "pending", "approved", or "rejected".'
+    BudgetAlertPayload:
+      type: object
+      description: |-
+        Payload for `event_type: "budget"` events.
+
+        Emitted when an agent's spend crosses a configured daily threshold
+        (80 % or 95 % of the daily limit).
+      required:
+      - threshold_pct
+      - spent_usd
+      - limit_usd
+      properties:
+        limit_usd:
+          type: number
+          format: double
+          description: Configured daily limit in USD.
+        spent_usd:
+          type: number
+          format: double
+          description: Current total spend in USD at the time of the alert.
+        threshold_pct:
+          type: integer
+          format: int32
+          description: Threshold percentage that was crossed (e.g. `80` or `95`).
+          minimum: 0
     CostSummary:
       type: object
       description: JSON representation of the cost/budget summary.
@@ -585,6 +713,60 @@ components:
           type: string
           description: Optional reason for the decision.
           nullable: true
+    EventPayload:
+      oneOf:
+      - $ref: '#/components/schemas/ViolationPayload'
+      - $ref: '#/components/schemas/ApprovalPayload'
+      - $ref: '#/components/schemas/BudgetAlertPayload'
+      description: |-
+        Discriminated union of all possible `GovernanceEvent.payload` shapes.
+
+        The concrete variant is determined by the sibling `event_type` field:
+        - `"violation"` → [`ViolationPayload`]
+        - `"approval"` → [`ApprovalPayload`]
+        - `"budget"` → [`BudgetAlertPayload`]
+    EventType:
+      type: string
+      description: |-
+        Classification of governance events for client-side filtering.
+
+        Clients specify a comma-separated list of these values in the `types`
+        query parameter to receive only matching events on the WebSocket.
+      enum:
+      - violation
+      - approval
+      - budget
+    GovernanceEvent:
+      type: object
+      description: |-
+        A governance event delivered to WebSocket subscribers.
+
+        This is the unified JSON representation sent over the wire.
+        It wraps events from all three domain channels (pipeline,
+        approval, budget) into a single schema that clients can
+        filter by [`EventType`].
+      required:
+      - id
+      - event_type
+      - agent_id
+      - payload
+      - timestamp
+      properties:
+        agent_id:
+          type: string
+          description: Agent that produced or is associated with the event.
+        event_type:
+          $ref: '#/components/schemas/EventType'
+        id:
+          type: integer
+          format: int64
+          description: Monotonically increasing event identifier.
+          minimum: 0
+        payload:
+          $ref: '#/components/schemas/EventPayload'
+        timestamp:
+          type: string
+          description: Timestamp when the event was received by the API layer (ISO 8601).
     HealthResponse:
       type: object
       description: Response body for the health endpoint.
@@ -772,6 +954,62 @@ components:
         start_time:
           type: string
           description: Start time of the span (ISO 8601).
+    ViolationPayload:
+      oneOf:
+      - type: object
+        description: A governance audit event enriched with runtime metadata.
+        required:
+        - source
+        - received_at_ms
+        - sequence_number
+        - kind
+        properties:
+          kind:
+            type: string
+            enum:
+            - audit
+          received_at_ms:
+            type: integer
+            format: int64
+            description: Unix milliseconds when the pipeline received the event.
+          sequence_number:
+            type: integer
+            format: int64
+            description: Monotonic sequence number assigned by the pipeline.
+            minimum: 0
+          source:
+            type: string
+            description: 'Source that delivered the event: `"sdk"`, `"ebpf"`, or `"proxy"`.'
+      - type: object
+        description: An interception layer became unavailable.
+        required:
+        - layer
+        - reason
+        - remaining_layers
+        - kind
+        properties:
+          kind:
+            type: string
+            enum:
+            - layer_degradation
+          layer:
+            type: string
+            description: Name of the degraded layer (e.g. `"ebpf"`, `"proxy"`).
+          reason:
+            type: string
+            description: Human-readable reason for the degradation.
+          remaining_layers:
+            type: array
+            items:
+              type: string
+            description: Remaining active layers after degradation.
+      description: |-
+        Payload for `event_type: "violation"` events.
+
+        Represents a governance audit event from the pipeline — either an
+        action that violated policy or an interception layer degradation.
+      discriminator:
+        propertyName: kind
   securitySchemes:
     bearer_auth:
       type: http
@@ -797,3 +1035,5 @@ tags:
   description: Governance alerts
 - name: auth
   description: Authentication and token issuance
+- name: events
+  description: Real-time event streaming via WebSocket

@@ -4,7 +4,10 @@ use utoipa::openapi::security::{HttpAuthScheme, HttpBuilder, SecurityScheme};
 use utoipa::openapi::ComponentsBuilder;
 use utoipa::{Modify, OpenApi};
 
+use crate::models::event::GovernanceEvent;
+use crate::models::event_type::EventType;
 use crate::models::trace::{TraceResponse, TraceSpan};
+use crate::models::ws_payloads::{ApprovalPayload, BudgetAlertPayload, EventPayload, ViolationPayload};
 use crate::routes::{agents, alerts, approvals, auth, costs, logs, policies, traces};
 
 /// Root OpenAPI document collecting all annotated paths and schemas.
@@ -30,6 +33,7 @@ use crate::routes::{agents, alerts, approvals, auth, costs, logs, policies, trac
         (name = "costs", description = "Cost and budget tracking"),
         (name = "alerts", description = "Governance alerts"),
         (name = "auth", description = "Authentication and token issuance"),
+        (name = "events", description = "Real-time event streaming via WebSocket"),
     ),
     paths(
         crate::routes::health::health,
@@ -47,6 +51,7 @@ use crate::routes::{agents, alerts, approvals, auth, costs, logs, policies, trac
         costs::get_cost_summary,
         alerts::list_alerts,
         auth::issue_token,
+        crate::ws::handler::ws_events_handler,
     ),
     components(schemas(
         crate::routes::health::HealthResponse,
@@ -64,6 +69,12 @@ use crate::routes::{agents, alerts, approvals, auth, costs, logs, policies, trac
         auth::TokenRequest,
         auth::TokenResponse,
         crate::auth::scope::Scope,
+        GovernanceEvent,
+        EventType,
+        ViolationPayload,
+        ApprovalPayload,
+        BudgetAlertPayload,
+        EventPayload,
     )),
     modifiers(&SecurityAddon),
 )]

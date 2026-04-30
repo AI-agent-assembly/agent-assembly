@@ -16,6 +16,42 @@ use futures::{SinkExt, StreamExt};
 const PING_INTERVAL: Duration = Duration::from_secs(30);
 
 /// `GET /api/v1/ws/events` — upgrade to WebSocket and stream events.
+///
+/// Initiates a WebSocket connection for real-time governance event streaming.
+///
+/// ## Protocol
+///
+/// 1. Client sends an HTTP GET with `Upgrade: websocket` headers.
+/// 2. Server responds with `101 Switching Protocols` and upgrades the connection.
+/// 3. Server sends `GovernanceEvent` JSON objects as text frames.
+/// 4. Server sends periodic ping frames (every 30s); client must respond with pong.
+/// 5. Either side may close the connection with a close frame.
+///
+/// ## Replay
+///
+/// The server maintains a circular buffer of the last 1000 events. Pass the
+/// `since` query parameter with a previously received event `id` to replay
+/// all buffered events after that id before switching to live streaming.
+///
+/// ## Event Types
+///
+/// Filter events using the `types` query parameter (comma-separated):
+/// - `violation` — audit / pipeline events (policy violations)
+/// - `approval` — human-in-the-loop approval requests
+/// - `budget` — budget threshold alerts
+///
+/// All types are streamed when the parameter is omitted.
+#[utoipa::path(
+    get,
+    path = "/api/v1/ws/events",
+    params(WsQueryParams),
+    responses(
+        (status = 101, description = "WebSocket upgrade successful. Server streams GovernanceEvent JSON text frames."),
+        (status = 200, description = "Event message schema (delivered as WebSocket text frames, not as an HTTP response body).", body = GovernanceEvent),
+        (status = 400, description = "Bad request (invalid query parameters)")
+    ),
+    tag = "events"
+)]
 pub async fn ws_events_handler(
     ws: WebSocketUpgrade,
     Query(params): Query<WsQueryParams>,
