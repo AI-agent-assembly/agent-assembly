@@ -43,3 +43,40 @@ pub struct UseArgs {
     /// Name of the context to set as default.
     pub name: String,
 }
+
+/// Dispatch a context subcommand.
+pub fn dispatch(args: ContextArgs) -> ExitCode {
+    match args.command {
+        ContextCommands::List => run_list(),
+        ContextCommands::Set(set_args) => run_set(set_args),
+        ContextCommands::Use(use_args) => run_use(use_args),
+    }
+}
+
+/// List all configured contexts with their API URLs.
+fn run_list() -> ExitCode {
+    let cfg = match config::load() {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("error: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+
+    if cfg.contexts.is_empty() {
+        println!("No contexts configured. Use `aasm context set` to add one.");
+        return ExitCode::SUCCESS;
+    }
+
+    let default_name = cfg.default_context.as_deref().unwrap_or("");
+    for (name, ctx) in &cfg.contexts {
+        let marker = if name == default_name { " *" } else { "" };
+        let key_status = if ctx.api_key.is_some() {
+            " (key set)"
+        } else {
+            ""
+        };
+        println!("{name}{marker}  {}{key_status}", ctx.api_url);
+    }
+    ExitCode::SUCCESS
+}
