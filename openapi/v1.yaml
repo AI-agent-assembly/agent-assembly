@@ -823,10 +823,27 @@ components:
       description: Response body for the health endpoint.
       required:
       - status
+      - uptime_secs
+      - active_connections
+      - pipeline_lag_ms
       properties:
+        active_connections:
+          type: integer
+          format: int64
+          description: Number of currently active WebSocket/SSE connections.
+        pipeline_lag_ms:
+          type: integer
+          format: int64
+          description: Pipeline processing lag in milliseconds (placeholder, always 0 for now).
+          minimum: 0
         status:
           type: string
           description: Liveness status string, always `"ok"` when the service is running.
+        uptime_secs:
+          type: integer
+          format: int64
+          description: Server uptime in seconds since startup.
+          minimum: 0
     LogEntry:
       type: object
       description: JSON representation of an audit log entry.

@@ -66,6 +66,9 @@ mod tests {
             runtime: RuntimeHealth {
                 reachable: true,
                 status: "ok".to_string(),
+                uptime_secs: 3600,
+                active_connections: 5,
+                pipeline_lag_ms: 0,
             },
             agents: vec![AgentRow {
                 id: "a1".to_string(),

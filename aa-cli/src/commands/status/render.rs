@@ -10,8 +10,25 @@ pub fn render_runtime_health(health: &RuntimeHealth) {
     println!("RUNTIME HEALTH");
     println!("──────────────");
     let indicator = if health.reachable { "✓" } else { "✗" };
-    println!("  API:    {indicator} {}", health.status);
+    println!("  API:         {indicator} {}", health.status);
+    println!("  Uptime:      {}", format_duration(health.uptime_secs));
+    println!("  Connections: {}", health.active_connections);
+    println!("  Lag:         {} ms", health.pipeline_lag_ms);
     println!();
+}
+
+/// Format a duration in seconds into a human-readable string (e.g. `"1h 30m 5s"`).
+fn format_duration(secs: u64) -> String {
+    let hours = secs / 3600;
+    let minutes = (secs % 3600) / 60;
+    let seconds = secs % 60;
+    if hours > 0 {
+        format!("{hours}h {minutes}m {seconds}s")
+    } else if minutes > 0 {
+        format!("{minutes}m {seconds}s")
+    } else {
+        format!("{seconds}s")
+    }
 }
 
 /// Render the Active Agents section as a table to stdout.
@@ -141,6 +158,9 @@ mod tests {
             runtime: RuntimeHealth {
                 reachable: true,
                 status: "ok".to_string(),
+                uptime_secs: 120,
+                active_connections: 3,
+                pipeline_lag_ms: 0,
             },
             agents: vec![],
             approvals: ApprovalsSummary {
@@ -158,5 +178,28 @@ mod tests {
         assert!(json.contains("\"agents\""));
         assert!(json.contains("\"approvals\""));
         assert!(json.contains("\"budget\""));
+        assert!(json.contains("\"uptime_secs\""));
+        assert!(json.contains("\"active_connections\""));
+        assert!(json.contains("\"pipeline_lag_ms\""));
+    }
+
+    #[test]
+    fn format_duration_seconds_only() {
+        assert_eq!(format_duration(45), "45s");
+    }
+
+    #[test]
+    fn format_duration_minutes_and_seconds() {
+        assert_eq!(format_duration(125), "2m 5s");
+    }
+
+    #[test]
+    fn format_duration_hours_minutes_seconds() {
+        assert_eq!(format_duration(3661), "1h 1m 1s");
+    }
+
+    #[test]
+    fn format_duration_zero() {
+        assert_eq!(format_duration(0), "0s");
     }
 }

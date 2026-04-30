@@ -1,7 +1,8 @@
 //! Shared application state for the Axum server.
 
-use std::sync::atomic::AtomicU64;
+use std::sync::atomic::{AtomicI64, AtomicU64};
 use std::sync::Arc;
+use std::time::Instant;
 
 use aa_gateway::budget::tracker::BudgetTracker;
 use aa_gateway::engine::PolicyEngine;
@@ -54,4 +55,8 @@ pub struct AppState {
     pub trace_store: Arc<dyn TraceStore>,
     /// Audit log reader for querying JSONL entries.
     pub audit_reader: Arc<AuditReader>,
+    /// Timestamp when the server started, used to compute uptime.
+    pub startup_time: Instant,
+    /// Number of currently active WebSocket/SSE connections.
+    pub active_connections: Arc<AtomicI64>,
 }

@@ -9,6 +9,15 @@ use serde::{Deserialize, Serialize};
 pub struct HealthResponse {
     /// Liveness status string, always `"ok"` when the service is running.
     pub status: String,
+    /// Server uptime in seconds since startup.
+    #[serde(default)]
+    pub uptime_secs: u64,
+    /// Number of currently active WebSocket/SSE connections.
+    #[serde(default)]
+    pub active_connections: i64,
+    /// Pipeline processing lag in milliseconds.
+    #[serde(default)]
+    pub pipeline_lag_ms: u64,
 }
 
 /// Computed runtime health for display.
@@ -18,6 +27,12 @@ pub struct RuntimeHealth {
     pub reachable: bool,
     /// Status string from the health endpoint (e.g. `"ok"`).
     pub status: String,
+    /// Server uptime in seconds since startup.
+    pub uptime_secs: u64,
+    /// Number of currently active WebSocket/SSE connections.
+    pub active_connections: i64,
+    /// Pipeline processing lag in milliseconds.
+    pub pipeline_lag_ms: u64,
 }
 
 /// API response item from `GET /api/v1/agents`.
@@ -104,10 +119,23 @@ mod tests {
     use super::*;
 
     #[test]
-    fn health_response_deserializes() {
+    fn health_response_deserializes_minimal() {
         let json = r#"{"status":"ok"}"#;
         let resp: HealthResponse = serde_json::from_str(json).unwrap();
         assert_eq!(resp.status, "ok");
+        assert_eq!(resp.uptime_secs, 0);
+        assert_eq!(resp.active_connections, 0);
+        assert_eq!(resp.pipeline_lag_ms, 0);
+    }
+
+    #[test]
+    fn health_response_deserializes_with_new_fields() {
+        let json = r#"{"status":"ok","uptime_secs":3600,"active_connections":5,"pipeline_lag_ms":12}"#;
+        let resp: HealthResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.status, "ok");
+        assert_eq!(resp.uptime_secs, 3600);
+        assert_eq!(resp.active_connections, 5);
+        assert_eq!(resp.pipeline_lag_ms, 12);
     }
 
     #[test]

@@ -510,8 +510,23 @@ export interface components {
         };
         /** @description Response body for the health endpoint. */
         HealthResponse: {
+            /**
+             * Format: int64
+             * @description Number of currently active WebSocket/SSE connections.
+             */
+            active_connections: number;
+            /**
+             * Format: int64
+             * @description Pipeline processing lag in milliseconds (placeholder, always 0 for now).
+             */
+            pipeline_lag_ms: number;
             /** @description Liveness status string, always `"ok"` when the service is running. */
             status: string;
+            /**
+             * Format: int64
+             * @description Server uptime in seconds since startup.
+             */
+            uptime_secs: number;
         };
         /** @description JSON representation of an audit log entry. */
         LogEntry: {
