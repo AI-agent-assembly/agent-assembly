@@ -1,12 +1,14 @@
 //! `aasm approvals watch` — live-updating approval request stream.
 
 use clap::Args;
+use futures_util::StreamExt;
 use tokio_tungstenite::tungstenite::Message;
 
 use crate::config::ResolvedContext;
 use crate::error::CliError;
 
 use super::client;
+use super::models::ApprovalResponse;
 
 /// Type alias for the WebSocket stream used by the watch command.
 pub type WsStream =
@@ -28,4 +30,37 @@ pub async fn connect_approval_ws(ctx: &ResolvedContext) -> Result<WsStream, CliE
             .await
             .map_err(|e| CliError::Io(std::io::Error::new(std::io::ErrorKind::ConnectionRefused, e)))?;
     Ok(ws)
+}
+
+/// Run the watch stream in non-interactive mode, printing events as they arrive.
+pub async fn run_watch_stream(mut ws: WsStream) {
+    println!("Watching for approval requests... (Ctrl+C to stop)");
+    println!();
+
+    while let Some(msg) = ws.next().await {
+        match msg {
+            Ok(Message::Text(text)) => {
+                if let Ok(approval) = serde_json::from_str::<ApprovalResponse>(&text) {
+                    println!(
+                        "  \x1b[1;33mNEW\x1b[0m  {} | agent={} | action={} | condition={}",
+                        approval.id, approval.agent_id, approval.action, approval.reason
+                    );
+                    println!(
+                        "        run: aasm approvals approve {} --reason \"...\"",
+                        approval.id
+                    );
+                    println!();
+                }
+            }
+            Ok(Message::Close(_)) => {
+                println!("Connection closed by server.");
+                break;
+            }
+            Err(e) => {
+                eprintln!("WebSocket error: {e}");
+                break;
+            }
+            _ => {}
+        }
+    }
 }
