@@ -16,8 +16,10 @@ aa-gateway     = { path = "../aa-gateway" }
 chrono         = { version = "0.4", features = ["serde"] }
 clap           = { version = "4", features = ["derive"] }
 clap_complete  = "4"
+chrono         = { version = "0.4", features = ["serde"] }
 colored        = "3"
 comfy-table    = "7"
+crossterm      = "0.28"
 dirs           = "6"
 futures-util   = "0.3"
 owo-colors     = "4"

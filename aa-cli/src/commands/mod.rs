@@ -12,6 +12,7 @@ pub mod completion;
 pub mod context;
 pub mod logs;
 pub mod policy;
+pub mod status;
 pub mod trace;
 pub mod version;
 
@@ -28,6 +29,8 @@ pub enum Commands {
     Logs(logs::LogsArgs),
     /// Generate shell completion scripts.
     Completion(completion::CompletionArgs),
+    /// Show fleet health, agents, approvals, and budget at a glance.
+    Status(status::StatusArgs),
     /// Show CLI and gateway version information.
     Version,
     /// Visualize a session trace (tree or timeline).
@@ -42,6 +45,7 @@ pub fn dispatch(cmd: Commands, ctx: &ResolvedContext, output: OutputFormat) -> E
         Commands::Context(args) => context::dispatch(args),
         Commands::Logs(args) => logs::run(args, ctx, output),
         Commands::Completion(args) => completion::run(args),
+        Commands::Status(args) => status::dispatch(args, ctx, output),
         Commands::Version => version::run(ctx),
         Commands::Trace(args) => trace::dispatch(args, ctx, output),
     }
