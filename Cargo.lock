@@ -16,6 +16,7 @@ dependencies = [
  "chrono-tz",
  "dashmap",
  "futures",
+ "hex",
  "http 1.4.0",
  "hyper",
  "jsonwebtoken",
