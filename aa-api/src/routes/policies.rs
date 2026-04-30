@@ -127,8 +127,16 @@ pub async fn create_policy(
     tag = "policies"
 )]
 pub async fn get_active_policy(
-    Extension(_state): Extension<AppState>,
+    Extension(state): Extension<AppState>,
 ) -> Result<(StatusCode, Json<PolicyResponse>), ProblemDetail> {
-    // TODO: read active policy from engine
-    Err(ProblemDetail::from_status(StatusCode::NOT_FOUND).with_detail("No active policy loaded"))
+    let info = state.policy_engine.active_policy_info();
+    Ok((
+        StatusCode::OK,
+        Json(PolicyResponse {
+            name: info.name.unwrap_or_else(|| "unnamed".to_string()),
+            version: info.policy_version.unwrap_or_else(|| "unknown".to_string()),
+            active: true,
+            rule_count: info.rule_count,
+        }),
+    ))
 }
