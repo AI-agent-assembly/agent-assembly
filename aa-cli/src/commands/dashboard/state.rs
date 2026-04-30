@@ -16,14 +16,14 @@ pub enum Panel {
     Agents,
     /// Real-time event log (top-right).
     EventLog,
-    /// Pending approvals list (bottom-left).
-    Approvals,
-    /// Budget / cost gauge (bottom-right).
+    /// Budget / cost utilization bars (bottom-left).
     Budget,
+    /// Pending approvals queue with countdown timers (bottom-right).
+    Approvals,
 }
 
 impl Panel {
-    /// Cycle to the next panel in Tab order.
+    /// Cycle to the next panel in Tab order (clockwise).
     pub fn next(self) -> Self {
         match self {
             Self::Agents => Self::EventLog,
@@ -33,7 +33,7 @@ impl Panel {
         }
     }
 
-    /// Cycle to the previous panel in Shift+Tab order.
+    /// Cycle to the previous panel in Shift+Tab order (counter-clockwise).
     pub fn prev(self) -> Self {
         match self {
             Self::Agents => Self::Budget,
@@ -75,11 +75,19 @@ pub struct DashboardState {
 
     /// Scroll offset in the event log panel.
     pub event_log_scroll: u16,
+    /// Selected index in the agents table.
+    pub agent_selected: usize,
     /// Selected index in the pending approvals list.
     pub approval_selected: usize,
 
     /// Whether the help overlay is currently visible.
     pub show_help: bool,
+    /// Whether the inspect detail overlay is visible.
+    pub show_inspect: bool,
+    /// Whether the policy viewer overlay is visible.
+    pub show_policy: bool,
+    /// Cached policy YAML content for the policy overlay.
+    pub policy_yaml: Option<String>,
     /// The pending confirm dialog action, if any.
     pub confirm_dialog: Option<DialogAction>,
 
@@ -121,8 +129,12 @@ impl DashboardState {
             },
             event_log: VecDeque::with_capacity(EVENT_LOG_CAPACITY),
             event_log_scroll: 0,
+            agent_selected: 0,
             approval_selected: 0,
             show_help: false,
+            show_inspect: false,
+            show_policy: false,
+            policy_yaml: None,
             confirm_dialog: None,
             should_quit: false,
         }
@@ -176,6 +188,9 @@ mod tests {
         assert_eq!(state.approvals_summary.pending_count, 0);
         assert!(state.pending_approvals.is_empty());
         assert!(!state.show_help);
+        assert!(!state.show_inspect);
+        assert!(!state.show_policy);
+        assert!(state.policy_yaml.is_none());
         assert!(state.confirm_dialog.is_none());
         assert!(!state.should_quit);
     }
