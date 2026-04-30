@@ -52,3 +52,12 @@ pub struct ApprovalResponse {
     pub status: String,
     pub created_at: String,
 }
+
+/// Computed approvals summary for display.
+#[derive(Debug, Clone, Serialize)]
+pub struct ApprovalsSummary {
+    /// Number of approvals currently in `"pending"` status.
+    pub pending_count: usize,
+    /// Human-readable age of the oldest pending approval (e.g. `"2h 15m"`).
+    pub oldest_pending_age: Option<String>,
+}
