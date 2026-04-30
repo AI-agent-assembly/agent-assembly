@@ -178,5 +178,28 @@ mod tests {
         assert!(json.contains("\"agents\""));
         assert!(json.contains("\"approvals\""));
         assert!(json.contains("\"budget\""));
+        assert!(json.contains("\"uptime_secs\""));
+        assert!(json.contains("\"active_connections\""));
+        assert!(json.contains("\"pipeline_lag_ms\""));
+    }
+
+    #[test]
+    fn format_duration_seconds_only() {
+        assert_eq!(format_duration(45), "45s");
+    }
+
+    #[test]
+    fn format_duration_minutes_and_seconds() {
+        assert_eq!(format_duration(125), "2m 5s");
+    }
+
+    #[test]
+    fn format_duration_hours_minutes_seconds() {
+        assert_eq!(format_duration(3661), "1h 1m 1s");
+    }
+
+    #[test]
+    fn format_duration_zero() {
+        assert_eq!(format_duration(0), "0s");
     }
 }

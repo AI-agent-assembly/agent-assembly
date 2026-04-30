@@ -127,10 +127,16 @@ mod tests {
     fn build_runtime_health_reachable() {
         let resp = Some(HealthResponse {
             status: "ok".to_string(),
+            uptime_secs: 120,
+            active_connections: 3,
+            pipeline_lag_ms: 5,
         });
         let health = build_runtime_health(resp);
         assert!(health.reachable);
         assert_eq!(health.status, "ok");
+        assert_eq!(health.uptime_secs, 120);
+        assert_eq!(health.active_connections, 3);
+        assert_eq!(health.pipeline_lag_ms, 5);
     }
 
     #[test]
@@ -138,6 +144,9 @@ mod tests {
         let health = build_runtime_health(None);
         assert!(!health.reachable);
         assert_eq!(health.status, "unreachable");
+        assert_eq!(health.uptime_secs, 0);
+        assert_eq!(health.active_connections, 0);
+        assert_eq!(health.pipeline_lag_ms, 0);
     }
 
     #[test]

@@ -21,3 +21,45 @@ async fn health_returns_200_with_ok_status() {
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(json["status"], "ok");
 }
+
+#[tokio::test]
+async fn health_returns_uptime_secs() {
+    let app = common::test_app();
+
+    let response = app
+        .oneshot(Request::builder().uri("/api/v1/health").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert!(json["uptime_secs"].is_u64(), "uptime_secs should be a u64");
+}
+
+#[tokio::test]
+async fn health_returns_active_connections() {
+    let app = common::test_app();
+
+    let response = app
+        .oneshot(Request::builder().uri("/api/v1/health").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["active_connections"], 0);
+}
+
+#[tokio::test]
+async fn health_returns_pipeline_lag_ms() {
+    let app = common::test_app();
+
+    let response = app
+        .oneshot(Request::builder().uri("/api/v1/health").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["pipeline_lag_ms"], 0);
+}

@@ -119,10 +119,23 @@ mod tests {
     use super::*;
 
     #[test]
-    fn health_response_deserializes() {
+    fn health_response_deserializes_minimal() {
         let json = r#"{"status":"ok"}"#;
         let resp: HealthResponse = serde_json::from_str(json).unwrap();
         assert_eq!(resp.status, "ok");
+        assert_eq!(resp.uptime_secs, 0);
+        assert_eq!(resp.active_connections, 0);
+        assert_eq!(resp.pipeline_lag_ms, 0);
+    }
+
+    #[test]
+    fn health_response_deserializes_with_new_fields() {
+        let json = r#"{"status":"ok","uptime_secs":3600,"active_connections":5,"pipeline_lag_ms":12}"#;
+        let resp: HealthResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.status, "ok");
+        assert_eq!(resp.uptime_secs, 3600);
+        assert_eq!(resp.active_connections, 5);
+        assert_eq!(resp.pipeline_lag_ms, 12);
     }
 
     #[test]
