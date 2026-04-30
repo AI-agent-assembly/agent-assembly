@@ -69,11 +69,7 @@ fn run_query(args: LogsArgs, ctx: &ResolvedContext, output: OutputFormat) -> Exi
 }
 
 /// Fetch paginated logs from the gateway and render output.
-async fn fetch_logs(
-    args: LogsArgs,
-    ctx: &ResolvedContext,
-    output: OutputFormat,
-) -> ExitCode {
+async fn fetch_logs(args: LogsArgs, ctx: &ResolvedContext, output: OutputFormat) -> ExitCode {
     let client = reqwest::Client::new();
     let mut url = format!(
         "{}/api/v1/logs?page={}&per_page={}",
@@ -109,16 +105,10 @@ async fn fetch_logs(
 
     match output {
         OutputFormat::Json => {
-            println!(
-                "{}",
-                serde_json::to_string_pretty(&body.items).unwrap_or_default()
-            );
+            println!("{}", serde_json::to_string_pretty(&body.items).unwrap_or_default());
         }
         OutputFormat::Yaml => {
-            println!(
-                "{}",
-                serde_yaml::to_string(&body.items).unwrap_or_default()
-            );
+            println!("{}", serde_yaml::to_string(&body.items).unwrap_or_default());
         }
         OutputFormat::Table => {
             print_logs_table(&body);
@@ -156,7 +146,7 @@ fn print_logs_table(body: &PaginatedLogs) {
     println!(
         "Page {}/{} ({} total entries)",
         body.page,
-        (body.total + u64::from(body.per_page) - 1) / u64::from(body.per_page),
+        body.total.div_ceil(u64::from(body.per_page)),
         body.total,
     );
 }
@@ -345,10 +335,7 @@ mod tests {
             page: 1,
             per_page: 50,
         };
-        assert_eq!(
-            build_ws_url(&ctx, &args),
-            "ws://localhost:8080/api/v1/ws/events"
-        );
+        assert_eq!(build_ws_url(&ctx, &args), "ws://localhost:8080/api/v1/ws/events");
     }
 
     #[test]
@@ -365,10 +352,7 @@ mod tests {
             page: 1,
             per_page: 50,
         };
-        assert_eq!(
-            build_ws_url(&ctx, &args),
-            "wss://gateway.example.com/api/v1/ws/events"
-        );
+        assert_eq!(build_ws_url(&ctx, &args), "wss://gateway.example.com/api/v1/ws/events");
     }
 
     #[test]
