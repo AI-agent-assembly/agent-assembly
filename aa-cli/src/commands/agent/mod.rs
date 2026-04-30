@@ -174,4 +174,70 @@ mod tests {
         assert!(agent.metadata.is_empty());
         assert!(agent.tool_names.is_empty());
     }
+
+    #[test]
+    fn new_fields_default_to_none_when_missing() {
+        let json = r#"{
+            "id": "aa",
+            "name": "old-server",
+            "framework": "custom",
+            "version": "0.0.1",
+            "status": "Active",
+            "tool_names": [],
+            "metadata": {}
+        }"#;
+
+        let agent: AgentResponse = serde_json::from_str(json).unwrap();
+        assert!(agent.pid.is_none());
+        assert!(agent.session_count.is_none());
+        assert!(agent.last_event.is_none());
+        assert!(agent.policy_violations_count.is_none());
+    }
+
+    #[test]
+    fn new_fields_deserialize_when_present() {
+        let json = r#"{
+            "id": "bb",
+            "name": "full-agent",
+            "framework": "langgraph",
+            "version": "1.0.0",
+            "status": "Active",
+            "tool_names": ["search"],
+            "metadata": {},
+            "pid": 4567,
+            "session_count": 12,
+            "last_event": "2025-06-15T08:30:00Z",
+            "policy_violations_count": 3
+        }"#;
+
+        let agent: AgentResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(agent.pid, Some(4567));
+        assert_eq!(agent.session_count, Some(12));
+        assert_eq!(agent.last_event.as_deref(), Some("2025-06-15T08:30:00Z"));
+        assert_eq!(agent.policy_violations_count, Some(3));
+    }
+
+    #[test]
+    fn round_trip_preserves_new_fields() {
+        let agent = AgentResponse {
+            id: "cc".to_string(),
+            name: "rt-agent".to_string(),
+            framework: "crewai".to_string(),
+            version: "2.0.0".to_string(),
+            status: "Active".to_string(),
+            tool_names: vec![],
+            metadata: BTreeMap::new(),
+            pid: Some(9999),
+            session_count: Some(42),
+            last_event: Some("2025-03-01T12:00:00Z".to_string()),
+            policy_violations_count: Some(0),
+        };
+
+        let json = serde_json::to_string(&agent).unwrap();
+        let parsed: AgentResponse = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.pid, Some(9999));
+        assert_eq!(parsed.session_count, Some(42));
+        assert_eq!(parsed.last_event.as_deref(), Some("2025-03-01T12:00:00Z"));
+        assert_eq!(parsed.policy_violations_count, Some(0));
+    }
 }

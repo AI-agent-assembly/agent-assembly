@@ -291,3 +291,32 @@ async fn suspend_and_notify_sends_command_on_control_stream() {
         other => panic!("expected Suspend command, got {other:?}"),
     }
 }
+
+#[test]
+fn new_fields_default_values_on_registration() {
+    let reg = AgentRegistry::new();
+    reg.register(make_record(key(1))).unwrap();
+
+    let record = reg.get(&key(1)).unwrap();
+    assert!(record.pid.is_none());
+    assert_eq!(record.session_count, 0);
+    assert!(record.last_event.is_none());
+    assert_eq!(record.policy_violations_count, 0);
+}
+
+#[test]
+fn new_fields_survive_clone_and_retrieval() {
+    let reg = AgentRegistry::new();
+    let mut record = make_record(key(2));
+    record.pid = Some(5678);
+    record.session_count = 10;
+    record.last_event = Some(Utc::now());
+    record.policy_violations_count = 3;
+    reg.register(record).unwrap();
+
+    let retrieved = reg.get(&key(2)).unwrap();
+    assert_eq!(retrieved.pid, Some(5678));
+    assert_eq!(retrieved.session_count, 10);
+    assert!(retrieved.last_event.is_some());
+    assert_eq!(retrieved.policy_violations_count, 3);
+}

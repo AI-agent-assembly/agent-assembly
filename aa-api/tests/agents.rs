@@ -235,3 +235,64 @@ async fn list_agents_pagination_works() {
     assert_eq!(json["per_page"], 2);
     assert_eq!(json["items"].as_array().unwrap().len(), 2);
 }
+
+#[tokio::test]
+async fn get_agent_response_includes_new_fields() {
+    let state = common::test_state();
+    let mut agent = test_agent(0xDD);
+    agent.pid = Some(9876);
+    agent.session_count = 7;
+    agent.last_event = Some(chrono::Utc::now());
+    agent.policy_violations_count = 2;
+    state.agent_registry.register(agent).unwrap();
+
+    let app = aa_api::server::build_app(state);
+    let id = hex_id(0xDD);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri(format!("/api/v1/agents/{id}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["pid"], 9876);
+    assert_eq!(json["session_count"], 7);
+    assert!(json["last_event"].as_str().is_some());
+    assert_eq!(json["policy_violations_count"], 2);
+}
+
+#[tokio::test]
+async fn get_agent_response_null_optional_fields() {
+    let state = common::test_state();
+    state.agent_registry.register(test_agent(0xEE)).unwrap();
+
+    let app = aa_api::server::build_app(state);
+    let id = hex_id(0xEE);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri(format!("/api/v1/agents/{id}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert!(json["pid"].is_null());
+    assert_eq!(json["session_count"], 0);
+    assert!(json["last_event"].is_null());
+    assert_eq!(json["policy_violations_count"], 0);
+}
