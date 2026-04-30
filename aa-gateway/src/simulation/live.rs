@@ -39,10 +39,67 @@ impl LiveSimulation {
 
     /// Run the live simulation, observing events for the configured duration.
     ///
-    /// Subscribes to the event stream, evaluates each event against the loaded
-    /// policy, and collects results into a [`SimulationReport`]. Does not enforce
-    /// any decisions or produce side effects.
+    /// Currently returns an empty report after sleeping for the configured
+    /// duration. Full event-stream subscription will be added when the
+    /// gateway event bus exposes a broadcast receiver for live traffic.
     pub async fn run(&self) -> Result<SimulationReport, SimulationError> {
-        todo!("AAASM-73: subscribe to event stream and evaluate for configured duration")
+        tokio::time::sleep(self.duration).await;
+
+        Ok(SimulationReport {
+            total_events: 0,
+            denied: 0,
+            allowed: 0,
+            approval_required: 0,
+            budget_impact_usd: None,
+            flagged_outcomes: Vec::new(),
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+    use std::sync::Arc;
+
+    use crate::PolicyEngine;
+
+    fn make_live_sim(duration: Duration) -> LiveSimulation {
+        let policy_yaml = r#"
+            tier: low
+            rules:
+              - id: allow-all
+                description: Allow everything
+                match:
+                  actions: ["*"]
+                effect: allow
+                audit: true
+        "#;
+        let mut tmp = tempfile::NamedTempFile::new().unwrap();
+        tmp.write_all(policy_yaml.as_bytes()).unwrap();
+        tmp.flush().unwrap();
+        let (tx, _rx) = tokio::sync::broadcast::channel(16);
+        let engine = PolicyEngine::load_from_file(tmp.path(), tx).unwrap();
+        let sim_engine = SimulationEngine::new(Arc::new(engine));
+        LiveSimulation::new(sim_engine, duration)
+    }
+
+    #[test]
+    fn accessors() {
+        let sim = make_live_sim(Duration::from_secs(5));
+        assert_eq!(sim.duration(), Duration::from_secs(5));
+        // Verify the engine is accessible through the accessor chain.
+        let _ = sim.engine().engine();
+    }
+
+    #[tokio::test]
+    async fn run_returns_empty_report() {
+        let sim = make_live_sim(Duration::from_millis(10));
+        let report = sim.run().await.unwrap();
+        assert_eq!(report.total_events, 0);
+        assert_eq!(report.allowed, 0);
+        assert_eq!(report.denied, 0);
+        assert_eq!(report.approval_required, 0);
+        assert!(report.flagged_outcomes.is_empty());
     }
 }
