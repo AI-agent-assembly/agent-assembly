@@ -41,8 +41,8 @@ impl AuditReader {
         let mut all_entries = self.read_all_entries().await?;
 
         // Parse filter values once.
-        let agent_filter: Option<AgentId> = agent_id.and_then(|s| parse_agent_id(s));
-        let event_filter: Option<AuditEventType> = event_type.and_then(|s| parse_event_type(s));
+        let agent_filter: Option<AgentId> = agent_id.and_then(parse_agent_id);
+        let event_filter: Option<AuditEventType> = event_type.and_then(parse_event_type);
 
         // Apply filters.
         if agent_filter.is_some() || event_filter.is_some() {
@@ -62,7 +62,7 @@ impl AuditReader {
         }
 
         // Sort by timestamp descending (newest first).
-        all_entries.sort_by(|a, b| b.timestamp_ns().cmp(&a.timestamp_ns()));
+        all_entries.sort_by_key(|e| std::cmp::Reverse(e.timestamp_ns()));
 
         let total = all_entries.len() as u64;
         let page: Vec<AuditEntry> = all_entries.into_iter().skip(offset).take(limit).collect();
