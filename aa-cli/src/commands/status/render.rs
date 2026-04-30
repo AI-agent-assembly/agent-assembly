@@ -3,6 +3,7 @@
 use comfy_table::{ContentArrangement, Table};
 
 use super::models::{AgentRow, ApprovalsSummary, BudgetRow, RuntimeHealth, StatusSnapshot};
+use crate::output::OutputFormat;
 
 /// Render the Runtime Health section to stdout.
 pub fn render_runtime_health(health: &RuntimeHealth) {
@@ -88,5 +89,24 @@ pub fn render_status_json(snapshot: &StatusSnapshot) {
     match serde_json::to_string_pretty(snapshot) {
         Ok(json) => println!("{json}"),
         Err(e) => eprintln!("error serializing status to JSON: {e}"),
+    }
+}
+
+/// Render the full status snapshot using the selected output format.
+pub fn render_all(snapshot: &StatusSnapshot, format: OutputFormat) {
+    match format {
+        OutputFormat::Json => render_status_json(snapshot),
+        OutputFormat::Yaml => {
+            match serde_yaml::to_string(snapshot) {
+                Ok(yaml) => print!("{yaml}"),
+                Err(e) => eprintln!("error serializing status to YAML: {e}"),
+            }
+        }
+        OutputFormat::Table => {
+            render_runtime_health(&snapshot.runtime);
+            render_agents_table(&snapshot.agents);
+            render_approvals_summary(&snapshot.approvals);
+            render_budget_table(&snapshot.budget);
+        }
     }
 }
