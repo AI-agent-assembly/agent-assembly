@@ -1,9 +1,14 @@
 //! `aasm logs` — paginated audit log viewer and real-time log tail.
 
+use std::process::ExitCode;
+
 use clap::Args;
 
+use crate::config::ResolvedContext;
 use crate::output::OutputFormat;
 
+pub mod fetch;
+pub mod follow;
 pub mod format;
 pub mod types;
 
@@ -43,4 +48,13 @@ pub struct LogsArgs {
     /// Override the global output format for this command.
     #[arg(long, value_enum)]
     pub output: Option<OutputFormat>,
+}
+
+/// Dispatch the `aasm logs` command to fetch or follow mode.
+pub fn dispatch(args: LogsArgs, ctx: &ResolvedContext) -> ExitCode {
+    if args.follow {
+        follow::run(args, ctx)
+    } else {
+        fetch::run(args, ctx)
+    }
 }
