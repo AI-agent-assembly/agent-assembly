@@ -44,3 +44,24 @@ pub async fn get_approval(
     let body = resp.json::<ApprovalResponse>().await?;
     Ok(body)
 }
+
+/// Approve a pending approval request by ID.
+pub async fn approve_action(
+    ctx: &ResolvedContext,
+    id: &str,
+    reason: Option<&str>,
+) -> Result<ApprovalResponse, CliError> {
+    let url = format!("{}/{id}/approve", build_approvals_url(&ctx.api_url));
+    let client = reqwest::Client::new();
+    let body = serde_json::json!({
+        "by": "cli",
+        "reason": reason,
+    });
+    let mut req = client.post(&url).json(&body);
+    if let Some(ref key) = ctx.api_key {
+        req = req.bearer_auth(key);
+    }
+    let resp = req.send().await?.error_for_status()?;
+    let result = resp.json::<ApprovalResponse>().await?;
+    Ok(result)
+}
