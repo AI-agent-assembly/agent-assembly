@@ -111,6 +111,55 @@ fn render_detail(agent: &AgentResponse) {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+
+    use super::*;
+    use crate::commands::agent::RecentTraceResponse;
+
+    fn base_agent() -> AgentResponse {
+        AgentResponse {
+            id: "aabb".to_string(),
+            name: "test-agent".to_string(),
+            framework: "custom".to_string(),
+            version: "1.0.0".to_string(),
+            status: "Active".to_string(),
+            tool_names: vec![],
+            metadata: BTreeMap::new(),
+            pid: None,
+            session_count: None,
+            last_event: None,
+            policy_violations_count: None,
+            active_sessions: vec![],
+            recent_events: vec![],
+            recent_traces: vec![],
+        }
+    }
+
+    #[test]
+    fn render_detail_without_traces_does_not_panic() {
+        let agent = base_agent();
+        render_detail(&agent);
+    }
+
+    #[test]
+    fn render_detail_with_traces_does_not_panic() {
+        let mut agent = base_agent();
+        agent.recent_traces = vec![
+            RecentTraceResponse {
+                session_id: "sess-abc123".to_string(),
+                timestamp: "2026-04-30T10:00:00Z".to_string(),
+            },
+            RecentTraceResponse {
+                session_id: "sess-def456".to_string(),
+                timestamp: "2026-04-30T09:30:00Z".to_string(),
+            },
+        ];
+        render_detail(&agent);
+    }
+}
+
 /// Run the `aasm agent inspect` command.
 pub fn run(args: InspectArgs, ctx: &ResolvedContext, output: OutputFormat) -> ExitCode {
     let rt = tokio::runtime::Runtime::new().expect("failed to create tokio runtime");
