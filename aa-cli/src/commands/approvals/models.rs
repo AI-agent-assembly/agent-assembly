@@ -144,4 +144,20 @@ mod tests {
         assert_eq!(compute_timeout_color(181), TimeoutColor::Green);
         assert_eq!(compute_timeout_color(300), TimeoutColor::Green);
     }
+
+    #[test]
+    fn format_countdown_with_minutes_and_seconds() {
+        assert_eq!(format_countdown(150), "2m 30s");
+    }
+
+    #[test]
+    fn format_countdown_seconds_only() {
+        assert_eq!(format_countdown(45), "45s");
+    }
+
+    #[test]
+    fn format_countdown_expired() {
+        assert_eq!(format_countdown(0), "expired");
+        assert_eq!(format_countdown(-5), "expired");
+    }
 }
