@@ -242,4 +242,27 @@ mod tests {
         let parsed: Vec<AgentResponse> = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.len(), 2);
     }
+
+    #[test]
+    fn status_color_active_is_green() {
+        assert_eq!(status_color("Active"), Color::Green);
+        assert_eq!(status_color("active"), Color::Green);
+    }
+
+    #[test]
+    fn status_color_suspended_is_yellow() {
+        assert_eq!(status_color("Suspended"), Color::Yellow);
+        assert_eq!(status_color("Suspended(PolicyViolation)"), Color::Yellow);
+    }
+
+    #[test]
+    fn status_color_deregistered_is_red() {
+        assert_eq!(status_color("Deregistered"), Color::Red);
+        assert_eq!(status_color("deregistered"), Color::Red);
+    }
+
+    #[test]
+    fn status_color_unknown_is_reset() {
+        assert_eq!(status_color("Unknown"), Color::Reset);
+    }
 }
