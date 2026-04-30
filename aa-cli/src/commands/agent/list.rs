@@ -5,7 +5,7 @@ use std::thread;
 use std::time::Duration;
 
 use clap::Args;
-use comfy_table::{Cell, Table};
+use comfy_table::{Cell, Color, Table};
 
 use super::{AgentResponse, PaginatedResponse};
 use crate::client;
@@ -54,6 +54,16 @@ fn apply_filters(agents: Vec<AgentResponse>, args: &ListArgs) -> Vec<AgentRespon
         .collect()
 }
 
+/// Map an agent status string to a terminal color.
+fn status_color(status: &str) -> Color {
+    match status.to_lowercase().as_str() {
+        "active" => Color::Green,
+        s if s.starts_with("suspended") => Color::Yellow,
+        "deregistered" => Color::Red,
+        _ => Color::Reset,
+    }
+}
+
 /// Render agents as a table using comfy-table.
 fn render_table(agents: &[AgentResponse]) {
     let mut table = Table::new();
@@ -65,7 +75,7 @@ fn render_table(agents: &[AgentResponse]) {
             Cell::new(&agent.name),
             Cell::new(&agent.framework),
             Cell::new(&agent.version),
-            Cell::new(&agent.status),
+            Cell::new(&agent.status).fg(status_color(&agent.status)),
         ]);
     }
 

@@ -3,7 +3,7 @@
 use std::process::ExitCode;
 
 use clap::Args;
-use comfy_table::Table;
+use comfy_table::{Cell, Color, Table};
 
 use super::AgentResponse;
 use crate::client;
@@ -26,7 +26,16 @@ fn render_detail(agent: &AgentResponse) {
     table.add_row(vec!["Name", &agent.name]);
     table.add_row(vec!["Framework", &agent.framework]);
     table.add_row(vec!["Version", &agent.version]);
-    table.add_row(vec!["Status", &agent.status]);
+    let status_color = match agent.status.to_lowercase().as_str() {
+        "active" => Color::Green,
+        s if s.starts_with("suspended") => Color::Yellow,
+        "deregistered" => Color::Red,
+        _ => Color::Reset,
+    };
+    table.add_row(vec![
+        Cell::new("Status"),
+        Cell::new(&agent.status).fg(status_color),
+    ]);
 
     let tools = if agent.tool_names.is_empty() {
         "(none)".to_string()
