@@ -1,6 +1,6 @@
 //! Unit tests for `AgentRegistry` CRUD operations and control stream infrastructure.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
 
 use chrono::Utc;
 
@@ -26,6 +26,8 @@ fn make_record(key: [u8; 16]) -> AgentRecord {
         session_count: 0,
         last_event: None,
         policy_violations_count: 0,
+        active_sessions: Vec::new(),
+        recent_events: VecDeque::new(),
     }
 }
 
@@ -217,6 +219,8 @@ async fn concurrent_registration_of_100_agents() {
                 session_count: 0,
                 last_event: None,
                 policy_violations_count: 0,
+                active_sessions: Vec::new(),
+                recent_events: VecDeque::new(),
             };
             reg.register(record).unwrap();
         }));

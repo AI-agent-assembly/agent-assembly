@@ -8,7 +8,7 @@ pub mod convert;
 pub mod store;
 pub mod token;
 
-pub use store::{AgentRecord, AgentRegistry};
+pub use store::{ActiveSession, AgentRecord, AgentRegistry, RecentEvent};
 
 /// Errors returned by [`AgentRegistry`](store::AgentRegistry) operations.
 #[derive(Debug, thiserror::Error)]
