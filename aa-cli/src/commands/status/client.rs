@@ -25,12 +25,6 @@ impl StatusClient {
         format!("{}{}", self.base_url, path)
     }
 
-    /// Return a reference to the underlying HTTP client (for testing).
-    #[cfg(test)]
-    pub fn http(&self) -> &Client {
-        &self.http
-    }
-
     /// Return the base URL (for error messages).
     #[allow(dead_code)]
     pub fn base_url(&self) -> &str {
