@@ -17,3 +17,20 @@ pub enum TraceEventKind {
     /// A policy evaluation that denied the action.
     PolicyDeny,
 }
+
+/// A single event within a trace session.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TraceEvent {
+    /// What kind of event this is.
+    pub kind: TraceEventKind,
+    /// Human-readable label (e.g. tool name, model name).
+    pub label: String,
+    /// How long this event took in milliseconds.
+    pub duration_ms: u64,
+    /// Nested child events (e.g. tool calls within an LLM step).
+    #[serde(default)]
+    pub children: Vec<TraceEvent>,
+    /// If the event was a policy denial, the reason why.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub violation_reason: Option<String>,
+}
