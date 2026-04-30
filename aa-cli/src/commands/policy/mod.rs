@@ -6,6 +6,7 @@ use clap::{Args, Subcommand};
 
 pub mod history;
 pub mod simulate;
+pub mod validate;
 
 /// Arguments for the `aasm policy` subcommand group.
 #[derive(Args)]
@@ -27,6 +28,8 @@ pub enum PolicyCommands {
     Diff(history::DiffArgs),
     /// Simulate a policy against historical events or live traffic (dry-run).
     Simulate(simulate::SimulateArgs),
+    /// Validate a policy YAML file locally (no apply).
+    Validate(validate::ValidateArgs),
 }
 
 /// Dispatch a policy subcommand.
@@ -37,5 +40,6 @@ pub fn dispatch(args: PolicyArgs) -> ExitCode {
         PolicyCommands::Rollback(rollback_args) => history::run_rollback(rollback_args),
         PolicyCommands::Diff(diff_args) => history::run_diff(diff_args),
         PolicyCommands::Simulate(sim_args) => simulate::run(sim_args),
+        PolicyCommands::Validate(val_args) => validate::run(val_args),
     }
 }
