@@ -30,6 +30,7 @@ fn test_agent(id_byte: u8) -> AgentRecord {
         policy_violations_count: 0,
         active_sessions: Vec::new(),
         recent_events: std::collections::VecDeque::new(),
+        recent_traces: Vec::new(),
     }
 }
 
