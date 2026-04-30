@@ -11,6 +11,7 @@ pub mod agent;
 pub mod completion;
 pub mod context;
 pub mod policy;
+pub mod trace;
 pub mod version;
 
 /// Top-level subcommands for the `aasm` CLI.
