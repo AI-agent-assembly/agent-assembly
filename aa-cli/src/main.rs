@@ -38,5 +38,27 @@ struct Cli {
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
-    commands::dispatch(cli.command)
+
+    let cfg = match config::load() {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("error loading config: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+
+    let resolved = match config::resolve_context(
+        &cfg,
+        cli.context.as_deref(),
+        cli.api_url.as_deref(),
+        cli.api_key.as_deref(),
+    ) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("error: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+
+    commands::dispatch(cli.command, &resolved)
 }
