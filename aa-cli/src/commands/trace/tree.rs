@@ -1,6 +1,6 @@
 //! Tree renderer for session traces using box-drawing characters.
 
-use super::models::{TraceEvent, TraceEventKind};
+use super::models::{SessionTrace, TraceEvent, TraceEventKind};
 
 /// Format a duration in milliseconds into a human-readable string.
 ///
@@ -53,4 +53,11 @@ fn render_tree_recursive(events: &[TraceEvent], prefix: &str, output: &mut Strin
             render_tree_recursive(&event.children, &child_prefix, output);
         }
     }
+}
+
+/// Render a full session trace as an indented tree with box-drawing characters.
+pub fn render_tree(trace: &SessionTrace) -> String {
+    let mut output = format!("Trace: {}\n", trace.session_id);
+    render_tree_recursive(&trace.events, "", &mut output);
+    output
 }
