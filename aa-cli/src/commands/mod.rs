@@ -39,5 +39,6 @@ pub fn dispatch(cmd: Commands, ctx: &ResolvedContext, output: OutputFormat) -> E
         Commands::Context(args) => context::dispatch(args),
         Commands::Completion(args) => completion::run(args),
         Commands::Version => version::run(ctx),
+        Commands::Trace(args) => trace::dispatch(args, ctx),
     }
 }
