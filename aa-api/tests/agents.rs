@@ -24,6 +24,12 @@ fn test_agent(id_byte: u8) -> AgentRecord {
         registered_at: chrono::Utc::now(),
         last_heartbeat: chrono::Utc::now(),
         status: AgentStatus::Active,
+        pid: None,
+        session_count: 0,
+        last_event: None,
+        policy_violations_count: 0,
+        active_sessions: Vec::new(),
+        recent_events: std::collections::VecDeque::new(),
     }
 }
 
@@ -230,4 +236,116 @@ async fn list_agents_pagination_works() {
     assert_eq!(json["page"], 1);
     assert_eq!(json["per_page"], 2);
     assert_eq!(json["items"].as_array().unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn get_agent_response_includes_new_fields() {
+    let state = common::test_state();
+    let mut agent = test_agent(0xDD);
+    agent.pid = Some(9876);
+    agent.session_count = 7;
+    agent.last_event = Some(chrono::Utc::now());
+    agent.policy_violations_count = 2;
+    state.agent_registry.register(agent).unwrap();
+
+    let app = aa_api::server::build_app(state);
+    let id = hex_id(0xDD);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri(format!("/api/v1/agents/{id}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["pid"], 9876);
+    assert_eq!(json["session_count"], 7);
+    assert!(json["last_event"].as_str().is_some());
+    assert_eq!(json["policy_violations_count"], 2);
+}
+
+#[tokio::test]
+async fn get_agent_response_null_optional_fields() {
+    let state = common::test_state();
+    state.agent_registry.register(test_agent(0xEE)).unwrap();
+
+    let app = aa_api::server::build_app(state);
+    let id = hex_id(0xEE);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri(format!("/api/v1/agents/{id}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert!(json["pid"].is_null());
+    assert_eq!(json["session_count"], 0);
+    assert!(json["last_event"].is_null());
+    assert_eq!(json["policy_violations_count"], 0);
+    assert!(json["active_sessions"].as_array().unwrap().is_empty());
+    assert!(json["recent_events"].as_array().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn get_agent_response_includes_active_sessions_and_recent_events() {
+    use aa_gateway::registry::{ActiveSession, RecentEvent};
+
+    let state = common::test_state();
+    let mut agent = test_agent(0xCC);
+    agent.active_sessions = vec![ActiveSession {
+        session_id: "sess-001".into(),
+        started_at: chrono::Utc::now(),
+        status: "running".into(),
+    }];
+    agent.recent_events.push_back(RecentEvent {
+        event_type: "violation".into(),
+        summary: "blocked tool call".into(),
+        timestamp: chrono::Utc::now(),
+    });
+    state.agent_registry.register(agent).unwrap();
+
+    let app = aa_api::server::build_app(state);
+    let id = hex_id(0xCC);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri(format!("/api/v1/agents/{id}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    let sessions = json["active_sessions"].as_array().unwrap();
+    assert_eq!(sessions.len(), 1);
+    assert_eq!(sessions[0]["session_id"], "sess-001");
+    assert_eq!(sessions[0]["status"], "running");
+    assert!(sessions[0]["started_at"].as_str().is_some());
+
+    let events = json["recent_events"].as_array().unwrap();
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0]["event_type"], "violation");
+    assert_eq!(events[0]["summary"], "blocked tool call");
+    assert!(events[0]["timestamp"].as_str().is_some());
 }

@@ -57,6 +57,8 @@ use crate::routes::{agents, alerts, approvals, auth, costs, logs, policies, trac
         crate::routes::health::HealthResponse,
         crate::error::ProblemDetail,
         agents::AgentResponse,
+        agents::ActiveSessionResponse,
+        agents::RecentEventResponse,
         logs::LogEntry,
         TraceResponse,
         TraceSpan,

@@ -1,6 +1,6 @@
 //! Unit tests for `AgentRegistry` CRUD operations and control stream infrastructure.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
 
 use chrono::Utc;
 
@@ -22,6 +22,12 @@ fn make_record(key: [u8; 16]) -> AgentRecord {
         registered_at: Utc::now(),
         last_heartbeat: Utc::now(),
         status: AgentStatus::Active,
+        pid: None,
+        session_count: 0,
+        last_event: None,
+        policy_violations_count: 0,
+        active_sessions: Vec::new(),
+        recent_events: VecDeque::new(),
     }
 }
 
@@ -209,6 +215,12 @@ async fn concurrent_registration_of_100_agents() {
                 registered_at: Utc::now(),
                 last_heartbeat: Utc::now(),
                 status: AgentStatus::Active,
+                pid: None,
+                session_count: 0,
+                last_event: None,
+                policy_violations_count: 0,
+                active_sessions: Vec::new(),
+                recent_events: VecDeque::new(),
             };
             reg.register(record).unwrap();
         }));
@@ -282,4 +294,62 @@ async fn suspend_and_notify_sends_command_on_control_stream() {
         Some(Command::Suspend(s)) => assert_eq!(s.reason, "budget limit exceeded"),
         other => panic!("expected Suspend command, got {other:?}"),
     }
+}
+
+#[test]
+fn new_fields_default_values_on_registration() {
+    let reg = AgentRegistry::new();
+    reg.register(make_record(key(1))).unwrap();
+
+    let record = reg.get(&key(1)).unwrap();
+    assert!(record.pid.is_none());
+    assert_eq!(record.session_count, 0);
+    assert!(record.last_event.is_none());
+    assert_eq!(record.policy_violations_count, 0);
+    assert!(record.active_sessions.is_empty());
+    assert!(record.recent_events.is_empty());
+}
+
+#[test]
+fn new_fields_survive_clone_and_retrieval() {
+    let reg = AgentRegistry::new();
+    let mut record = make_record(key(2));
+    record.pid = Some(5678);
+    record.session_count = 10;
+    record.last_event = Some(Utc::now());
+    record.policy_violations_count = 3;
+    reg.register(record).unwrap();
+
+    let retrieved = reg.get(&key(2)).unwrap();
+    assert_eq!(retrieved.pid, Some(5678));
+    assert_eq!(retrieved.session_count, 10);
+    assert!(retrieved.last_event.is_some());
+    assert_eq!(retrieved.policy_violations_count, 3);
+}
+
+#[test]
+fn active_sessions_and_recent_events_survive_retrieval() {
+    use aa_gateway::registry::{ActiveSession, RecentEvent};
+
+    let reg = AgentRegistry::new();
+    let mut record = make_record(key(3));
+    record.active_sessions = vec![ActiveSession {
+        session_id: "aabb".into(),
+        started_at: Utc::now(),
+        status: "running".into(),
+    }];
+    record.recent_events.push_back(RecentEvent {
+        event_type: "violation".into(),
+        summary: "unauthorized tool call".into(),
+        timestamp: Utc::now(),
+    });
+    reg.register(record).unwrap();
+
+    let retrieved = reg.get(&key(3)).unwrap();
+    assert_eq!(retrieved.active_sessions.len(), 1);
+    assert_eq!(retrieved.active_sessions[0].session_id, "aabb");
+    assert_eq!(retrieved.active_sessions[0].status, "running");
+    assert_eq!(retrieved.recent_events.len(), 1);
+    assert_eq!(retrieved.recent_events[0].event_type, "violation");
+    assert_eq!(retrieved.recent_events[0].summary, "unauthorized tool call");
 }

@@ -95,6 +95,12 @@ impl AgentLifecycleService for AgentLifecycleServiceImpl {
             registered_at: now,
             last_heartbeat: now,
             status: AgentStatus::Active,
+            pid: None,
+            session_count: 0,
+            last_event: None,
+            policy_violations_count: 0,
+            active_sessions: Vec::new(),
+            recent_events: std::collections::VecDeque::new(),
         };
 
         self.registry

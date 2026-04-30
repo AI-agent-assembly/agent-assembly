@@ -32,6 +32,26 @@ fn parse_agent_id(id: &str) -> Result<[u8; 16], ProblemDetail> {
 
 /// Convert an [`AgentRecord`] into an [`AgentResponse`].
 fn record_to_response(r: aa_gateway::registry::AgentRecord) -> AgentResponse {
+    let active_sessions = r
+        .active_sessions
+        .into_iter()
+        .map(|s| ActiveSessionResponse {
+            session_id: s.session_id,
+            started_at: s.started_at.to_rfc3339(),
+            status: s.status,
+        })
+        .collect();
+
+    let recent_events = r
+        .recent_events
+        .into_iter()
+        .map(|e| RecentEventResponse {
+            event_type: e.event_type,
+            summary: e.summary,
+            timestamp: e.timestamp.to_rfc3339(),
+        })
+        .collect();
+
     AgentResponse {
         id: r.agent_id.iter().map(|b| format!("{b:02x}")).collect::<String>(),
         name: r.name,
@@ -40,6 +60,12 @@ fn record_to_response(r: aa_gateway::registry::AgentRecord) -> AgentResponse {
         status: format!("{:?}", r.status),
         tool_names: r.tool_names,
         metadata: r.metadata,
+        pid: r.pid,
+        session_count: r.session_count,
+        last_event: r.last_event.map(|t| t.to_rfc3339()),
+        policy_violations_count: r.policy_violations_count,
+        active_sessions,
+        recent_events,
     }
 }
 
@@ -60,6 +86,40 @@ pub struct AgentResponse {
     pub tool_names: Vec<String>,
     /// Arbitrary metadata key-value pairs.
     pub metadata: BTreeMap<String, String>,
+    /// OS process ID, if known.
+    pub pid: Option<u32>,
+    /// Number of sessions handled.
+    pub session_count: u32,
+    /// ISO 8601 timestamp of the most recent event.
+    pub last_event: Option<String>,
+    /// Number of policy violations recorded.
+    pub policy_violations_count: u32,
+    /// Currently active sessions for this agent.
+    pub active_sessions: Vec<ActiveSessionResponse>,
+    /// Most recent events emitted by this agent.
+    pub recent_events: Vec<RecentEventResponse>,
+}
+
+/// Summary of an active session in the API response.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct ActiveSessionResponse {
+    /// Hex-encoded session UUID.
+    pub session_id: String,
+    /// ISO 8601 timestamp when the session started.
+    pub started_at: String,
+    /// Current status of the session.
+    pub status: String,
+}
+
+/// Summary of a recent event in the API response.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct RecentEventResponse {
+    /// Event type classification (e.g. "violation", "approval", "budget").
+    pub event_type: String,
+    /// Short human-readable summary.
+    pub summary: String,
+    /// ISO 8601 timestamp when the event occurred.
+    pub timestamp: String,
 }
 
 /// `GET /api/v1/agents` — list all registered agents with pagination.

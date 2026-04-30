@@ -1,6 +1,6 @@
 //! Agent registry store — `AgentRecord` and `AgentRegistry` backed by `DashMap`.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
 
 use chrono::{DateTime, Utc};
 use dashmap::DashMap;
@@ -11,6 +11,31 @@ use aa_proto::assembly::agent::v1::control_command::Command;
 use aa_proto::assembly::agent::v1::{ControlCommand, SuspendCommand};
 
 use super::{AgentStatus, RegistryError};
+
+/// Maximum number of recent events retained per agent.
+pub const MAX_RECENT_EVENTS: usize = 20;
+
+/// Summary of an active session associated with an agent.
+#[derive(Debug, Clone)]
+pub struct ActiveSession {
+    /// Hex-encoded session UUID.
+    pub session_id: String,
+    /// Timestamp when the session started.
+    pub started_at: DateTime<Utc>,
+    /// Current status of the session (e.g. "running", "idle").
+    pub status: String,
+}
+
+/// Summary of a recent event emitted by an agent.
+#[derive(Debug, Clone)]
+pub struct RecentEvent {
+    /// Event type classification (e.g. "violation", "approval", "budget").
+    pub event_type: String,
+    /// Short human-readable summary of the event.
+    pub summary: String,
+    /// Timestamp when the event occurred.
+    pub timestamp: DateTime<Utc>,
+}
 
 /// Identity and runtime state record for a single registered agent.
 #[derive(Debug, Clone)]
@@ -39,6 +64,18 @@ pub struct AgentRecord {
     pub last_heartbeat: DateTime<Utc>,
     /// Current runtime status of the agent.
     pub status: AgentStatus,
+    /// OS process ID of the agent, if known.
+    pub pid: Option<u32>,
+    /// Number of sessions this agent has handled.
+    pub session_count: u32,
+    /// Timestamp of the most recent event emitted by this agent.
+    pub last_event: Option<DateTime<Utc>>,
+    /// Number of policy violations recorded for this agent.
+    pub policy_violations_count: u32,
+    /// Currently active sessions for this agent.
+    pub active_sessions: Vec<ActiveSession>,
+    /// Most recent events emitted by this agent (bounded by [`MAX_RECENT_EVENTS`]).
+    pub recent_events: VecDeque<RecentEvent>,
 }
 
 /// Channel sender type for pushing [`ControlCommand`]s to an agent's control stream.

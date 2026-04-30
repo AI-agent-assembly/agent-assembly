@@ -522,6 +522,23 @@ paths:
           description: Bad request (invalid query parameters)
 components:
   schemas:
+    ActiveSessionResponse:
+      type: object
+      description: Summary of an active session in the API response.
+      required:
+      - session_id
+      - started_at
+      - status
+      properties:
+        session_id:
+          type: string
+          description: Hex-encoded session UUID.
+        started_at:
+          type: string
+          description: ISO 8601 timestamp when the session started.
+        status:
+          type: string
+          description: Current status of the session.
     AgentResponse:
       type: object
       description: JSON representation of an agent returned by the API.
@@ -533,13 +550,26 @@ components:
       - status
       - tool_names
       - metadata
+      - session_count
+      - policy_violations_count
+      - active_sessions
+      - recent_events
       properties:
+        active_sessions:
+          type: array
+          items:
+            $ref: '#/components/schemas/ActiveSessionResponse'
+          description: Currently active sessions for this agent.
         framework:
           type: string
           description: Agent framework (e.g. "langgraph", "crewai").
         id:
           type: string
           description: Hex-encoded agent UUID.
+        last_event:
+          type: string
+          description: ISO 8601 timestamp of the most recent event.
+          nullable: true
         metadata:
           type: object
           description: Arbitrary metadata key-value pairs.
@@ -548,6 +578,27 @@ components:
         name:
           type: string
           description: Human-readable agent name.
+        pid:
+          type: integer
+          format: int32
+          description: OS process ID, if known.
+          nullable: true
+          minimum: 0
+        policy_violations_count:
+          type: integer
+          format: int32
+          description: Number of policy violations recorded.
+          minimum: 0
+        recent_events:
+          type: array
+          items:
+            $ref: '#/components/schemas/RecentEventResponse'
+          description: Most recent events emitted by this agent.
+        session_count:
+          type: integer
+          format: int32
+          description: Number of sessions handled.
+          minimum: 0
         status:
           type: string
           description: Current runtime status.
@@ -862,6 +913,23 @@ components:
         status: 404
         title: Not Found
         type: about:blank
+    RecentEventResponse:
+      type: object
+      description: Summary of a recent event in the API response.
+      required:
+      - event_type
+      - summary
+      - timestamp
+      properties:
+        event_type:
+          type: string
+          description: Event type classification (e.g. "violation", "approval", "budget").
+        summary:
+          type: string
+          description: Short human-readable summary.
+        timestamp:
+          type: string
+          description: ISO 8601 timestamp when the event occurred.
     Scope:
       type: string
       description: |-
