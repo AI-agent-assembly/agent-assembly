@@ -9,6 +9,8 @@ use clap::Args;
 use owo_colors::OwoColorize;
 use serde::{Deserialize, Serialize};
 
+use crate::config::ResolvedContext;
+
 /// Request body for `POST /api/v1/policies`.
 #[derive(Debug, Serialize)]
 pub struct CreatePolicyRequest {
@@ -64,7 +66,7 @@ pub struct DiffArgs {
 }
 
 /// Execute the `aasm policy apply` command.
-pub fn run_apply(args: ApplyArgs) -> ExitCode {
+pub fn run_apply(args: ApplyArgs, ctx: &ResolvedContext) -> ExitCode {
     let rt = tokio::runtime::Runtime::new().expect("failed to create tokio runtime");
     rt.block_on(async {
         let store = FsHistoryStore::new(HistoryConfig::default_config());
