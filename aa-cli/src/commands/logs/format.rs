@@ -36,6 +36,11 @@ pub fn format_log_line(entry: &LogLineData, use_color: bool) -> String {
     )
 }
 
+/// Format a log entry as a single newline-delimited JSON object.
+pub fn format_log_json(entry: &LogLineData) -> String {
+    serde_json::to_string(entry).unwrap_or_default()
+}
+
 /// Return a [`Style`] for the given event type string.
 ///
 /// Known types get a distinct colour; unknown future types fall back
@@ -88,5 +93,13 @@ mod tests {
     #[test]
     fn format_log_line_with_color_does_not_panic() {
         let _ = format_log_line(&sample_entry(), true);
+    }
+
+    #[test]
+    fn format_log_json_produces_valid_json() {
+        let json = format_log_json(&sample_entry());
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed["event_type"], "violation");
+        assert_eq!(parsed["agent_id"], "aa001");
     }
 }
