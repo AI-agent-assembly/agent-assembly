@@ -99,6 +99,15 @@ pub struct RecentEventResponse {
     pub timestamp: String,
 }
 
+/// Summary of a recent trace session returned by the API.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RecentTraceResponse {
+    /// Hex-encoded session UUID, usable with `aasm trace <session-id>`.
+    pub session_id: String,
+    /// ISO 8601 timestamp when the trace session started.
+    pub timestamp: String,
+}
+
 /// Paginated API response wrapper.
 #[derive(Debug, Clone, Deserialize)]
 pub struct PaginatedResponse<T> {
