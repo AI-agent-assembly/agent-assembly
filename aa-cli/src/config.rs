@@ -139,3 +139,100 @@ pub fn resolve_context(
         api_key: api_key_flag.map(String::from),
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample_config() -> CliConfig {
+        let mut contexts = BTreeMap::new();
+        contexts.insert(
+            "production".to_string(),
+            ContextConfig {
+                api_url: "https://api.example.com".to_string(),
+                api_key: Some("prod-key".to_string()),
+            },
+        );
+        contexts.insert(
+            "staging".to_string(),
+            ContextConfig {
+                api_url: "https://staging.example.com".to_string(),
+                api_key: None,
+            },
+        );
+        CliConfig {
+            default_context: Some("production".to_string()),
+            contexts,
+        }
+    }
+
+    #[test]
+    fn config_round_trip_yaml() {
+        let cfg = sample_config();
+        let yaml = serde_yaml::to_string(&cfg).unwrap();
+        let parsed: CliConfig = serde_yaml::from_str(&yaml).unwrap();
+        assert_eq!(parsed.default_context, cfg.default_context);
+        assert_eq!(parsed.contexts.len(), 2);
+    }
+
+    #[test]
+    fn empty_config_deserializes() {
+        let yaml = "{}";
+        let cfg: CliConfig = serde_yaml::from_str(yaml).unwrap();
+        assert!(cfg.default_context.is_none());
+        assert!(cfg.contexts.is_empty());
+    }
+
+    #[test]
+    fn resolve_uses_default_context() {
+        let cfg = sample_config();
+        let resolved = resolve_context(&cfg, None, None, None).unwrap();
+        assert_eq!(resolved.name.as_deref(), Some("production"));
+        assert_eq!(resolved.api_url, "https://api.example.com");
+        assert_eq!(resolved.api_key.as_deref(), Some("prod-key"));
+    }
+
+    #[test]
+    fn resolve_explicit_context_overrides_default() {
+        let cfg = sample_config();
+        let resolved = resolve_context(&cfg, Some("staging"), None, None).unwrap();
+        assert_eq!(resolved.name.as_deref(), Some("staging"));
+        assert_eq!(resolved.api_url, "https://staging.example.com");
+        assert!(resolved.api_key.is_none());
+    }
+
+    #[test]
+    fn resolve_api_url_flag_overrides_everything() {
+        let cfg = sample_config();
+        let resolved =
+            resolve_context(&cfg, Some("production"), Some("http://custom:9090"), None).unwrap();
+        assert!(resolved.name.is_none());
+        assert_eq!(resolved.api_url, "http://custom:9090");
+    }
+
+    #[test]
+    fn resolve_api_key_flag_overrides_config_key() {
+        let cfg = sample_config();
+        let resolved =
+            resolve_context(&cfg, Some("production"), None, Some("override-key")).unwrap();
+        assert_eq!(resolved.api_key.as_deref(), Some("override-key"));
+    }
+
+    #[test]
+    fn resolve_unknown_context_returns_error() {
+        let cfg = sample_config();
+        let result = resolve_context(&cfg, Some("nonexistent"), None, None);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn resolve_no_config_uses_default_url() {
+        let cfg = CliConfig {
+            default_context: None,
+            contexts: BTreeMap::new(),
+        };
+        let resolved = resolve_context(&cfg, None, None, None).unwrap();
+        assert_eq!(resolved.api_url, "http://localhost:8080");
+        assert!(resolved.name.is_none());
+    }
+}
