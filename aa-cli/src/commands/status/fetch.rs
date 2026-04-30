@@ -2,9 +2,10 @@
 
 use chrono::Utc;
 
+use super::client::StatusClient;
 use super::models::{
     AgentResponse, AgentRow, ApprovalResponse, ApprovalsSummary, BudgetRow, CostResponse,
-    HealthResponse, RuntimeHealth,
+    HealthResponse, RuntimeHealth, StatusSnapshot,
 };
 
 /// Convert a health API response into a display-ready `RuntimeHealth`.
@@ -53,6 +54,35 @@ pub fn build_approvals_summary(approvals: &[ApprovalResponse]) -> ApprovalsSumma
     ApprovalsSummary {
         pending_count,
         oldest_pending_age,
+    }
+}
+
+/// Fetch all status data from the gateway in parallel and compose a `StatusSnapshot`.
+pub async fn fetch_all(client: &StatusClient) -> StatusSnapshot {
+    let (health_result, agents_result, approvals_result, costs_result) = tokio::join!(
+        client.check_health(),
+        client.list_agents(),
+        client.list_approvals(),
+        client.get_costs(),
+    );
+
+    let runtime = build_runtime_health(health_result.ok());
+    let agents = build_agent_rows(agents_result.unwrap_or_default());
+    let approvals = build_approvals_summary(&approvals_result.unwrap_or_default());
+    let budget = match costs_result {
+        Ok(c) => build_budget_row(c),
+        Err(_) => BudgetRow {
+            daily_spend_usd: "--".to_string(),
+            monthly_spend_usd: None,
+            date: "--".to_string(),
+        },
+    };
+
+    StatusSnapshot {
+        runtime,
+        agents,
+        approvals,
+        budget,
     }
 }
 
