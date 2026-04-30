@@ -76,21 +76,15 @@ fn handle_approvals_key(state: &mut DashboardState, key: KeyEvent) -> InputActio
         KeyCode::Up | KeyCode::Char('k') => {
             state.approval_selected = state.approval_selected.saturating_sub(1);
         }
-        KeyCode::Down | KeyCode::Char('j') => {
-            if !state.pending_approvals.is_empty() {
-                state.approval_selected = (state.approval_selected + 1)
-                    .min(state.pending_approvals.len() - 1);
-            }
+        KeyCode::Down | KeyCode::Char('j') if !state.pending_approvals.is_empty() => {
+            state.approval_selected = (state.approval_selected + 1)
+                .min(state.pending_approvals.len() - 1);
         }
-        KeyCode::Char('a') => {
-            if !state.pending_approvals.is_empty() {
-                return InputAction::Approve;
-            }
+        KeyCode::Char('a') if !state.pending_approvals.is_empty() => {
+            return InputAction::Approve;
         }
-        KeyCode::Char('r') => {
-            if !state.pending_approvals.is_empty() {
-                return InputAction::Reject;
-            }
+        KeyCode::Char('r') if !state.pending_approvals.is_empty() => {
+            return InputAction::Reject;
         }
         _ => {}
     }

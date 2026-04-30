@@ -89,6 +89,12 @@ pub struct DashboardState {
     pub should_quit: bool,
 }
 
+impl Default for DashboardState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DashboardState {
     /// Create an initial empty state with defaults.
     pub fn new() -> Self {
