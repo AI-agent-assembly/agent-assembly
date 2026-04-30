@@ -69,3 +69,14 @@ pub struct CostResponse {
     pub monthly_spend_usd: Option<String>,
     pub date: String,
 }
+
+/// Per-agent budget row for display.
+#[derive(Debug, Clone, Serialize)]
+pub struct BudgetRow {
+    /// Total daily spend in USD (aggregated, since per-agent is not yet available).
+    pub daily_spend_usd: String,
+    /// Monthly spend if available.
+    pub monthly_spend_usd: Option<String>,
+    /// Reporting date.
+    pub date: String,
+}
