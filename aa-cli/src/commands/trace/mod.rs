@@ -1,6 +1,10 @@
 //! `aasm trace` — session trace visualization.
 
+use std::process::ExitCode;
+
 use clap::{Args, ValueEnum};
+
+use crate::config::ResolvedContext;
 
 pub mod models;
 
@@ -23,4 +27,9 @@ pub struct TraceArgs {
     /// Visualization format.
     #[arg(long, value_enum, default_value_t = TraceFormat::Tree)]
     pub format: TraceFormat,
+}
+
+/// Execute the `aasm trace` subcommand.
+pub fn dispatch(_args: TraceArgs, _ctx: &ResolvedContext) -> ExitCode {
+    ExitCode::SUCCESS
 }
