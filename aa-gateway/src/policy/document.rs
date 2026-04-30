@@ -69,6 +69,12 @@ pub struct ToolPolicy {
 /// Fully validated policy document produced by [`super::validator::PolicyValidator`].
 #[derive(Debug, Clone, PartialEq)]
 pub struct PolicyDocument {
+    /// Human-readable policy name from the YAML envelope `metadata.name`.
+    /// `None` when parsed from the flat (non-envelope) format.
+    pub name: Option<String>,
+    /// Policy revision version from the YAML envelope `metadata.version`.
+    /// `None` when parsed from the flat (non-envelope) format.
+    pub policy_version: Option<String>,
     /// Schema version string.
     pub version: Option<String>,
     /// Network egress policy.
@@ -92,6 +98,8 @@ mod tests {
     #[test]
     fn policy_document_default_tools_is_empty_map() {
         let doc = PolicyDocument {
+            name: None,
+            policy_version: None,
             version: None,
             network: None,
             schedule: None,

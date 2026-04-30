@@ -8,7 +8,7 @@ use crate::policy::{
         ToolPolicy,
     },
     error::{ValidationError, ValidationWarning},
-    raw::RawPolicyDocument,
+    raw::{GovernancePolicyEnvelope, RawPolicyDocument},
 };
 
 /// Result of a successful parse+validate pass.
@@ -30,15 +30,8 @@ impl PolicyValidator {
     /// Returns `Err` with accumulated [`ValidationError`]s when at least one
     /// hard constraint is violated, or when the YAML cannot be parsed.
     pub fn from_yaml(yaml_str: &str) -> Result<PolicyValidatorOutput, Vec<ValidationError>> {
-        // Step 1 — parse raw YAML
-        let raw: RawPolicyDocument = serde_yaml::from_str(yaml_str).map_err(|e| {
-            let line = e.location().map(|l| l.line() as u32);
-            let mut err = ValidationError::new("(document)", format!("YAML parse error: {}", e));
-            if let Some(l) = line {
-                err = err.with_line(l);
-            }
-            vec![err]
-        })?;
+        // Step 1 — try envelope format first (apiVersion/kind/metadata/spec)
+        let (raw, metadata) = Self::parse_yaml(yaml_str)?;
 
         let mut errors: Vec<ValidationError> = Vec::new();
         let mut warnings: Vec<ValidationWarning> = Vec::new();
@@ -68,8 +61,15 @@ impl PolicyValidator {
             return Err(errors);
         }
 
+        let (meta_name, meta_version) = match metadata {
+            Some(m) => (m.name, m.version),
+            None => (None, None),
+        };
+
         Ok(PolicyValidatorOutput {
             document: PolicyDocument {
+                name: meta_name,
+                policy_version: meta_version,
                 version: raw.version,
                 network,
                 schedule,
@@ -80,6 +80,35 @@ impl PolicyValidator {
             },
             warnings,
         })
+    }
+
+    /// Parse YAML string, detecting envelope vs flat format.
+    ///
+    /// Returns the parsed `RawPolicyDocument` and optional metadata extracted
+    /// from the envelope wrapper.
+    fn parse_yaml(
+        yaml_str: &str,
+    ) -> Result<(RawPolicyDocument, Option<crate::policy::raw::RawMetadata>), Vec<ValidationError>> {
+        let make_parse_error = |e: serde_yaml::Error| {
+            let line = e.location().map(|l| l.line() as u32);
+            let mut err = ValidationError::new("(document)", format!("YAML parse error: {}", e));
+            if let Some(l) = line {
+                err = err.with_line(l);
+            }
+            vec![err]
+        };
+
+        // Try envelope format: if it has a `spec` key, treat it as wrapped.
+        if let Ok(envelope) = serde_yaml::from_str::<GovernancePolicyEnvelope>(yaml_str) {
+            if let Some(spec_value) = envelope.spec {
+                let raw: RawPolicyDocument = serde_yaml::from_value(spec_value).map_err(make_parse_error)?;
+                return Ok((raw, envelope.metadata));
+            }
+        }
+
+        // Fall back to flat format (no envelope).
+        let raw: RawPolicyDocument = serde_yaml::from_str(yaml_str).map_err(make_parse_error)?;
+        Ok((raw, None))
     }
 
     // ── Section validators ──────────────────────────────────────────────────
@@ -719,5 +748,89 @@ data:
         assert!(result.is_err());
         let errs = result.unwrap_err();
         assert!(errs.iter().any(|e| e.field == "approval_timeout_secs"));
+    }
+
+    // ── Envelope vs flat format ────────────────────────────────────────────
+
+    #[test]
+    fn envelope_format_extracts_metadata_name_and_version() {
+        let yaml = r#"
+apiVersion: agent-assembly/v1
+kind: Policy
+metadata:
+  name: my-policy
+  version: "2.0.0"
+spec:
+  budget:
+    daily_limit_usd: 10.0
+"#;
+        let out = PolicyValidator::from_yaml(yaml).unwrap();
+        assert_eq!(out.document.name, Some("my-policy".to_string()));
+        assert_eq!(out.document.policy_version, Some("2.0.0".to_string()));
+        assert_eq!(out.document.budget.unwrap().daily_limit_usd, Some(10.0));
+    }
+
+    #[test]
+    fn envelope_format_with_tools_parses_spec_correctly() {
+        let yaml = r#"
+apiVersion: agent-assembly/v1
+kind: Policy
+metadata:
+  name: test-policy
+  version: "1.0.0"
+spec:
+  tools:
+    bash:
+      allow: true
+      limit_per_hour: 5
+    file_write:
+      allow: false
+"#;
+        let out = PolicyValidator::from_yaml(yaml).unwrap();
+        assert_eq!(out.document.name, Some("test-policy".to_string()));
+        assert_eq!(out.document.tools.len(), 2);
+        assert!(out.document.tools["bash"].allow);
+        assert!(!out.document.tools["file_write"].allow);
+    }
+
+    #[test]
+    fn flat_format_has_no_metadata() {
+        let yaml = "budget:\n  daily_limit_usd: 25.0\n";
+        let out = PolicyValidator::from_yaml(yaml).unwrap();
+        assert!(out.document.name.is_none());
+        assert!(out.document.policy_version.is_none());
+        assert_eq!(out.document.budget.unwrap().daily_limit_usd, Some(25.0));
+    }
+
+    #[test]
+    fn envelope_format_without_metadata_section() {
+        let yaml = r#"
+apiVersion: agent-assembly/v1
+kind: Policy
+spec:
+  budget:
+    daily_limit_usd: 5.0
+"#;
+        let out = PolicyValidator::from_yaml(yaml).unwrap();
+        assert!(out.document.name.is_none());
+        assert!(out.document.policy_version.is_none());
+        assert_eq!(out.document.budget.unwrap().daily_limit_usd, Some(5.0));
+    }
+
+    #[test]
+    fn envelope_format_validation_errors_propagate() {
+        let yaml = r#"
+apiVersion: agent-assembly/v1
+kind: Policy
+metadata:
+  name: bad-policy
+spec:
+  budget:
+    daily_limit_usd: -1.0
+"#;
+        let result = PolicyValidator::from_yaml(yaml);
+        assert!(result.is_err());
+        let errs = result.unwrap_err();
+        assert!(errs.iter().any(|e| e.field == "budget.daily_limit_usd"));
     }
 }
