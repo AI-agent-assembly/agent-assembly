@@ -67,15 +67,24 @@ fn status_color(status: &str) -> Color {
 /// Render agents as a table using comfy-table.
 fn render_table(agents: &[AgentResponse]) {
     let mut table = Table::new();
-    table.set_header(vec!["AGENT_ID", "NAME", "FRAMEWORK", "VERSION", "STATUS"]);
+    table.set_header(vec![
+        "AGENT_ID", "NAME", "FRAMEWORK", "VERSION", "STATUS", "PID", "SESSIONS", "LAST_EVENT",
+    ]);
 
     for agent in agents {
+        let pid_str = agent.pid.map_or("-".to_string(), |p| p.to_string());
+        let sessions_str = agent.session_count.map_or("-".to_string(), |s| s.to_string());
+        let last_event_str = agent.last_event.as_deref().unwrap_or("-");
+
         table.add_row(vec![
             Cell::new(&agent.id),
             Cell::new(&agent.name),
             Cell::new(&agent.framework),
             Cell::new(&agent.version),
             Cell::new(&agent.status).fg(status_color(&agent.status)),
+            Cell::new(&pid_str),
+            Cell::new(&sessions_str),
+            Cell::new(last_event_str),
         ]);
     }
 
@@ -160,6 +169,10 @@ mod tests {
                 status: "Active".to_string(),
                 tool_names: vec!["search".to_string()],
                 metadata: Default::default(),
+                pid: Some(1234),
+                session_count: Some(3),
+                last_event: Some("2025-01-15T10:30:00Z".to_string()),
+                policy_violations_count: Some(0),
             },
             AgentResponse {
                 id: "11223344556677881122334455667788".to_string(),
@@ -169,6 +182,10 @@ mod tests {
                 status: "Suspended".to_string(),
                 tool_names: vec![],
                 metadata: Default::default(),
+                pid: None,
+                session_count: None,
+                last_event: None,
+                policy_violations_count: Some(1),
             },
         ]
     }
