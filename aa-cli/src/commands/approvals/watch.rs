@@ -19,8 +19,7 @@ use super::client;
 use super::models::ApprovalResponse;
 
 /// Type alias for the WebSocket stream used by the watch command.
-pub type WsStream =
-    tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
+pub type WsStream = tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
 
 /// Arguments for the `aasm approvals watch` subcommand.
 #[derive(Debug, Args)]
@@ -33,10 +32,9 @@ pub struct WatchArgs {
 /// Establish a WebSocket connection to the approval events endpoint.
 pub async fn connect_approval_ws(ctx: &ResolvedContext) -> Result<WsStream, CliError> {
     let url = client::build_ws_url(&ctx.api_url, "approval_required")?;
-    let (ws, _response) =
-        tokio_tungstenite::connect_async(&url)
-            .await
-            .map_err(|e| CliError::Io(std::io::Error::new(std::io::ErrorKind::ConnectionRefused, e)))?;
+    let (ws, _response) = tokio_tungstenite::connect_async(&url)
+        .await
+        .map_err(|e| CliError::Io(std::io::Error::new(std::io::ErrorKind::ConnectionRefused, e)))?;
     Ok(ws)
 }
 
@@ -182,10 +180,7 @@ pub async fn run_watch_stream(mut ws: WsStream) {
                         "  \x1b[1;33mNEW\x1b[0m  {} | agent={} | action={} | condition={}",
                         approval.id, approval.agent_id, approval.action, approval.reason
                     );
-                    println!(
-                        "        run: aasm approvals approve {} --reason \"...\"",
-                        approval.id
-                    );
+                    println!("        run: aasm approvals approve {} --reason \"...\"", approval.id);
                     println!();
                 }
             }
@@ -227,8 +222,7 @@ pub async fn run_watch_interactive(mut ws: WsStream, ctx: &ResolvedContext) {
                     KeyAction::Approve => {
                         if let Some(id) = state.selected_id().map(String::from) {
                             terminal::disable_raw_mode().ok();
-                            let result =
-                                client::approve_action(ctx, &id, Some("approved via watch")).await;
+                            let result = client::approve_action(ctx, &id, Some("approved via watch")).await;
                             match result {
                                 Ok(_) => {
                                     state.items.retain(|i| i.id != id);
@@ -251,16 +245,12 @@ pub async fn run_watch_interactive(mut ws: WsStream, ctx: &ResolvedContext) {
                             std::io::stdin().read_line(&mut reason).ok();
                             let reason = reason.trim();
                             if !reason.is_empty() {
-                                let result =
-                                    client::reject_action(ctx, &id, reason).await;
+                                let result = client::reject_action(ctx, &id, reason).await;
                                 match result {
                                     Ok(_) => {
                                         state.items.retain(|i| i.id != id);
-                                        if state.selected > 0
-                                            && state.selected >= state.items.len()
-                                        {
-                                            state.selected =
-                                                state.items.len().saturating_sub(1);
+                                        if state.selected > 0 && state.selected >= state.items.len() {
+                                            state.selected = state.items.len().saturating_sub(1);
                                         }
                                     }
                                     Err(e) => eprintln!("reject error: {e}"),

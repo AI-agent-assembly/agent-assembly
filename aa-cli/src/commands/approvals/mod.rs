@@ -38,11 +38,7 @@ pub struct ApprovalsArgs {
 }
 
 /// Dispatch the parsed approvals subcommand to the appropriate handler.
-pub fn dispatch(
-    args: ApprovalsArgs,
-    ctx: &ResolvedContext,
-    global_output: OutputFormat,
-) -> ExitCode {
+pub fn dispatch(args: ApprovalsArgs, ctx: &ResolvedContext, global_output: OutputFormat) -> ExitCode {
     match args.command {
         ApprovalsSubcommand::List(a) => list::run_list(a, ctx, global_output),
         ApprovalsSubcommand::Get(a) => get::run_get(a, ctx, global_output),

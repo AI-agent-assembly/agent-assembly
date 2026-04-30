@@ -809,8 +809,7 @@ mod tests {
         let socket_path = temp_socket_path("approval-roundtrip");
         let token = CancellationToken::new();
         let counter = Arc::new(AtomicI64::new(0));
-        let (inbound_rx, router) =
-            start_server(socket_path.clone(), token.clone(), Arc::clone(&counter)).await;
+        let (inbound_rx, router) = start_server(socket_path.clone(), token.clone(), Arc::clone(&counter)).await;
 
         // Policy: TOOL_CALL requires approval.
         let policy = Arc::new(PolicyRules {
@@ -833,8 +832,7 @@ mod tests {
             agent_id: "test-agent".to_string(),
         };
         let pipeline_metrics = Arc::new(PipelineMetrics::default());
-        let (broadcast_tx, _broadcast_rx) =
-            tokio::sync::broadcast::channel::<crate::pipeline::PipelineEvent>(64);
+        let (broadcast_tx, _broadcast_rx) = tokio::sync::broadcast::channel::<crate::pipeline::PipelineEvent>(64);
         let pipeline_router = Arc::clone(&router);
         let pipeline_token = token.clone();
         tokio::spawn(crate::pipeline::run(
@@ -896,8 +894,7 @@ mod tests {
         assert_eq!(pending_resp.decision, Decision::Pending as i32);
         assert!(!pending_resp.approval_id.is_empty(), "approval_id must be set");
 
-        let approval_id =
-            uuid::Uuid::parse_str(&pending_resp.approval_id).expect("invalid UUID in approval_id");
+        let approval_id = uuid::Uuid::parse_str(&pending_resp.approval_id).expect("invalid UUID in approval_id");
 
         // Step 3: Approve via the queue (simulates CLI calling ApprovalQueue::decide).
         queue_ref

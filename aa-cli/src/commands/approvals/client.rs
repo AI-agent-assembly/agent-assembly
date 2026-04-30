@@ -17,9 +17,7 @@ pub fn build_approvals_url(base: &str) -> String {
 }
 
 /// Fetch all pending approval requests from the API.
-pub async fn list_approvals(
-    ctx: &ResolvedContext,
-) -> Result<PaginatedResponse<ApprovalResponse>, CliError> {
+pub async fn list_approvals(ctx: &ResolvedContext) -> Result<PaginatedResponse<ApprovalResponse>, CliError> {
     let url = build_approvals_url(&ctx.api_url);
     let client = reqwest::Client::new();
     let mut req = client.get(&url);
@@ -32,10 +30,7 @@ pub async fn list_approvals(
 }
 
 /// Fetch a single pending approval request by ID.
-pub async fn get_approval(
-    ctx: &ResolvedContext,
-    id: &str,
-) -> Result<ApprovalResponse, CliError> {
+pub async fn get_approval(ctx: &ResolvedContext, id: &str) -> Result<ApprovalResponse, CliError> {
     let url = format!("{}/{id}", build_approvals_url(&ctx.api_url));
     let client = reqwest::Client::new();
     let mut req = client.get(&url);
@@ -69,11 +64,7 @@ pub async fn approve_action(
 }
 
 /// Reject a pending approval request by ID.
-pub async fn reject_action(
-    ctx: &ResolvedContext,
-    id: &str,
-    reason: &str,
-) -> Result<ApprovalResponse, CliError> {
+pub async fn reject_action(ctx: &ResolvedContext, id: &str, reason: &str) -> Result<ApprovalResponse, CliError> {
     let url = format!("{}/{id}/reject", build_approvals_url(&ctx.api_url));
     let client = reqwest::Client::new();
     let body = serde_json::json!({
@@ -94,16 +85,18 @@ pub async fn reject_action(
 /// `http://` becomes `ws://`, `https://` becomes `wss://`.
 /// Appends `/api/v1/events?types={types}`.
 pub fn build_ws_url(base: &str, types: &str) -> Result<String, CliError> {
-    let mut parsed = Url::parse(base).map_err(|e| {
-        CliError::Io(std::io::Error::new(std::io::ErrorKind::InvalidInput, e))
-    })?;
+    let mut parsed =
+        Url::parse(base).map_err(|e| CliError::Io(std::io::Error::new(std::io::ErrorKind::InvalidInput, e)))?;
     let new_scheme = match parsed.scheme() {
         "https" => "wss",
         _ => "ws",
     };
-    parsed
-        .set_scheme(new_scheme)
-        .map_err(|()| CliError::Io(std::io::Error::new(std::io::ErrorKind::InvalidInput, "failed to set scheme")))?;
+    parsed.set_scheme(new_scheme).map_err(|()| {
+        CliError::Io(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "failed to set scheme",
+        ))
+    })?;
     let base_str = parsed.as_str().trim_end_matches('/');
     Ok(format!("{base_str}/api/v1/events?types={types}"))
 }

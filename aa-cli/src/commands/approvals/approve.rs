@@ -22,11 +22,7 @@ pub struct ApproveArgs {
 /// Execute the `aasm approvals approve` subcommand.
 pub fn run_approve(args: ApproveArgs, ctx: &ResolvedContext) -> ExitCode {
     let rt = tokio::runtime::Runtime::new().expect("failed to create tokio runtime");
-    let result = rt.block_on(client::approve_action(
-        ctx,
-        &args.id,
-        args.reason.as_deref(),
-    ));
+    let result = rt.block_on(client::approve_action(ctx, &args.id, args.reason.as_deref()));
 
     match result {
         Ok(resp) => {
