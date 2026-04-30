@@ -137,4 +137,25 @@ mod tests {
         let bar = render_bar(100, 0, 40);
         assert!(bar.is_empty());
     }
+
+    #[test]
+    fn render_timeline_fits_80_columns() {
+        let trace = SessionTrace {
+            session_id: "sess-80".to_string(),
+            events: vec![
+                make_event(TraceEventKind::Llm, "GPT-4o", 834),
+                make_event(TraceEventKind::ToolCall, "query_db", 12),
+                make_event(TraceEventKind::ToolResult, "3 records", 0),
+            ],
+        };
+        let output = render_timeline(&trace, 80);
+        for line in output.lines() {
+            // Use char count (display width) — not byte len, since █ is multi-byte.
+            let char_count = line.chars().count();
+            assert!(
+                char_count <= 80,
+                "line exceeds 80 columns ({char_count} chars): {line}",
+            );
+        }
+    }
 }
