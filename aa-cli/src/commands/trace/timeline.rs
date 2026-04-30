@@ -158,4 +158,15 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn render_timeline_empty_trace() {
+        let trace = SessionTrace {
+            session_id: "sess-empty".to_string(),
+            events: vec![],
+        };
+        let output = render_timeline(&trace, 80);
+        assert!(output.contains("Timeline: sess-empty"));
+        assert!(output.contains("(no events)"));
+    }
 }
