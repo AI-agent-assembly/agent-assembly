@@ -78,3 +78,64 @@ pub fn save(config: &CliConfig) -> Result<(), CliError> {
     std::fs::write(&path, yaml).map_err(|e| CliError::Config { path, source: e })?;
     Ok(())
 }
+
+/// Resolved connection parameters after merging CLI flags and config file.
+#[derive(Debug, Clone)]
+pub struct ResolvedContext {
+    /// The context name that was resolved (if any).
+    pub name: Option<String>,
+    /// Base URL of the API gateway.
+    pub api_url: String,
+    /// API key for authentication (if any).
+    pub api_key: Option<String>,
+}
+
+/// Resolve the active API context by merging CLI flags with the config file.
+///
+/// Precedence (highest to lowest):
+/// 1. Explicit CLI flags (`--api-url`, `--api-key`)
+/// 2. Named context from config (`--context <name>` or `default_context`)
+/// 3. Built-in default (`http://localhost:8080`)
+pub fn resolve_context(
+    config: &CliConfig,
+    context_flag: Option<&str>,
+    api_url_flag: Option<&str>,
+    api_key_flag: Option<&str>,
+) -> Result<ResolvedContext, CliError> {
+    let default_url = "http://localhost:8080";
+
+    // If explicit --api-url is provided, use it directly (no context lookup).
+    if let Some(url) = api_url_flag {
+        return Ok(ResolvedContext {
+            name: None,
+            api_url: url.to_string(),
+            api_key: api_key_flag.map(String::from),
+        });
+    }
+
+    // Determine which context name to look up.
+    let context_name = context_flag
+        .map(String::from)
+        .or_else(|| config.default_context.clone());
+
+    if let Some(ref name) = context_name {
+        let ctx = config
+            .contexts
+            .get(name)
+            .ok_or_else(|| CliError::ContextNotFound(name.clone()))?;
+        return Ok(ResolvedContext {
+            name: Some(name.clone()),
+            api_url: ctx.api_url.clone(),
+            api_key: api_key_flag
+                .map(String::from)
+                .or_else(|| ctx.api_key.clone()),
+        });
+    }
+
+    // No context specified, no default — use built-in default.
+    Ok(ResolvedContext {
+        name: None,
+        api_url: default_url.to_string(),
+        api_key: api_key_flag.map(String::from),
+    })
+}
