@@ -28,3 +28,19 @@ pub async fn list_approvals(
     let body = resp.json::<PaginatedResponse<ApprovalResponse>>().await?;
     Ok(body)
 }
+
+/// Fetch a single pending approval request by ID.
+pub async fn get_approval(
+    ctx: &ResolvedContext,
+    id: &str,
+) -> Result<ApprovalResponse, CliError> {
+    let url = format!("{}/{id}", build_approvals_url(&ctx.api_url));
+    let client = reqwest::Client::new();
+    let mut req = client.get(&url);
+    if let Some(ref key) = ctx.api_key {
+        req = req.bearer_auth(key);
+    }
+    let resp = req.send().await?.error_for_status()?;
+    let body = resp.json::<ApprovalResponse>().await?;
+    Ok(body)
+}
