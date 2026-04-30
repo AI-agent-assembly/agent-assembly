@@ -89,6 +89,22 @@ fn governance_event_schema_exists() {
         "GovernanceEvent schema missing"
     );
     assert!(schemas.contains_key("EventType"), "EventType schema missing");
+    assert!(
+        schemas.contains_key("ViolationPayload"),
+        "ViolationPayload schema missing"
+    );
+    assert!(
+        schemas.contains_key("ApprovalPayload"),
+        "ApprovalPayload schema missing"
+    );
+    assert!(
+        schemas.contains_key("BudgetAlertPayload"),
+        "BudgetAlertPayload schema missing"
+    );
+    assert!(
+        schemas.contains_key("EventPayload"),
+        "EventPayload schema missing"
+    );
 }
 
 #[test]
