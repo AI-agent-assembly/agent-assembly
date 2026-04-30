@@ -61,5 +61,5 @@ fn main() -> ExitCode {
         }
     };
 
-    commands::dispatch(cli.command, &resolved)
+    commands::dispatch(cli.command, &resolved, cli.output)
 }
