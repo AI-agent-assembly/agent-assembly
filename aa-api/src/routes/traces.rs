@@ -2,37 +2,10 @@
 
 use axum::http::StatusCode;
 use axum::{Extension, Json};
-use serde::Serialize;
-use utoipa::ToSchema;
 
 use crate::error::ProblemDetail;
+use crate::models::trace::TraceResponse;
 use crate::state::AppState;
-
-/// A single span within an agent session trace.
-#[derive(Debug, Clone, Serialize, ToSchema)]
-pub struct TraceSpan {
-    /// Span identifier.
-    pub span_id: String,
-    /// ISO 8601 start time.
-    pub start_time: String,
-    /// ISO 8601 end time (if completed).
-    pub end_time: Option<String>,
-    /// Operation name.
-    pub operation: String,
-    /// Governance decision result for this span.
-    pub decision: Option<String>,
-}
-
-/// Full trace for one agent session.
-#[derive(Debug, Clone, Serialize, ToSchema)]
-pub struct TraceResponse {
-    /// Session identifier.
-    pub session_id: String,
-    /// Agent that produced this trace.
-    pub agent_id: String,
-    /// Ordered list of spans in the session.
-    pub spans: Vec<TraceSpan>,
-}
 
 /// `GET /api/v1/traces/:session_id` — full trace for one agent session.
 ///
