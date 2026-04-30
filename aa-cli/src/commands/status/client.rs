@@ -2,6 +2,7 @@
 
 use reqwest::Client;
 
+use super::models::HealthResponse;
 use crate::error::CliError;
 
 /// Client for making status-related API requests.
@@ -33,5 +34,12 @@ impl StatusClient {
     /// Return the base URL (for error messages).
     pub fn base_url(&self) -> &str {
         &self.base_url
+    }
+
+    /// Check gateway health via `GET /api/v1/health`.
+    pub async fn check_health(&self) -> Result<HealthResponse, CliError> {
+        let resp = self.http.get(self.url("/api/v1/health")).send().await?;
+        let body = resp.json::<HealthResponse>().await?;
+        Ok(body)
     }
 }
