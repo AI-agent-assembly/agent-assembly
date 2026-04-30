@@ -70,3 +70,60 @@ pub async fn get_cost_summary(Extension(state): Extension<AppState>) -> (StatusC
 
     (StatusCode::OK, Json(summary))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cost_summary_serialization_includes_per_agent() {
+        let summary = CostSummary {
+            daily_spend_usd: "8.10".to_string(),
+            monthly_spend_usd: Some("142.50".to_string()),
+            date: "2026-04-30".to_string(),
+            daily_limit_usd: Some("100.00".to_string()),
+            monthly_limit_usd: Some("2000.00".to_string()),
+            per_agent: vec![AgentCostEntry {
+                agent_id: "abc123".to_string(),
+                daily_spend_usd: "4.10".to_string(),
+            }],
+        };
+        let json = serde_json::to_value(&summary).unwrap();
+        assert_eq!(json["per_agent"][0]["agent_id"], "abc123");
+        assert_eq!(json["per_agent"][0]["daily_spend_usd"], "4.10");
+        assert_eq!(json["daily_limit_usd"], "100.00");
+        assert_eq!(json["monthly_limit_usd"], "2000.00");
+    }
+
+    #[test]
+    fn cost_summary_omits_limits_when_none() {
+        let summary = CostSummary {
+            daily_spend_usd: "0.00".to_string(),
+            monthly_spend_usd: None,
+            date: "2026-04-30".to_string(),
+            daily_limit_usd: None,
+            monthly_limit_usd: None,
+            per_agent: vec![],
+        };
+        let json = serde_json::to_value(&summary).unwrap();
+        assert!(json.get("daily_limit_usd").is_none());
+        assert!(json.get("monthly_limit_usd").is_none());
+        assert!(json["monthly_spend_usd"].is_null());
+    }
+
+    #[test]
+    fn cost_summary_backward_compatible_fields_unchanged() {
+        let summary = CostSummary {
+            daily_spend_usd: "8.10".to_string(),
+            monthly_spend_usd: Some("142.50".to_string()),
+            date: "2026-04-30".to_string(),
+            daily_limit_usd: None,
+            monthly_limit_usd: None,
+            per_agent: vec![],
+        };
+        let json = serde_json::to_value(&summary).unwrap();
+        assert_eq!(json["daily_spend_usd"], "8.10");
+        assert_eq!(json["monthly_spend_usd"], "142.50");
+        assert_eq!(json["date"], "2026-04-30");
+    }
+}
