@@ -107,3 +107,24 @@ pub fn build_ws_url(base: &str, types: &str) -> Result<String, CliError> {
     let base_str = parsed.as_str().trim_end_matches('/');
     Ok(format!("{base_str}/api/v1/events?types={types}"))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn build_approvals_url_without_trailing_slash() {
+        assert_eq!(
+            build_approvals_url("http://localhost:8080"),
+            "http://localhost:8080/api/v1/approvals"
+        );
+    }
+
+    #[test]
+    fn build_approvals_url_with_trailing_slash() {
+        assert_eq!(
+            build_approvals_url("http://localhost:8080/"),
+            "http://localhost:8080/api/v1/approvals"
+        );
+    }
+}
