@@ -27,6 +27,8 @@ pub enum Commands {
     Completion(completion::CompletionArgs),
     /// Show CLI and gateway version information.
     Version,
+    /// Visualize a session trace (tree or timeline).
+    Trace(trace::TraceArgs),
 }
 
 /// Dispatch the parsed CLI command to the appropriate handler.
