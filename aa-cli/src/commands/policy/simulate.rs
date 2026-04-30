@@ -113,10 +113,7 @@ fn print_report(report: &SimulationReport) {
 
     if !report.flagged_outcomes.is_empty() {
         println!();
-        println!(
-            "{:<8} {:<20} {:<12} REASON",
-            "EVENT#", "ACTION", "DECISION"
-        );
+        println!("{:<8} {:<20} {:<12} REASON", "EVENT#", "ACTION", "DECISION");
         println!("{}", "-".repeat(70));
         for outcome in &report.flagged_outcomes {
             println!(
