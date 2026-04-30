@@ -169,12 +169,22 @@ mod tests {
         let json = r#"{
             "daily_spend_usd": "8.10",
             "monthly_spend_usd": "142.50",
-            "date": "2026-04-30"
+            "date": "2026-04-30",
+            "daily_limit_usd": "100.00",
+            "monthly_limit_usd": "2000.00",
+            "per_agent": [
+                {"agent_id": "abc123", "daily_spend_usd": "4.10"}
+            ]
         }"#;
         let resp: CostResponse = serde_json::from_str(json).unwrap();
         assert_eq!(resp.daily_spend_usd, "8.10");
         assert_eq!(resp.monthly_spend_usd.as_deref(), Some("142.50"));
         assert_eq!(resp.date, "2026-04-30");
+        assert_eq!(resp.daily_limit_usd.as_deref(), Some("100.00"));
+        assert_eq!(resp.monthly_limit_usd.as_deref(), Some("2000.00"));
+        assert_eq!(resp.per_agent.len(), 1);
+        assert_eq!(resp.per_agent[0].agent_id, "abc123");
+        assert_eq!(resp.per_agent[0].daily_spend_usd, "4.10");
     }
 
     #[test]
@@ -182,5 +192,19 @@ mod tests {
         let json = r#"{"daily_spend_usd": "0.00", "date": "2026-04-30"}"#;
         let resp: CostResponse = serde_json::from_str(json).unwrap();
         assert!(resp.monthly_spend_usd.is_none());
+    }
+
+    #[test]
+    fn cost_response_deserializes_without_new_fields() {
+        let json = r#"{
+            "daily_spend_usd": "5.00",
+            "monthly_spend_usd": "50.00",
+            "date": "2026-04-30"
+        }"#;
+        let resp: CostResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.daily_spend_usd, "5.00");
+        assert!(resp.daily_limit_usd.is_none());
+        assert!(resp.monthly_limit_usd.is_none());
+        assert!(resp.per_agent.is_empty());
     }
 }
