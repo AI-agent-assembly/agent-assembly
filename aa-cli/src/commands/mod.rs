@@ -8,6 +8,7 @@ use crate::config::ResolvedContext;
 use crate::output::OutputFormat;
 
 pub mod agent;
+pub mod alerts;
 pub mod approvals;
 pub mod audit;
 pub mod completion;
@@ -25,6 +26,8 @@ pub mod version;
 pub enum Commands {
     /// Manage monitored agent processes.
     Agent(agent::AgentArgs),
+    /// Manage governance alerts.
+    Alerts(alerts::AlertsArgs),
     /// Query audit log entries and export compliance reports.
     Audit(audit::AuditArgs),
     /// Query and stream audit log events.
@@ -53,6 +56,7 @@ pub enum Commands {
 pub fn dispatch(cmd: Commands, ctx: &ResolvedContext, output: OutputFormat) -> ExitCode {
     match cmd {
         Commands::Agent(args) => agent::dispatch(args, ctx, output),
+        Commands::Alerts(args) => alerts::dispatch(args, ctx, output),
         Commands::Audit(args) => audit::dispatch(args, ctx, output),
         Commands::Logs(args) => logs::dispatch(args, ctx),
         Commands::Policy(args) => policy::dispatch(args, ctx),
