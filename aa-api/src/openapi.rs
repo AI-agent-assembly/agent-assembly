@@ -7,6 +7,7 @@ use utoipa::{Modify, OpenApi};
 use crate::models::event::GovernanceEvent;
 use crate::models::event_type::EventType;
 use crate::models::trace::{TraceResponse, TraceSpan};
+use crate::models::ws_payloads::{ApprovalPayload, BudgetAlertPayload, ViolationPayload};
 use crate::routes::{agents, alerts, approvals, auth, costs, logs, policies, traces};
 
 /// Root OpenAPI document collecting all annotated paths and schemas.
@@ -70,6 +71,9 @@ use crate::routes::{agents, alerts, approvals, auth, costs, logs, policies, trac
         crate::auth::scope::Scope,
         GovernanceEvent,
         EventType,
+        ViolationPayload,
+        ApprovalPayload,
+        BudgetAlertPayload,
     )),
     modifiers(&SecurityAddon),
 )]
