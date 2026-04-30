@@ -48,6 +48,18 @@ pub struct EvaluationResult {
     pub deny_action: Option<DenyAction>,
 }
 
+/// Summary of the currently active policy, returned by
+/// [`PolicyEngine::active_policy_info`].
+#[derive(Debug, Clone)]
+pub struct ActivePolicyInfo {
+    /// Policy name from YAML envelope `metadata.name`.
+    pub name: Option<String>,
+    /// Policy version from YAML envelope `metadata.version`.
+    pub policy_version: Option<String>,
+    /// Number of per-tool rules in the active policy.
+    pub rule_count: usize,
+}
+
 /// Assembled policy engine that evaluates governance actions through a 7-step pipeline.
 pub struct PolicyEngine {
     policy: Arc<ArcSwap<PolicyDocument>>,
