@@ -4,12 +4,14 @@ pub mod client;
 pub mod fetch;
 pub mod models;
 pub mod render;
+pub mod watch;
 
 use std::process::ExitCode;
 
 use clap::Args;
 
 use crate::config::ResolvedContext;
+use crate::output::OutputFormat;
 
 /// Arguments for the `aasm status` subcommand.
 #[derive(Debug, Args)]
@@ -38,7 +40,18 @@ pub fn compute_exit_code(snapshot: &StatusSnapshot) -> ExitCode {
 }
 
 /// Entry point for `aasm status`.
-pub fn dispatch(_args: StatusArgs, _ctx: &ResolvedContext) -> ExitCode {
-    eprintln!("status: not yet implemented");
-    ExitCode::FAILURE
+pub fn dispatch(args: StatusArgs, ctx: &ResolvedContext, output: OutputFormat) -> ExitCode {
+    let rt = tokio::runtime::Runtime::new().expect("failed to create tokio runtime");
+    rt.block_on(async {
+        let api_client = client::StatusClient::new(&ctx.api_url);
+
+        if args.watch {
+            watch::run_watch_loop(&api_client, output).await;
+            ExitCode::SUCCESS
+        } else {
+            let snapshot = fetch::fetch_all(&api_client).await;
+            render::render_all(&snapshot, output);
+            compute_exit_code(&snapshot)
+        }
+    })
 }
