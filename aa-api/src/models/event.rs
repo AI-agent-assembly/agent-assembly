@@ -25,6 +25,7 @@ pub struct GovernanceEvent {
     pub agent_id: String,
     /// Event-specific payload serialised as a JSON value.
     pub payload: serde_json::Value,
-    /// Timestamp when the event was received by the API layer.
+    /// Timestamp when the event was received by the API layer (ISO 8601).
+    #[schema(value_type = String)]
     pub timestamp: DateTime<Utc>,
 }
