@@ -93,4 +93,37 @@ spec:
         };
         assert_eq!(run(args), ExitCode::FAILURE);
     }
+
+    #[test]
+    fn unknown_key_produces_warning_not_error() {
+        let mut tmp = tempfile::NamedTempFile::new().unwrap();
+        writeln!(tmp, "risk_tier: high").unwrap();
+
+        let args = ValidateArgs {
+            file: tmp.path().to_path_buf(),
+        };
+        assert_eq!(run(args), ExitCode::SUCCESS);
+    }
+
+    #[test]
+    fn multiple_errors_all_reported() {
+        let mut tmp = tempfile::NamedTempFile::new().unwrap();
+        writeln!(
+            tmp,
+            r#"network:
+  allowlist:
+    - ""
+budget:
+  daily_limit_usd: 0.0
+data:
+  sensitive_patterns:
+    - "[bad""#
+        )
+        .unwrap();
+
+        let args = ValidateArgs {
+            file: tmp.path().to_path_buf(),
+        };
+        assert_eq!(run(args), ExitCode::FAILURE);
+    }
 }
