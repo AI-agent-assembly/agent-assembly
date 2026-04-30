@@ -64,6 +64,18 @@ pub struct RawDataPolicy {
     pub unknown: HashMap<String, serde_yaml::Value>,
 }
 
+/// Raw (unvalidated) deserialization target for the `metadata` section
+/// of the governance policy YAML envelope.
+#[derive(Debug, Deserialize)]
+pub struct RawMetadata {
+    /// Human-readable policy name.
+    pub name: Option<String>,
+    /// Semver version string for this policy revision.
+    pub version: Option<String>,
+    /// Optional description text.
+    pub description: Option<String>,
+}
+
 /// Raw (unvalidated) top-level deserialization target for a policy document.
 #[derive(Debug, Deserialize)]
 pub struct RawPolicyDocument {
