@@ -32,6 +32,50 @@ pub async fn connect_approval_ws(ctx: &ResolvedContext) -> Result<WsStream, CliE
     Ok(ws)
 }
 
+/// Mutable state for the interactive watch mode.
+///
+/// Tracks the list of pending approvals and the user's current selection.
+pub struct InteractiveState {
+    /// Currently pending approval items.
+    pub items: Vec<ApprovalResponse>,
+    /// Index of the currently selected item in `items`.
+    pub selected: usize,
+    /// Whether the view needs to be redrawn.
+    pub dirty: bool,
+}
+
+impl InteractiveState {
+    /// Create a new empty interactive state.
+    pub fn new() -> Self {
+        Self {
+            items: Vec::new(),
+            selected: 0,
+            dirty: true,
+        }
+    }
+
+    /// Move selection up by one.
+    pub fn select_prev(&mut self) {
+        if self.selected > 0 {
+            self.selected -= 1;
+            self.dirty = true;
+        }
+    }
+
+    /// Move selection down by one.
+    pub fn select_next(&mut self) {
+        if !self.items.is_empty() && self.selected < self.items.len() - 1 {
+            self.selected += 1;
+            self.dirty = true;
+        }
+    }
+
+    /// Return the ID of the currently selected item, if any.
+    pub fn selected_id(&self) -> Option<&str> {
+        self.items.get(self.selected).map(|i| i.id.as_str())
+    }
+}
+
 /// Run the watch stream in non-interactive mode, printing events as they arrive.
 pub async fn run_watch_stream(mut ws: WsStream) {
     println!("Watching for approval requests... (Ctrl+C to stop)");
