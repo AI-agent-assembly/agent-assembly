@@ -362,6 +362,35 @@ mod tests {
     }
 
     #[test]
+    fn daily_limit_usd_returns_configured_limit() {
+        let t = tracker_with_limit("50.00");
+        assert_eq!(t.daily_limit_usd(), Some(Decimal::new(5000, 2)));
+    }
+
+    #[test]
+    fn daily_limit_usd_returns_none_when_unset() {
+        let t = new_tracker();
+        assert_eq!(t.daily_limit_usd(), None);
+    }
+
+    #[test]
+    fn monthly_limit_usd_returns_configured_limit() {
+        let t = BudgetTracker::new(
+            PricingTable::default_table(),
+            None,
+            Some("1000.00".parse().unwrap()),
+            chrono_tz::UTC,
+        );
+        assert_eq!(t.monthly_limit_usd(), Some(Decimal::new(100000, 2)));
+    }
+
+    #[test]
+    fn monthly_limit_usd_returns_none_when_unset() {
+        let t = new_tracker();
+        assert_eq!(t.monthly_limit_usd(), None);
+    }
+
+    #[test]
     fn compute_status_returns_within_budget_below_80() {
         use crate::budget::types::BudgetStatus;
         fn d(s: &str) -> Decimal {
