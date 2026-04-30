@@ -69,6 +69,34 @@ pub struct AgentResponse {
     /// Number of policy violations recorded.
     #[serde(default)]
     pub policy_violations_count: Option<u32>,
+    /// Currently active sessions for this agent.
+    #[serde(default)]
+    pub active_sessions: Vec<ActiveSessionResponse>,
+    /// Most recent events emitted by this agent.
+    #[serde(default)]
+    pub recent_events: Vec<RecentEventResponse>,
+}
+
+/// Summary of an active session returned by the API.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ActiveSessionResponse {
+    /// Hex-encoded session UUID.
+    pub session_id: String,
+    /// ISO 8601 timestamp when the session started.
+    pub started_at: String,
+    /// Current status of the session.
+    pub status: String,
+}
+
+/// Summary of a recent event returned by the API.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RecentEventResponse {
+    /// Event type classification (e.g. "violation", "approval", "budget").
+    pub event_type: String,
+    /// Short human-readable summary.
+    pub summary: String,
+    /// ISO 8601 timestamp when the event occurred.
+    pub timestamp: String,
 }
 
 /// Paginated API response wrapper.
