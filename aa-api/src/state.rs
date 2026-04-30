@@ -9,6 +9,7 @@ use aa_gateway::policy::history::PolicyHistoryStore;
 use aa_gateway::registry::AgentRegistry;
 use aa_runtime::approval::ApprovalQueue;
 
+use crate::alerts::AlertStore;
 use crate::auth::api_key::ApiKeyStore;
 use crate::auth::config::AuthConfig;
 use crate::auth::jwt::{JwtSigner, JwtVerifier};
@@ -29,6 +30,8 @@ pub struct AppState {
     pub approval_queue: Arc<ApprovalQueue>,
     /// Policy version history store.
     pub policy_history: Arc<dyn PolicyHistoryStore>,
+    /// Persistent alert store for budget alerts.
+    pub alert_store: Arc<dyn AlertStore>,
     /// Unified event broadcast bus for streaming to clients.
     pub events: Arc<EventBroadcast>,
     /// Circular replay buffer for reconnecting WebSocket clients.

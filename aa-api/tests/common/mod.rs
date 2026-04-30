@@ -4,6 +4,7 @@ use std::path::Path;
 use std::sync::atomic::{AtomicU64, AtomicUsize};
 use std::sync::Arc;
 
+use aa_api::alerts::store::InMemoryAlertStore;
 use aa_api::auth::api_key::{ApiKey, ApiKeyEntry, ApiKeyStore};
 use aa_api::auth::config::{AuthConfig, AuthMode};
 use aa_api::auth::jwt::{JwtSigner, JwtVerifier};
@@ -108,6 +109,7 @@ spec:
     let jwt_signer = Arc::new(JwtSigner::new(secret));
     let jwt_verifier = Arc::new(JwtVerifier::new(secret));
     let rate_limiter = Arc::new(RateLimiter::new(rpm));
+    let alert_store: Arc<InMemoryAlertStore> = Arc::new(InMemoryAlertStore::new());
 
     AppState {
         agent_registry,
@@ -115,6 +117,7 @@ spec:
         budget_tracker,
         approval_queue,
         policy_history,
+        alert_store,
         events,
         replay_buffer: ReplayBuffer::new(),
         next_event_id: Arc::new(AtomicU64::new(0)),
