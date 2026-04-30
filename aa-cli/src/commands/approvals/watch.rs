@@ -7,7 +7,7 @@ use chrono::Utc;
 use clap::Args;
 use crossterm::event::{self, Event, KeyCode, KeyEvent};
 use crossterm::terminal;
-use futures_util::StreamExt;
+use futures_util::{FutureExt, StreamExt};
 use tokio_tungstenite::tungstenite::Message;
 
 use super::models::{compute_timeout_color, format_countdown, TimeoutColor};

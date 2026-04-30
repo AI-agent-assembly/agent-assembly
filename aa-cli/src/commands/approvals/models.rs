@@ -1,6 +1,6 @@
 //! Data models for the `aasm approvals` subcommand.
 
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 
 /// JSON representation of a pending approval request returned by the API.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -67,7 +67,8 @@ pub fn format_countdown(remaining_secs: i64) -> String {
 
 /// Generic paginated response wrapper matching the aa-api JSON envelope.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PaginatedResponse<T: DeserializeOwned> {
+#[serde(bound = "T: Serialize + for<'a> Deserialize<'a>")]
+pub struct PaginatedResponse<T> {
     /// The items on this page.
     pub items: Vec<T>,
     /// Current page number (1-based).
