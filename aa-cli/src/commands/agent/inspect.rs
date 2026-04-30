@@ -101,10 +101,7 @@ fn render_detail(agent: &AgentResponse) {
         let mut traces_table = Table::new();
         traces_table.set_header(vec!["SESSION_ID", "TIMESTAMP"]);
         for t in &agent.recent_traces {
-            traces_table.add_row(vec![
-                Cell::new(&t.session_id),
-                Cell::new(&t.timestamp),
-            ]);
+            traces_table.add_row(vec![Cell::new(&t.session_id), Cell::new(&t.timestamp)]);
         }
         println!("{traces_table}");
         println!("Tip: run `aasm trace <session-id>` to visualize a trace");

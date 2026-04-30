@@ -373,12 +373,10 @@ mod tests {
             policy_violations_count: None,
             active_sessions: vec![],
             recent_events: vec![],
-            recent_traces: vec![
-                RecentTraceResponse {
-                    session_id: "sess-111".to_string(),
-                    timestamp: "2026-04-30T08:00:00Z".to_string(),
-                },
-            ],
+            recent_traces: vec![RecentTraceResponse {
+                session_id: "sess-111".to_string(),
+                timestamp: "2026-04-30T08:00:00Z".to_string(),
+            }],
         };
 
         let json = serde_json::to_string(&agent).unwrap();
