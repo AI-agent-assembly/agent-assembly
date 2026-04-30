@@ -324,3 +324,49 @@ pub async fn suspend_agent(
         }),
     ))
 }
+
+/// `POST /api/v1/agents/:id/resume` — resume a suspended agent.
+///
+/// Resume an agent that was previously suspended back to Active status.
+#[utoipa::path(
+    post,
+    path = "/api/v1/agents/{id}/resume",
+
+    params(("id" = String, Path, description = "Hex-encoded agent UUID")),
+    responses(
+        (status = 200, description = "Agent resumed", body = ResumeResponse),
+        (status = 400, description = "Invalid agent ID format"),
+        (status = 404, description = "Agent not found")
+    ),
+    tag = "agents"
+)]
+pub async fn resume_agent(
+    Extension(state): Extension<AppState>,
+    axum::extract::Path(id): axum::extract::Path<String>,
+) -> Result<(StatusCode, Json<ResumeResponse>), ProblemDetail> {
+    let agent_id = parse_agent_id(&id)?;
+
+    let previous_status = state
+        .agent_registry
+        .agent_status(&agent_id)
+        .map(|s| format!("{s:?}"))
+        .map_err(|_| {
+            ProblemDetail::from_status(StatusCode::NOT_FOUND).with_detail(format!("Agent not found: {id}"))
+        })?;
+
+    state
+        .agent_registry
+        .resume_agent(&agent_id)
+        .map_err(|_| {
+            ProblemDetail::from_status(StatusCode::NOT_FOUND).with_detail(format!("Agent not found: {id}"))
+        })?;
+
+    Ok((
+        StatusCode::OK,
+        Json(ResumeResponse {
+            agent_id: id,
+            previous_status,
+            new_status: "Active".to_string(),
+        }),
+    ))
+}
