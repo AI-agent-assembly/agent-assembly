@@ -370,3 +370,41 @@ pub async fn resume_agent(
         }),
     ))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn suspend_request_deserializes() {
+        let json = r#"{"reason":"anomaly spike, under investigation"}"#;
+        let req: SuspendRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.reason, "anomaly spike, under investigation");
+    }
+
+    #[test]
+    fn suspend_response_serializes() {
+        let resp = SuspendResponse {
+            agent_id: "aabbccdd00112233".to_string(),
+            previous_status: "Active".to_string(),
+            new_status: "Suspended(Manual)".to_string(),
+        };
+        let json = serde_json::to_value(&resp).unwrap();
+        assert_eq!(json["agent_id"], "aabbccdd00112233");
+        assert_eq!(json["previous_status"], "Active");
+        assert_eq!(json["new_status"], "Suspended(Manual)");
+    }
+
+    #[test]
+    fn resume_response_serializes() {
+        let resp = ResumeResponse {
+            agent_id: "aabbccdd00112233".to_string(),
+            previous_status: "Suspended(Manual)".to_string(),
+            new_status: "Active".to_string(),
+        };
+        let json = serde_json::to_value(&resp).unwrap();
+        assert_eq!(json["agent_id"], "aabbccdd00112233");
+        assert_eq!(json["previous_status"], "Suspended(Manual)");
+        assert_eq!(json["new_status"], "Active");
+    }
+}
