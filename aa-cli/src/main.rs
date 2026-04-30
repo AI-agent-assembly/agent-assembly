@@ -7,6 +7,7 @@ use std::process::ExitCode;
 
 use clap::Parser;
 
+mod client;
 mod commands;
 mod config;
 mod error;
@@ -60,5 +61,5 @@ fn main() -> ExitCode {
         }
     };
 
-    commands::dispatch(cli.command, &resolved)
+    commands::dispatch(cli.command, &resolved, cli.output)
 }

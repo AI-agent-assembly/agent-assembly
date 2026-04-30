@@ -16,6 +16,7 @@ dependencies = [
  "chrono-tz",
  "dashmap",
  "futures",
+ "hex",
  "http 1.4.0",
  "hyper",
  "jsonwebtoken",
@@ -46,6 +47,7 @@ dependencies = [
  "clap_complete",
  "comfy-table",
  "dirs",
+ "owo-colors",
  "reqwest",
  "serde",
  "serde_json",
@@ -2576,6 +2578,12 @@ name = "option-ext"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
+
+[[package]]
+name = "owo-colors"
+version = "4.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d211803b9b6b570f68772237e415a029d5a50c65d382910b879fb19d3271f94d"
 
 [[package]]
 name = "parking_lot"
