@@ -39,11 +39,25 @@ pub struct AlertResponse {
     tag = "alerts"
 )]
 pub async fn list_alerts(
-    Extension(_state): Extension<AppState>,
+    Extension(state): Extension<AppState>,
     axum::extract::Query(params): axum::extract::Query<PaginationParams>,
 ) -> impl IntoResponse {
-    // TODO: wire to alert store once available
-    let items: Vec<AlertResponse> = Vec::new();
+    let limit = params.per_page() as usize;
+    let offset = params.offset();
+
+    let (stored, total) = state.alert_store.list(limit, offset);
+
+    let items: Vec<AlertResponse> = stored
+        .into_iter()
+        .map(|a| AlertResponse {
+            id: a.id.to_string(),
+            severity: a.severity.to_string(),
+            category: "budget".to_string(),
+            message: a.message,
+            timestamp: a.timestamp,
+            agent_id: Some(a.agent_id),
+        })
+        .collect();
 
     (
         StatusCode::OK,
@@ -51,7 +65,7 @@ pub async fn list_alerts(
             items,
             page: params.page(),
             per_page: params.per_page(),
-            total: 0,
+            total,
         }),
     )
 }
