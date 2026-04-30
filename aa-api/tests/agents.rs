@@ -27,6 +27,7 @@ fn test_agent(id_byte: u8) -> AgentRecord {
         pid: None,
         session_count: 0,
         last_event: None,
+        policy_violations_count: 0,
     }
 }
 

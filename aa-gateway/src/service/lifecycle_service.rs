@@ -98,6 +98,7 @@ impl AgentLifecycleService for AgentLifecycleServiceImpl {
             pid: None,
             session_count: 0,
             last_event: None,
+            policy_violations_count: 0,
         };
 
         self.registry

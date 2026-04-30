@@ -45,6 +45,8 @@ pub struct AgentRecord {
     pub session_count: u32,
     /// Timestamp of the most recent event emitted by this agent.
     pub last_event: Option<DateTime<Utc>>,
+    /// Number of policy violations recorded for this agent.
+    pub policy_violations_count: u32,
 }
 
 /// Channel sender type for pushing [`ControlCommand`]s to an agent's control stream.

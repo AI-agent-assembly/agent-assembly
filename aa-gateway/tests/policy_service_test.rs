@@ -275,6 +275,7 @@ budget:
         pid: None,
         session_count: 0,
         last_event: None,
+        policy_violations_count: 0,
     };
     registry.register(record).unwrap();
 
@@ -345,6 +346,7 @@ budget:
         pid: None,
         session_count: 0,
         last_event: None,
+        policy_violations_count: 0,
     };
     registry.register(record).unwrap();
 

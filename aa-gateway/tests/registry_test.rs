@@ -25,6 +25,7 @@ fn make_record(key: [u8; 16]) -> AgentRecord {
         pid: None,
         session_count: 0,
         last_event: None,
+        policy_violations_count: 0,
     }
 }
 
@@ -215,6 +216,7 @@ async fn concurrent_registration_of_100_agents() {
                 pid: None,
                 session_count: 0,
                 last_event: None,
+                policy_violations_count: 0,
             };
             reg.register(record).unwrap();
         }));
