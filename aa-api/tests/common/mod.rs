@@ -16,6 +16,8 @@ use aa_api::state::AppState;
 use aa_gateway::budget::pricing::PricingTable;
 use aa_gateway::budget::tracker::BudgetTracker;
 use aa_gateway::engine::PolicyEngine;
+use aa_gateway::policy::history::{FsHistoryStore, HistoryConfig};
+use aa_gateway::registry::AgentRegistry;
 use aa_runtime::approval::ApprovalQueue;
 use axum::Router;
 
@@ -64,6 +66,15 @@ spec:
     ));
     let approval_queue = ApprovalQueue::new();
 
+    let agent_registry = Arc::new(AgentRegistry::new());
+
+    let history_id = TEMP_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let history_dir = std::env::temp_dir().join(format!("aa-api-test-history-{}-{history_id}", std::process::id()));
+    let policy_history = Arc::new(FsHistoryStore::new(HistoryConfig {
+        history_dir,
+        max_versions: 50,
+    }));
+
     let jwt_secret = match mode {
         AuthMode::On => Some(TEST_SECRET.to_vec()),
         AuthMode::Off => None,
@@ -99,9 +110,11 @@ spec:
     let rate_limiter = Arc::new(RateLimiter::new(rpm));
 
     AppState {
+        agent_registry,
         policy_engine,
         budget_tracker,
         approval_queue,
+        policy_history,
         events,
         replay_buffer: ReplayBuffer::new(),
         next_event_id: Arc::new(AtomicU64::new(0)),

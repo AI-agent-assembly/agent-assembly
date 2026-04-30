@@ -4,6 +4,150 @@
  */
 
 export interface paths {
+    "/api/v1/agents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * `GET /api/v1/agents` — list all registered agents with pagination.
+         * @description Returns a paginated list of all agents currently known to the registry.
+         */
+        get: operations["list_agents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agents/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * `GET /api/v1/agents/:id` — inspect a specific agent by ID.
+         * @description Retrieve details of a specific agent by its hex-encoded UUID.
+         */
+        get: operations["get_agent"];
+        put?: never;
+        post?: never;
+        /**
+         * `DELETE /api/v1/agents/:id` — deregister (kill) an agent.
+         * @description Deregister and terminate the agent process.
+         */
+        delete: operations["delete_agent"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/alerts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * `GET /api/v1/alerts` — list recent governance alerts.
+         * @description List recent governance alerts such as budget warnings and policy violations.
+         */
+        get: operations["list_alerts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/approvals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * `GET /api/v1/approvals` — list pending approval requests.
+         * @description List pending human-in-the-loop approval requests with pagination.
+         */
+        get: operations["list_approvals"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/approvals/{id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * `POST /api/v1/approvals/:id/approve` — approve a pending action.
+         * @description Approve a pending governance action, unblocking the agent.
+         */
+        post: operations["approve_action"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/approvals/{id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * `POST /api/v1/approvals/:id/reject` — reject a pending action.
+         * @description Reject a pending governance action, denying the agent request.
+         */
+        post: operations["reject_action"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/costs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * `GET /api/v1/costs` — cost and budget summary.
+         * @description Retrieve the current daily and monthly cost and budget summary.
+         */
+        get: operations["get_cost_summary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/health": {
         parameters: {
             query?: never;
@@ -25,14 +169,194 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * `GET /api/v1/logs` — paginated audit log query.
+         * @description Query the paginated audit log of governance events.
+         */
+        get: operations["list_logs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/policies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * `GET /api/v1/policies` — list all policy versions.
+         * @description List all governance policy versions with pagination.
+         */
+        get: operations["list_policies"];
+        put?: never;
+        /**
+         * `POST /api/v1/policies` — apply a new governance policy.
+         * @description Submit and activate a new governance policy from YAML.
+         */
+        post: operations["create_policy"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/policies/active": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * `GET /api/v1/policies/active` — get the currently active policy.
+         * @description Retrieve the currently active governance policy.
+         */
+        get: operations["get_active_policy"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/traces/{session_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * `GET /api/v1/traces/:session_id` — full trace for one agent session.
+         * @description Retrieve the full ordered trace of spans for one agent session.
+         */
+        get: operations["get_trace"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** @description JSON representation of an agent returned by the API. */
+        AgentResponse: {
+            /** @description Agent framework (e.g. "langgraph", "crewai"). */
+            framework: string;
+            /** @description Hex-encoded agent UUID. */
+            id: string;
+            /** @description Arbitrary metadata key-value pairs. */
+            metadata: {
+                [key: string]: string;
+            };
+            /** @description Human-readable agent name. */
+            name: string;
+            /** @description Current runtime status. */
+            status: string;
+            /** @description Tools declared at registration. */
+            tool_names: string[];
+            /** @description Semver version string. */
+            version: string;
+        };
+        /** @description JSON representation of a governance alert. */
+        AlertResponse: {
+            /** @description Agent ID that triggered the alert (if applicable). */
+            agent_id?: string | null;
+            /** @description Alert category (e.g. "budget", "policy_violation", "anomaly"). */
+            category: string;
+            /** @description Unique alert identifier. */
+            id: string;
+            /** @description Human-readable alert message. */
+            message: string;
+            /** @description Alert severity level (e.g. "warning", "critical"). */
+            severity: string;
+            /** @description ISO 8601 timestamp when the alert was raised. */
+            timestamp: string;
+        };
+        /** @description JSON representation of a pending approval request. */
+        ApprovalResponse: {
+            /** @description The governance action requiring approval. */
+            action: string;
+            /** @description Agent that triggered the approval. */
+            agent_id: string;
+            /** @description ISO 8601 timestamp when the request was created. */
+            created_at: string;
+            /** @description Unique approval request identifier. */
+            id: string;
+            /** @description Human-readable reason for the approval request. */
+            reason: string;
+            /** @description Current status: "pending", "approved", or "rejected". */
+            status: string;
+        };
+        /** @description JSON representation of the cost/budget summary. */
+        CostSummary: {
+            /** @description Total spend today in USD. */
+            daily_spend_usd: string;
+            /** @description Calendar date (YYYY-MM-DD) the daily spend applies to. */
+            date: string;
+            /** @description Total spend this month in USD (if monthly tracking is enabled). */
+            monthly_spend_usd?: string | null;
+        };
+        /** @description Request body for creating a new policy. */
+        CreatePolicyRequest: {
+            /** @description Raw YAML content of the governance policy. */
+            policy_yaml: string;
+        };
+        /** @description Request body for approval decide actions. */
+        DecideRequest: {
+            /** @description Identity of the operator making the decision. */
+            by?: string | null;
+            /** @description Optional reason for the decision. */
+            reason?: string | null;
+        };
         /** @description Response body for the health endpoint. */
         HealthResponse: {
             /** @description Liveness status string, always `"ok"` when the service is running. */
             status: string;
+        };
+        /** @description JSON representation of an audit log entry. */
+        LogEntry: {
+            /** @description Agent ID that produced this log entry. */
+            agent_id: string;
+            /** @description Type of audit event. */
+            event_type: string;
+            /** @description Unique log entry identifier. */
+            id: string;
+            /** @description Session ID for the agent run. */
+            session_id: string;
+            /** @description Human-readable summary of the event. */
+            summary: string;
+            /** @description ISO 8601 timestamp of the event. */
+            timestamp: string;
+        };
+        /** @description JSON representation of a governance policy version. */
+        PolicyResponse: {
+            /** @description Whether this is the currently active policy. */
+            active: boolean;
+            /** @description Policy name from metadata. */
+            name: string;
+            /** @description Number of rules in this policy version. */
+            rule_count: number;
+            /** @description Policy version string. */
+            version: string;
         };
         /**
          * @description RFC 7807 Problem Details JSON body.
@@ -59,6 +383,28 @@ export interface components {
             /** @description URI reference identifying the problem type. */
             type: string;
         };
+        /** @description Full trace for one agent session. */
+        TraceResponse: {
+            /** @description Agent that produced this trace. */
+            agent_id: string;
+            /** @description Session identifier. */
+            session_id: string;
+            /** @description Ordered list of spans in the session. */
+            spans: components["schemas"]["TraceSpan"][];
+        };
+        /** @description A single span within an agent session trace. */
+        TraceSpan: {
+            /** @description Governance decision result for this span. */
+            decision?: string | null;
+            /** @description ISO 8601 end time (if completed). */
+            end_time?: string | null;
+            /** @description Operation name. */
+            operation: string;
+            /** @description Span identifier. */
+            span_id: string;
+            /** @description ISO 8601 start time. */
+            start_time: string;
+        };
     };
     responses: never;
     parameters: never;
@@ -68,6 +414,241 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    list_agents: {
+        parameters: {
+            query?: {
+                /** @description Page number (1-indexed). Defaults to 1. */
+                page?: number | null;
+                /** @description Items per page (max 100). Defaults to 50. */
+                per_page?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Paginated list of agents */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentResponse"][];
+                };
+            };
+        };
+    };
+    get_agent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Hex-encoded agent UUID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Agent details */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentResponse"];
+                };
+            };
+            /** @description Invalid agent ID format */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Agent not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    delete_agent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Hex-encoded agent UUID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Agent deregistered */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid agent ID format */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Agent not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_alerts: {
+        parameters: {
+            query?: {
+                /** @description Page number (1-indexed). Defaults to 1. */
+                page?: number | null;
+                /** @description Items per page (max 100). Defaults to 50. */
+                per_page?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Paginated list of recent alerts */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlertResponse"][];
+                };
+            };
+        };
+    };
+    list_approvals: {
+        parameters: {
+            query?: {
+                /** @description Page number (1-indexed). Defaults to 1. */
+                page?: number | null;
+                /** @description Items per page (max 100). Defaults to 50. */
+                per_page?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Paginated list of pending approvals */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalResponse"][];
+                };
+            };
+        };
+    };
+    approve_action: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Approval request identifier */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DecideRequest"];
+            };
+        };
+        responses: {
+            /** @description Action approved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalResponse"];
+                };
+            };
+            /** @description Approval request not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    reject_action: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Approval request identifier */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DecideRequest"];
+            };
+        };
+        responses: {
+            /** @description Action rejected */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalResponse"];
+                };
+            };
+            /** @description Approval request not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_cost_summary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Cost and budget summary */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CostSummary"];
+                };
+            };
+        };
+    };
     health: {
         parameters: {
             query?: never;
@@ -94,6 +675,144 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ProblemDetail"];
                 };
+            };
+        };
+    };
+    list_logs: {
+        parameters: {
+            query?: {
+                /** @description Page number (1-indexed). Defaults to 1. */
+                page?: number | null;
+                /** @description Items per page (max 100). Defaults to 50. */
+                per_page?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Paginated audit log entries */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LogEntry"][];
+                };
+            };
+        };
+    };
+    list_policies: {
+        parameters: {
+            query?: {
+                /** @description Page number (1-indexed). Defaults to 1. */
+                page?: number | null;
+                /** @description Items per page (max 100). Defaults to 50. */
+                per_page?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Paginated list of policy versions */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PolicyResponse"][];
+                };
+            };
+        };
+    };
+    create_policy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreatePolicyRequest"];
+            };
+        };
+        responses: {
+            /** @description Policy created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PolicyResponse"];
+                };
+            };
+            /** @description Invalid policy YAML */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_active_policy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Currently active policy */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PolicyResponse"];
+                };
+            };
+            /** @description No active policy loaded */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_trace: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Agent session identifier */
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Session trace */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TraceResponse"];
+                };
+            };
+            /** @description Session not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

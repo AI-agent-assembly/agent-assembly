@@ -2,8 +2,15 @@
 //!
 //! All endpoints are nested under `/api/v1/`.
 
+pub mod agents;
+pub mod alerts;
+pub mod approvals;
 pub mod auth;
+pub mod costs;
 pub mod health;
+pub mod logs;
+pub mod policies;
+pub mod traces;
 
 use axum::routing::{get, post};
 use axum::Router;
@@ -13,9 +20,30 @@ use crate::error::ProblemDetail;
 /// Build the v1 API router with all registered routes.
 pub fn v1_router() -> Router {
     Router::new()
+        // Health
         .route("/health", get(health::health))
+        // WebSocket
         .route("/ws/events", get(crate::ws::handler::ws_events_handler))
+        // Auth
         .route("/auth/token", post(auth::issue_token))
+        // Agents
+        .route("/agents", get(agents::list_agents))
+        .route("/agents/:id", get(agents::get_agent).delete(agents::delete_agent))
+        // Logs
+        .route("/logs", get(logs::list_logs))
+        // Traces
+        .route("/traces/:session_id", get(traces::get_trace))
+        // Policies
+        .route("/policies", get(policies::list_policies).post(policies::create_policy))
+        .route("/policies/active", get(policies::get_active_policy))
+        // Approvals
+        .route("/approvals", get(approvals::list_approvals))
+        .route("/approvals/:id/approve", post(approvals::approve_action))
+        .route("/approvals/:id/reject", post(approvals::reject_action))
+        // Costs
+        .route("/costs", get(costs::get_cost_summary))
+        // Alerts
+        .route("/alerts", get(alerts::list_alerts))
 }
 
 /// Fallback handler returning a 404 RFC 7807 response.

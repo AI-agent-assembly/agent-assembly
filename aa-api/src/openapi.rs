@@ -2,6 +2,8 @@
 
 use utoipa::OpenApi;
 
+use crate::routes::{agents, alerts, approvals, costs, logs, policies, traces};
+
 /// Root OpenAPI document collecting all annotated paths and schemas.
 #[derive(OpenApi)]
 #[openapi(
@@ -16,14 +18,44 @@ use utoipa::OpenApi;
         (url = "http://localhost:7700", description = "Local development gateway")
     ),
     tags(
-        (name = "health", description = "Liveness and readiness probes")
+        (name = "health", description = "Liveness and readiness probes"),
+        (name = "agents", description = "Agent management"),
+        (name = "logs", description = "Audit log queries"),
+        (name = "traces", description = "Agent session traces"),
+        (name = "policies", description = "Policy management"),
+        (name = "approvals", description = "Human-in-the-loop approvals"),
+        (name = "costs", description = "Cost and budget tracking"),
+        (name = "alerts", description = "Governance alerts"),
     ),
     paths(
         crate::routes::health::health,
+        agents::list_agents,
+        agents::get_agent,
+        agents::delete_agent,
+        logs::list_logs,
+        traces::get_trace,
+        policies::list_policies,
+        policies::create_policy,
+        policies::get_active_policy,
+        approvals::list_approvals,
+        approvals::approve_action,
+        approvals::reject_action,
+        costs::get_cost_summary,
+        alerts::list_alerts,
     ),
     components(schemas(
         crate::routes::health::HealthResponse,
         crate::error::ProblemDetail,
+        agents::AgentResponse,
+        logs::LogEntry,
+        traces::TraceResponse,
+        traces::TraceSpan,
+        policies::PolicyResponse,
+        policies::CreatePolicyRequest,
+        approvals::ApprovalResponse,
+        approvals::DecideRequest,
+        costs::CostSummary,
+        alerts::AlertResponse,
     ))
 )]
 pub struct ApiDoc;

@@ -16,6 +16,233 @@ servers:
 - url: http://localhost:7700
   description: Local development gateway
 paths:
+  /api/v1/agents:
+    get:
+      tags:
+      - agents
+      summary: '`GET /api/v1/agents` — list all registered agents with pagination.'
+      description: Returns a paginated list of all agents currently known to the registry.
+      operationId: list_agents
+      parameters:
+      - name: page
+        in: query
+        description: Page number (1-indexed). Defaults to 1.
+        required: false
+        schema:
+          type: integer
+          format: int32
+          nullable: true
+          minimum: 1
+      - name: per_page
+        in: query
+        description: Items per page (max 100). Defaults to 50.
+        required: false
+        schema:
+          type: integer
+          format: int32
+          nullable: true
+          maximum: 100
+          minimum: 1
+      responses:
+        '200':
+          description: Paginated list of agents
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AgentResponse'
+  /api/v1/agents/{id}:
+    get:
+      tags:
+      - agents
+      summary: '`GET /api/v1/agents/:id` — inspect a specific agent by ID.'
+      description: Retrieve details of a specific agent by its hex-encoded UUID.
+      operationId: get_agent
+      parameters:
+      - name: id
+        in: path
+        description: Hex-encoded agent UUID
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Agent details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentResponse'
+        '400':
+          description: Invalid agent ID format
+        '404':
+          description: Agent not found
+    delete:
+      tags:
+      - agents
+      summary: '`DELETE /api/v1/agents/:id` — deregister (kill) an agent.'
+      description: Deregister and terminate the agent process.
+      operationId: delete_agent
+      parameters:
+      - name: id
+        in: path
+        description: Hex-encoded agent UUID
+        required: true
+        schema:
+          type: string
+      responses:
+        '204':
+          description: Agent deregistered
+        '400':
+          description: Invalid agent ID format
+        '404':
+          description: Agent not found
+  /api/v1/alerts:
+    get:
+      tags:
+      - alerts
+      summary: '`GET /api/v1/alerts` — list recent governance alerts.'
+      description: List recent governance alerts such as budget warnings and policy violations.
+      operationId: list_alerts
+      parameters:
+      - name: page
+        in: query
+        description: Page number (1-indexed). Defaults to 1.
+        required: false
+        schema:
+          type: integer
+          format: int32
+          nullable: true
+          minimum: 1
+      - name: per_page
+        in: query
+        description: Items per page (max 100). Defaults to 50.
+        required: false
+        schema:
+          type: integer
+          format: int32
+          nullable: true
+          maximum: 100
+          minimum: 1
+      responses:
+        '200':
+          description: Paginated list of recent alerts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AlertResponse'
+  /api/v1/approvals:
+    get:
+      tags:
+      - approvals
+      summary: '`GET /api/v1/approvals` — list pending approval requests.'
+      description: List pending human-in-the-loop approval requests with pagination.
+      operationId: list_approvals
+      parameters:
+      - name: page
+        in: query
+        description: Page number (1-indexed). Defaults to 1.
+        required: false
+        schema:
+          type: integer
+          format: int32
+          nullable: true
+          minimum: 1
+      - name: per_page
+        in: query
+        description: Items per page (max 100). Defaults to 50.
+        required: false
+        schema:
+          type: integer
+          format: int32
+          nullable: true
+          maximum: 100
+          minimum: 1
+      responses:
+        '200':
+          description: Paginated list of pending approvals
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ApprovalResponse'
+  /api/v1/approvals/{id}/approve:
+    post:
+      tags:
+      - approvals
+      summary: '`POST /api/v1/approvals/:id/approve` — approve a pending action.'
+      description: Approve a pending governance action, unblocking the agent.
+      operationId: approve_action
+      parameters:
+      - name: id
+        in: path
+        description: Approval request identifier
+        required: true
+        schema:
+          type: string
+      requestBody:
+        description: ''
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DecideRequest'
+        required: true
+      responses:
+        '200':
+          description: Action approved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApprovalResponse'
+        '404':
+          description: Approval request not found
+  /api/v1/approvals/{id}/reject:
+    post:
+      tags:
+      - approvals
+      summary: '`POST /api/v1/approvals/:id/reject` — reject a pending action.'
+      description: Reject a pending governance action, denying the agent request.
+      operationId: reject_action
+      parameters:
+      - name: id
+        in: path
+        description: Approval request identifier
+        required: true
+        schema:
+          type: string
+      requestBody:
+        description: ''
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DecideRequest'
+        required: true
+      responses:
+        '200':
+          description: Action rejected
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApprovalResponse'
+        '404':
+          description: Approval request not found
+  /api/v1/costs:
+    get:
+      tags:
+      - costs
+      summary: '`GET /api/v1/costs` — cost and budget summary.'
+      description: Retrieve the current daily and monthly cost and budget summary.
+      operationId: get_cost_summary
+      responses:
+        '200':
+          description: Cost and budget summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CostSummary'
   /api/v1/health:
     get:
       tags:
@@ -38,8 +265,273 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ProblemDetail'
+  /api/v1/logs:
+    get:
+      tags:
+      - logs
+      summary: '`GET /api/v1/logs` — paginated audit log query.'
+      description: Query the paginated audit log of governance events.
+      operationId: list_logs
+      parameters:
+      - name: page
+        in: query
+        description: Page number (1-indexed). Defaults to 1.
+        required: false
+        schema:
+          type: integer
+          format: int32
+          nullable: true
+          minimum: 1
+      - name: per_page
+        in: query
+        description: Items per page (max 100). Defaults to 50.
+        required: false
+        schema:
+          type: integer
+          format: int32
+          nullable: true
+          maximum: 100
+          minimum: 1
+      responses:
+        '200':
+          description: Paginated audit log entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LogEntry'
+  /api/v1/policies:
+    get:
+      tags:
+      - policies
+      summary: '`GET /api/v1/policies` — list all policy versions.'
+      description: List all governance policy versions with pagination.
+      operationId: list_policies
+      parameters:
+      - name: page
+        in: query
+        description: Page number (1-indexed). Defaults to 1.
+        required: false
+        schema:
+          type: integer
+          format: int32
+          nullable: true
+          minimum: 1
+      - name: per_page
+        in: query
+        description: Items per page (max 100). Defaults to 50.
+        required: false
+        schema:
+          type: integer
+          format: int32
+          nullable: true
+          maximum: 100
+          minimum: 1
+      responses:
+        '200':
+          description: Paginated list of policy versions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PolicyResponse'
+    post:
+      tags:
+      - policies
+      summary: '`POST /api/v1/policies` — apply a new governance policy.'
+      description: Submit and activate a new governance policy from YAML.
+      operationId: create_policy
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePolicyRequest'
+        required: true
+      responses:
+        '201':
+          description: Policy created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PolicyResponse'
+        '400':
+          description: Invalid policy YAML
+  /api/v1/policies/active:
+    get:
+      tags:
+      - policies
+      summary: '`GET /api/v1/policies/active` — get the currently active policy.'
+      description: Retrieve the currently active governance policy.
+      operationId: get_active_policy
+      responses:
+        '200':
+          description: Currently active policy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PolicyResponse'
+        '404':
+          description: No active policy loaded
+  /api/v1/traces/{session_id}:
+    get:
+      tags:
+      - traces
+      summary: '`GET /api/v1/traces/:session_id` — full trace for one agent session.'
+      description: Retrieve the full ordered trace of spans for one agent session.
+      operationId: get_trace
+      parameters:
+      - name: session_id
+        in: path
+        description: Agent session identifier
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Session trace
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TraceResponse'
+        '404':
+          description: Session not found
 components:
   schemas:
+    AgentResponse:
+      type: object
+      description: JSON representation of an agent returned by the API.
+      required:
+      - id
+      - name
+      - framework
+      - version
+      - status
+      - tool_names
+      - metadata
+      properties:
+        framework:
+          type: string
+          description: Agent framework (e.g. "langgraph", "crewai").
+        id:
+          type: string
+          description: Hex-encoded agent UUID.
+        metadata:
+          type: object
+          description: Arbitrary metadata key-value pairs.
+          additionalProperties:
+            type: string
+        name:
+          type: string
+          description: Human-readable agent name.
+        status:
+          type: string
+          description: Current runtime status.
+        tool_names:
+          type: array
+          items:
+            type: string
+          description: Tools declared at registration.
+        version:
+          type: string
+          description: Semver version string.
+    AlertResponse:
+      type: object
+      description: JSON representation of a governance alert.
+      required:
+      - id
+      - severity
+      - category
+      - message
+      - timestamp
+      properties:
+        agent_id:
+          type: string
+          description: Agent ID that triggered the alert (if applicable).
+          nullable: true
+        category:
+          type: string
+          description: Alert category (e.g. "budget", "policy_violation", "anomaly").
+        id:
+          type: string
+          description: Unique alert identifier.
+        message:
+          type: string
+          description: Human-readable alert message.
+        severity:
+          type: string
+          description: Alert severity level (e.g. "warning", "critical").
+        timestamp:
+          type: string
+          description: ISO 8601 timestamp when the alert was raised.
+    ApprovalResponse:
+      type: object
+      description: JSON representation of a pending approval request.
+      required:
+      - id
+      - agent_id
+      - action
+      - reason
+      - status
+      - created_at
+      properties:
+        action:
+          type: string
+          description: The governance action requiring approval.
+        agent_id:
+          type: string
+          description: Agent that triggered the approval.
+        created_at:
+          type: string
+          description: ISO 8601 timestamp when the request was created.
+        id:
+          type: string
+          description: Unique approval request identifier.
+        reason:
+          type: string
+          description: Human-readable reason for the approval request.
+        status:
+          type: string
+          description: 'Current status: "pending", "approved", or "rejected".'
+    CostSummary:
+      type: object
+      description: JSON representation of the cost/budget summary.
+      required:
+      - daily_spend_usd
+      - date
+      properties:
+        daily_spend_usd:
+          type: string
+          description: Total spend today in USD.
+        date:
+          type: string
+          description: Calendar date (YYYY-MM-DD) the daily spend applies to.
+        monthly_spend_usd:
+          type: string
+          description: Total spend this month in USD (if monthly tracking is enabled).
+          nullable: true
+    CreatePolicyRequest:
+      type: object
+      description: Request body for creating a new policy.
+      required:
+      - policy_yaml
+      properties:
+        policy_yaml:
+          type: string
+          description: Raw YAML content of the governance policy.
+    DecideRequest:
+      type: object
+      description: Request body for approval decide actions.
+      properties:
+        by:
+          type: string
+          description: Identity of the operator making the decision.
+          nullable: true
+        reason:
+          type: string
+          description: Optional reason for the decision.
+          nullable: true
     HealthResponse:
       type: object
       description: Response body for the health endpoint.
@@ -49,6 +541,57 @@ components:
         status:
           type: string
           description: Liveness status string, always `"ok"` when the service is running.
+    LogEntry:
+      type: object
+      description: JSON representation of an audit log entry.
+      required:
+      - id
+      - timestamp
+      - agent_id
+      - session_id
+      - event_type
+      - summary
+      properties:
+        agent_id:
+          type: string
+          description: Agent ID that produced this log entry.
+        event_type:
+          type: string
+          description: Type of audit event.
+        id:
+          type: string
+          description: Unique log entry identifier.
+        session_id:
+          type: string
+          description: Session ID for the agent run.
+        summary:
+          type: string
+          description: Human-readable summary of the event.
+        timestamp:
+          type: string
+          description: ISO 8601 timestamp of the event.
+    PolicyResponse:
+      type: object
+      description: JSON representation of a governance policy version.
+      required:
+      - name
+      - version
+      - active
+      - rule_count
+      properties:
+        active:
+          type: boolean
+          description: Whether this is the currently active policy.
+        name:
+          type: string
+          description: Policy name from metadata.
+        rule_count:
+          type: integer
+          description: Number of rules in this policy version.
+          minimum: 0
+        version:
+          type: string
+          description: Policy version string.
     ProblemDetail:
       type: object
       description: RFC 7807 Problem Details JSON body.
@@ -82,6 +625,64 @@ components:
         status: 404
         title: Not Found
         type: about:blank
+    TraceResponse:
+      type: object
+      description: Full trace for one agent session.
+      required:
+      - session_id
+      - agent_id
+      - spans
+      properties:
+        agent_id:
+          type: string
+          description: Agent that produced this trace.
+        session_id:
+          type: string
+          description: Session identifier.
+        spans:
+          type: array
+          items:
+            $ref: '#/components/schemas/TraceSpan'
+          description: Ordered list of spans in the session.
+    TraceSpan:
+      type: object
+      description: A single span within an agent session trace.
+      required:
+      - span_id
+      - start_time
+      - operation
+      properties:
+        decision:
+          type: string
+          description: Governance decision result for this span.
+          nullable: true
+        end_time:
+          type: string
+          description: ISO 8601 end time (if completed).
+          nullable: true
+        operation:
+          type: string
+          description: Operation name.
+        span_id:
+          type: string
+          description: Span identifier.
+        start_time:
+          type: string
+          description: ISO 8601 start time.
 tags:
 - name: health
   description: Liveness and readiness probes
+- name: agents
+  description: Agent management
+- name: logs
+  description: Audit log queries
+- name: traces
+  description: Agent session traces
+- name: policies
+  description: Policy management
+- name: approvals
+  description: Human-in-the-loop approvals
+- name: costs
+  description: Cost and budget tracking
+- name: alerts
+  description: Governance alerts
