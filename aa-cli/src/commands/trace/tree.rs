@@ -122,4 +122,29 @@ mod tests {
         assert!(line.contains("query_db"));
         assert!(line.contains("12ms"));
     }
+
+    #[test]
+    fn render_tree_nested_events() {
+        let trace = SessionTrace {
+            session_id: "sess-001".to_string(),
+            events: vec![TraceEvent {
+                kind: TraceEventKind::Llm,
+                label: "GPT-4o".to_string(),
+                duration_ms: 834,
+                children: vec![
+                    make_event(TraceEventKind::ToolCall, "query_db", 12),
+                    make_event(TraceEventKind::ToolResult, "3 records", 0),
+                ],
+                violation_reason: None,
+            }],
+        };
+        let output = render_tree(&trace);
+        assert!(output.contains("Trace: sess-001"));
+        // Root uses └─ (only one root event)
+        assert!(output.contains("└─"));
+        // Children use ├─ and └─
+        assert!(output.contains("├─"));
+        assert!(output.contains("query_db"));
+        assert!(output.contains("3 records"));
+    }
 }
