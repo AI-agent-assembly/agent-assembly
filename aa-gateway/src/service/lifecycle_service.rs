@@ -95,6 +95,9 @@ impl AgentLifecycleService for AgentLifecycleServiceImpl {
             registered_at: now,
             last_heartbeat: now,
             status: AgentStatus::Active,
+            pid: None,
+            session_count: 0,
+            last_event: None,
         };
 
         self.registry

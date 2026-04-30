@@ -24,6 +24,9 @@ fn test_agent(id_byte: u8) -> AgentRecord {
         registered_at: chrono::Utc::now(),
         last_heartbeat: chrono::Utc::now(),
         status: AgentStatus::Active,
+        pid: None,
+        session_count: 0,
+        last_event: None,
     }
 }
 

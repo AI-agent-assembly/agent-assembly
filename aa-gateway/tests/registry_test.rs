@@ -22,6 +22,9 @@ fn make_record(key: [u8; 16]) -> AgentRecord {
         registered_at: Utc::now(),
         last_heartbeat: Utc::now(),
         status: AgentStatus::Active,
+        pid: None,
+        session_count: 0,
+        last_event: None,
     }
 }
 
@@ -209,6 +212,9 @@ async fn concurrent_registration_of_100_agents() {
                 registered_at: Utc::now(),
                 last_heartbeat: Utc::now(),
                 status: AgentStatus::Active,
+                pid: None,
+                session_count: 0,
+                last_event: None,
             };
             reg.register(record).unwrap();
         }));

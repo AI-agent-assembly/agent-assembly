@@ -272,6 +272,9 @@ budget:
         registered_at: chrono::Utc::now(),
         last_heartbeat: chrono::Utc::now(),
         status: AgentStatus::Active,
+        pid: None,
+        session_count: 0,
+        last_event: None,
     };
     registry.register(record).unwrap();
 
@@ -339,6 +342,9 @@ budget:
         registered_at: chrono::Utc::now(),
         last_heartbeat: chrono::Utc::now(),
         status: AgentStatus::Active,
+        pid: None,
+        session_count: 0,
+        last_event: None,
     };
     registry.register(record).unwrap();
 

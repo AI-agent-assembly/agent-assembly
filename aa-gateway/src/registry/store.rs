@@ -39,6 +39,12 @@ pub struct AgentRecord {
     pub last_heartbeat: DateTime<Utc>,
     /// Current runtime status of the agent.
     pub status: AgentStatus,
+    /// OS process ID of the agent, if known.
+    pub pid: Option<u32>,
+    /// Number of sessions this agent has handled.
+    pub session_count: u32,
+    /// Timestamp of the most recent event emitted by this agent.
+    pub last_event: Option<DateTime<Utc>>,
 }
 
 /// Channel sender type for pushing [`ControlCommand`]s to an agent's control stream.
