@@ -34,3 +34,12 @@ pub struct TraceEvent {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub violation_reason: Option<String>,
 }
+
+/// A complete trace for one agent session.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionTrace {
+    /// Unique identifier for the session.
+    pub session_id: String,
+    /// Top-level events in the session (in chronological order).
+    pub events: Vec<TraceEvent>,
+}
