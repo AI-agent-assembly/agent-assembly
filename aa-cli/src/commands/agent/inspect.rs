@@ -64,6 +64,36 @@ fn render_detail(agent: &AgentResponse) {
     }
 
     println!("{table}");
+
+    // Active sessions section
+    if !agent.active_sessions.is_empty() {
+        println!("\nActive Sessions:");
+        let mut sessions_table = Table::new();
+        sessions_table.set_header(vec!["SESSION_ID", "STARTED_AT", "STATUS"]);
+        for s in &agent.active_sessions {
+            sessions_table.add_row(vec![
+                Cell::new(&s.session_id),
+                Cell::new(&s.started_at),
+                Cell::new(&s.status),
+            ]);
+        }
+        println!("{sessions_table}");
+    }
+
+    // Recent events section
+    if !agent.recent_events.is_empty() {
+        println!("\nRecent Events:");
+        let mut events_table = Table::new();
+        events_table.set_header(vec!["TYPE", "SUMMARY", "TIMESTAMP"]);
+        for e in &agent.recent_events {
+            events_table.add_row(vec![
+                Cell::new(&e.event_type),
+                Cell::new(&e.summary),
+                Cell::new(&e.timestamp),
+            ]);
+        }
+        println!("{events_table}");
+    }
 }
 
 /// Run the `aasm agent inspect` command.
