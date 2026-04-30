@@ -230,4 +230,48 @@ mod tests {
         assert!(url.contains('?'));
         assert!(url.contains('&'));
     }
+
+    #[test]
+    fn ws_event_deserializes_from_json() {
+        let json = r#"{
+            "id": 42,
+            "event_type": "violation",
+            "agent_id": "aa001",
+            "payload": "policy denied tool call",
+            "timestamp": "2026-04-30T10:00:00Z"
+        }"#;
+        let event: WsEvent = serde_json::from_str(json).unwrap();
+        assert_eq!(event.id, 42);
+        assert_eq!(event.event_type, "violation");
+        assert_eq!(event.agent_id, "aa001");
+    }
+
+    #[test]
+    fn ws_event_to_line_data_string_payload() {
+        let event = WsEvent {
+            id: 1,
+            event_type: "budget".to_string(),
+            agent_id: "aa002".to_string(),
+            payload: serde_json::Value::String("threshold exceeded".to_string()),
+            timestamp: "2026-04-30T11:00:00Z".to_string(),
+        };
+        let data = event.to_line_data();
+        assert_eq!(data.message, "threshold exceeded");
+        assert_eq!(data.event_type, "budget");
+    }
+
+    #[test]
+    fn ws_event_to_line_data_object_payload() {
+        let event = WsEvent {
+            id: 2,
+            event_type: "approval".to_string(),
+            agent_id: "aa003".to_string(),
+            payload: serde_json::json!({"action": "refund", "amount": 250}),
+            timestamp: "2026-04-30T12:00:00Z".to_string(),
+        };
+        let data = event.to_line_data();
+        // Object payloads are serialised to string.
+        assert!(data.message.contains("refund"));
+        assert!(data.message.contains("250"));
+    }
 }
