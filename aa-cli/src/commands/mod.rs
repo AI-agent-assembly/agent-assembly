@@ -45,7 +45,7 @@ pub fn dispatch(cmd: Commands, ctx: &ResolvedContext, output: OutputFormat) -> E
     match cmd {
         Commands::Agent(args) => agent::dispatch(args, ctx, output),
         Commands::Logs(args) => logs::dispatch(args, ctx),
-        Commands::Policy(args) => policy::dispatch(args),
+        Commands::Policy(args) => policy::dispatch(args, ctx),
         Commands::Context(args) => context::dispatch(args),
         Commands::Completion(args) => completion::run(args),
         Commands::Status(args) => status::dispatch(args, ctx, output),

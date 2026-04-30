@@ -50,6 +50,12 @@ pub struct InteractiveState {
     pub dirty: bool,
 }
 
+impl Default for InteractiveState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl InteractiveState {
     /// Create a new empty interactive state.
     pub fn new() -> Self {

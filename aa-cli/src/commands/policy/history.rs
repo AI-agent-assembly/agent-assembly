@@ -7,6 +7,29 @@ use std::process::ExitCode;
 use aa_gateway::policy::history::{FsHistoryStore, HistoryConfig, PolicyHistoryStore};
 use clap::Args;
 use owo_colors::OwoColorize;
+use serde::{Deserialize, Serialize};
+
+use crate::config::ResolvedContext;
+
+/// Request body for `POST /api/v1/policies`.
+#[derive(Debug, Serialize)]
+pub struct CreatePolicyRequest {
+    /// Raw YAML content of the governance policy.
+    pub policy_yaml: String,
+}
+
+/// Response from `POST /api/v1/policies`.
+#[derive(Debug, Deserialize)]
+pub struct PolicyApplyResponse {
+    /// Policy name (SHA-256 prefix).
+    pub name: String,
+    /// Policy version string (timestamp).
+    pub version: String,
+    /// Whether this is the currently active policy.
+    pub active: bool,
+    /// Number of rules in this policy version.
+    pub rule_count: usize,
+}
 
 /// Arguments for `aasm policy apply`.
 #[derive(Args)]
@@ -43,10 +66,9 @@ pub struct DiffArgs {
 }
 
 /// Execute the `aasm policy apply` command.
-pub fn run_apply(args: ApplyArgs) -> ExitCode {
+pub fn run_apply(args: ApplyArgs, ctx: &ResolvedContext) -> ExitCode {
     let rt = tokio::runtime::Runtime::new().expect("failed to create tokio runtime");
     rt.block_on(async {
-        let store = FsHistoryStore::new(HistoryConfig::default_config());
         let yaml = match std::fs::read_to_string(&args.file) {
             Ok(y) => y,
             Err(e) => {
@@ -58,15 +80,14 @@ pub fn run_apply(args: ApplyArgs) -> ExitCode {
             eprintln!("error: policy validation failed: {:?}", errs);
             return ExitCode::FAILURE;
         }
-        match store.save(&yaml, args.applied_by.as_deref()).await {
-            Ok(meta) => {
+        let body = CreatePolicyRequest { policy_yaml: yaml };
+        match crate::client::post_json::<_, PolicyApplyResponse>(ctx, "/api/v1/policies", &body).await {
+            Ok(resp) => {
                 println!("Policy applied successfully.");
-                println!("  Version:    {}", &meta.sha256[..12]);
-                println!("  Timestamp:  {}", meta.timestamp);
-                println!("  SHA-256:    {}", meta.sha256);
-                if let Some(by) = &meta.applied_by {
-                    println!("  Applied by: {}", by);
-                }
+                println!("  Version:    {}", resp.name);
+                println!("  Timestamp:  {}", resp.version);
+                println!("  Active:     {}", resp.active);
+                println!("  Rules:      {}", resp.rule_count);
                 ExitCode::SUCCESS
             }
             Err(e) => {
