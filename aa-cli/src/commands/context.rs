@@ -80,3 +80,35 @@ fn run_list() -> ExitCode {
     }
     ExitCode::SUCCESS
 }
+
+/// Create or update a named context in the config file.
+fn run_set(args: SetArgs) -> ExitCode {
+    let mut cfg = match config::load() {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("error: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+
+    cfg.contexts.insert(
+        args.name.clone(),
+        config::ContextConfig {
+            api_url: args.api_url,
+            api_key: args.api_key,
+        },
+    );
+
+    // If this is the first context, make it the default.
+    if cfg.contexts.len() == 1 {
+        cfg.default_context = Some(args.name.clone());
+    }
+
+    if let Err(e) = config::save(&cfg) {
+        eprintln!("error: {e}");
+        return ExitCode::FAILURE;
+    }
+
+    println!("Context '{}' saved.", args.name);
+    ExitCode::SUCCESS
+}
