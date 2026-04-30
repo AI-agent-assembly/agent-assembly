@@ -751,4 +751,88 @@ data:
         let errs = result.unwrap_err();
         assert!(errs.iter().any(|e| e.field == "approval_timeout_secs"));
     }
+
+    // ── Envelope vs flat format ────────────────────────────────────────────
+
+    #[test]
+    fn envelope_format_extracts_metadata_name_and_version() {
+        let yaml = r#"
+apiVersion: agent-assembly/v1
+kind: Policy
+metadata:
+  name: my-policy
+  version: "2.0.0"
+spec:
+  budget:
+    daily_limit_usd: 10.0
+"#;
+        let out = PolicyValidator::from_yaml(yaml).unwrap();
+        assert_eq!(out.document.name, Some("my-policy".to_string()));
+        assert_eq!(out.document.policy_version, Some("2.0.0".to_string()));
+        assert_eq!(out.document.budget.unwrap().daily_limit_usd, Some(10.0));
+    }
+
+    #[test]
+    fn envelope_format_with_tools_parses_spec_correctly() {
+        let yaml = r#"
+apiVersion: agent-assembly/v1
+kind: Policy
+metadata:
+  name: test-policy
+  version: "1.0.0"
+spec:
+  tools:
+    bash:
+      allow: true
+      limit_per_hour: 5
+    file_write:
+      allow: false
+"#;
+        let out = PolicyValidator::from_yaml(yaml).unwrap();
+        assert_eq!(out.document.name, Some("test-policy".to_string()));
+        assert_eq!(out.document.tools.len(), 2);
+        assert!(out.document.tools["bash"].allow);
+        assert!(!out.document.tools["file_write"].allow);
+    }
+
+    #[test]
+    fn flat_format_has_no_metadata() {
+        let yaml = "budget:\n  daily_limit_usd: 25.0\n";
+        let out = PolicyValidator::from_yaml(yaml).unwrap();
+        assert!(out.document.name.is_none());
+        assert!(out.document.policy_version.is_none());
+        assert_eq!(out.document.budget.unwrap().daily_limit_usd, Some(25.0));
+    }
+
+    #[test]
+    fn envelope_format_without_metadata_section() {
+        let yaml = r#"
+apiVersion: agent-assembly/v1
+kind: Policy
+spec:
+  budget:
+    daily_limit_usd: 5.0
+"#;
+        let out = PolicyValidator::from_yaml(yaml).unwrap();
+        assert!(out.document.name.is_none());
+        assert!(out.document.policy_version.is_none());
+        assert_eq!(out.document.budget.unwrap().daily_limit_usd, Some(5.0));
+    }
+
+    #[test]
+    fn envelope_format_validation_errors_propagate() {
+        let yaml = r#"
+apiVersion: agent-assembly/v1
+kind: Policy
+metadata:
+  name: bad-policy
+spec:
+  budget:
+    daily_limit_usd: -1.0
+"#;
+        let result = PolicyValidator::from_yaml(yaml);
+        assert!(result.is_err());
+        let errs = result.unwrap_err();
+        assert!(errs.iter().any(|e| e.field == "budget.daily_limit_usd"));
+    }
 }
