@@ -278,6 +278,7 @@ budget:
         policy_violations_count: 0,
         active_sessions: Vec::new(),
         recent_events: std::collections::VecDeque::new(),
+        recent_traces: Vec::new(),
     };
     registry.register(record).unwrap();
 
@@ -351,6 +352,7 @@ budget:
         policy_violations_count: 0,
         active_sessions: Vec::new(),
         recent_events: std::collections::VecDeque::new(),
+        recent_traces: Vec::new(),
     };
     registry.register(record).unwrap();
 

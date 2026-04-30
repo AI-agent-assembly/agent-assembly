@@ -75,6 +75,9 @@ pub struct AgentResponse {
     /// Most recent events emitted by this agent.
     #[serde(default)]
     pub recent_events: Vec<RecentEventResponse>,
+    /// Most recent trace session IDs for this agent.
+    #[serde(default)]
+    pub recent_traces: Vec<RecentTraceResponse>,
 }
 
 /// Summary of an active session returned by the API.
@@ -96,6 +99,15 @@ pub struct RecentEventResponse {
     /// Short human-readable summary.
     pub summary: String,
     /// ISO 8601 timestamp when the event occurred.
+    pub timestamp: String,
+}
+
+/// Summary of a recent trace session returned by the API.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RecentTraceResponse {
+    /// Hex-encoded session UUID, usable with `aasm trace <session-id>`.
+    pub session_id: String,
+    /// ISO 8601 timestamp when the trace session started.
     pub timestamp: String,
 }
 
@@ -153,6 +165,7 @@ mod tests {
             policy_violations_count: Some(2),
             active_sessions: vec![],
             recent_events: vec![],
+            recent_traces: vec![],
         };
 
         let json = serde_json::to_string(&agent).unwrap();
@@ -265,6 +278,7 @@ mod tests {
             policy_violations_count: Some(0),
             active_sessions: vec![],
             recent_events: vec![],
+            recent_traces: vec![],
         };
 
         let json = serde_json::to_string(&agent).unwrap();
@@ -302,5 +316,73 @@ mod tests {
         assert_eq!(agent.recent_events.len(), 1);
         assert_eq!(agent.recent_events[0].event_type, "violation");
         assert_eq!(agent.recent_events[0].summary, "blocked call");
+    }
+
+    #[test]
+    fn recent_traces_defaults_to_empty_when_missing() {
+        let json = r#"{
+            "id": "ee",
+            "name": "no-traces",
+            "framework": "custom",
+            "version": "1.0.0",
+            "status": "Active",
+            "tool_names": [],
+            "metadata": {}
+        }"#;
+
+        let agent: AgentResponse = serde_json::from_str(json).unwrap();
+        assert!(agent.recent_traces.is_empty());
+    }
+
+    #[test]
+    fn recent_traces_deserialize_when_present() {
+        let json = r#"{
+            "id": "ff",
+            "name": "traced-agent",
+            "framework": "langgraph",
+            "version": "1.0.0",
+            "status": "Active",
+            "tool_names": [],
+            "metadata": {},
+            "recent_traces": [
+                {"session_id": "sess-abc123", "timestamp": "2026-04-30T10:00:00Z"},
+                {"session_id": "sess-def456", "timestamp": "2026-04-30T09:30:00Z"}
+            ]
+        }"#;
+
+        let agent: AgentResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(agent.recent_traces.len(), 2);
+        assert_eq!(agent.recent_traces[0].session_id, "sess-abc123");
+        assert_eq!(agent.recent_traces[0].timestamp, "2026-04-30T10:00:00Z");
+        assert_eq!(agent.recent_traces[1].session_id, "sess-def456");
+    }
+
+    #[test]
+    fn recent_traces_round_trip() {
+        let agent = AgentResponse {
+            id: "gg".to_string(),
+            name: "rt-traces".to_string(),
+            framework: "crewai".to_string(),
+            version: "1.0.0".to_string(),
+            status: "Active".to_string(),
+            tool_names: vec![],
+            metadata: BTreeMap::new(),
+            pid: None,
+            session_count: None,
+            last_event: None,
+            policy_violations_count: None,
+            active_sessions: vec![],
+            recent_events: vec![],
+            recent_traces: vec![RecentTraceResponse {
+                session_id: "sess-111".to_string(),
+                timestamp: "2026-04-30T08:00:00Z".to_string(),
+            }],
+        };
+
+        let json = serde_json::to_string(&agent).unwrap();
+        let parsed: AgentResponse = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.recent_traces.len(), 1);
+        assert_eq!(parsed.recent_traces[0].session_id, "sess-111");
+        assert_eq!(parsed.recent_traces[0].timestamp, "2026-04-30T08:00:00Z");
     }
 }

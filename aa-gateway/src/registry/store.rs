@@ -37,6 +37,15 @@ pub struct RecentEvent {
     pub timestamp: DateTime<Utc>,
 }
 
+/// Summary of a recent trace session for an agent.
+#[derive(Debug, Clone)]
+pub struct RecentTrace {
+    /// Hex-encoded session UUID, usable with `aasm trace <session-id>`.
+    pub session_id: String,
+    /// Timestamp when the trace session started.
+    pub timestamp: DateTime<Utc>,
+}
+
 /// Identity and runtime state record for a single registered agent.
 #[derive(Debug, Clone)]
 pub struct AgentRecord {
@@ -76,6 +85,8 @@ pub struct AgentRecord {
     pub active_sessions: Vec<ActiveSession>,
     /// Most recent events emitted by this agent (bounded by [`MAX_RECENT_EVENTS`]).
     pub recent_events: VecDeque<RecentEvent>,
+    /// Most recent trace session IDs for this agent.
+    pub recent_traces: Vec<RecentTrace>,
 }
 
 /// Channel sender type for pushing [`ControlCommand`]s to an agent's control stream.

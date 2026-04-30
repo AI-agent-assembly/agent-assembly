@@ -182,6 +182,7 @@ mod tests {
                 policy_violations_count: Some(0),
                 active_sessions: vec![],
                 recent_events: vec![],
+                recent_traces: vec![],
             },
             AgentResponse {
                 id: "11223344556677881122334455667788".to_string(),
@@ -197,6 +198,7 @@ mod tests {
                 policy_violations_count: Some(1),
                 active_sessions: vec![],
                 recent_events: vec![],
+                recent_traces: vec![],
             },
         ]
     }

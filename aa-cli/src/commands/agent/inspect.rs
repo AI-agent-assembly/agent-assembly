@@ -94,6 +94,18 @@ fn render_detail(agent: &AgentResponse) {
         }
         println!("{events_table}");
     }
+
+    // Recent traces section
+    if !agent.recent_traces.is_empty() {
+        println!("\nRecent Traces:");
+        let mut traces_table = Table::new();
+        traces_table.set_header(vec!["SESSION_ID", "TIMESTAMP"]);
+        for t in &agent.recent_traces {
+            traces_table.add_row(vec![Cell::new(&t.session_id), Cell::new(&t.timestamp)]);
+        }
+        println!("{traces_table}");
+        println!("Tip: run `aasm trace <session-id>` to visualize a trace");
+    }
 }
 
 /// Run the `aasm agent inspect` command.
@@ -122,4 +134,53 @@ pub fn run(args: InspectArgs, ctx: &ResolvedContext, output: OutputFormat) -> Ex
     }
 
     ExitCode::SUCCESS
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+
+    use super::*;
+    use crate::commands::agent::RecentTraceResponse;
+
+    fn base_agent() -> AgentResponse {
+        AgentResponse {
+            id: "aabb".to_string(),
+            name: "test-agent".to_string(),
+            framework: "custom".to_string(),
+            version: "1.0.0".to_string(),
+            status: "Active".to_string(),
+            tool_names: vec![],
+            metadata: BTreeMap::new(),
+            pid: None,
+            session_count: None,
+            last_event: None,
+            policy_violations_count: None,
+            active_sessions: vec![],
+            recent_events: vec![],
+            recent_traces: vec![],
+        }
+    }
+
+    #[test]
+    fn render_detail_without_traces_does_not_panic() {
+        let agent = base_agent();
+        render_detail(&agent);
+    }
+
+    #[test]
+    fn render_detail_with_traces_does_not_panic() {
+        let mut agent = base_agent();
+        agent.recent_traces = vec![
+            RecentTraceResponse {
+                session_id: "sess-abc123".to_string(),
+                timestamp: "2026-04-30T10:00:00Z".to_string(),
+            },
+            RecentTraceResponse {
+                session_id: "sess-def456".to_string(),
+                timestamp: "2026-04-30T09:30:00Z".to_string(),
+            },
+        ];
+        render_detail(&agent);
+    }
 }

@@ -360,6 +360,8 @@ export interface components {
             policy_violations_count: number;
             /** @description Most recent events emitted by this agent. */
             recent_events: components["schemas"]["RecentEventResponse"][];
+            /** @description Most recent trace session IDs for this agent. */
+            recent_traces: components["schemas"]["RecentTraceResponse"][];
             /**
              * Format: int32
              * @description Number of sessions handled.
@@ -589,6 +591,13 @@ export interface components {
             /** @description Short human-readable summary. */
             summary: string;
             /** @description ISO 8601 timestamp when the event occurred. */
+            timestamp: string;
+        };
+        /** @description Summary of a recent trace session for an agent. */
+        RecentTraceResponse: {
+            /** @description Hex-encoded session UUID, usable with `aasm trace <session-id>`. */
+            session_id: string;
+            /** @description ISO 8601 timestamp when the trace session started. */
             timestamp: string;
         };
         /**
