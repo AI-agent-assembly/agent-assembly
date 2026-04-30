@@ -181,4 +181,19 @@ mod tests {
         let line = render_event_line(&event);
         assert!(line.contains("no reason provided"));
     }
+
+    #[test]
+    fn render_tree_single_event_no_children() {
+        let trace = SessionTrace {
+            session_id: "sess-solo".to_string(),
+            events: vec![make_event(TraceEventKind::Llm, "Claude", 500)],
+        };
+        let output = render_tree(&trace);
+        assert!(output.contains("Trace: sess-solo"));
+        assert!(output.contains("└─"));
+        assert!(output.contains("Claude"));
+        assert!(output.contains("500ms"));
+        // No child connectors
+        assert!(!output.contains("├─"));
+    }
 }
