@@ -107,7 +107,11 @@ pub fn render_budget_table(budget: &BudgetRow) {
     println!("BUDGET STATUS");
     println!("─────────────");
 
-    render_budget_line("Daily spend ", &budget.daily_spend_usd, budget.daily_limit_usd.as_deref());
+    render_budget_line(
+        "Daily spend ",
+        &budget.daily_spend_usd,
+        budget.daily_limit_usd.as_deref(),
+    );
 
     if let Some(ref monthly) = budget.monthly_spend_usd {
         render_budget_line("Monthly spend", monthly, budget.monthly_limit_usd.as_deref());
@@ -225,7 +229,7 @@ mod tests {
     #[test]
     fn per_agent_sorted_by_spend_descending() {
         use super::super::models::AgentCostEntry;
-        let mut entries = vec![
+        let mut entries = [
             AgentCostEntry {
                 agent_id: "low".to_string(),
                 daily_spend_usd: "1.00".to_string(),
