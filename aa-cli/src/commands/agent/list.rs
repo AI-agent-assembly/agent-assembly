@@ -180,6 +180,8 @@ mod tests {
                 session_count: Some(3),
                 last_event: Some("2025-01-15T10:30:00Z".to_string()),
                 policy_violations_count: Some(0),
+                active_sessions: vec![],
+                recent_events: vec![],
             },
             AgentResponse {
                 id: "11223344556677881122334455667788".to_string(),
@@ -193,6 +195,8 @@ mod tests {
                 session_count: None,
                 last_event: None,
                 policy_violations_count: Some(1),
+                active_sessions: vec![],
+                recent_events: vec![],
             },
         ]
     }

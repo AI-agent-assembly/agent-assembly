@@ -306,6 +306,8 @@ fn new_fields_default_values_on_registration() {
     assert_eq!(record.session_count, 0);
     assert!(record.last_event.is_none());
     assert_eq!(record.policy_violations_count, 0);
+    assert!(record.active_sessions.is_empty());
+    assert!(record.recent_events.is_empty());
 }
 
 #[test]
@@ -323,4 +325,31 @@ fn new_fields_survive_clone_and_retrieval() {
     assert_eq!(retrieved.session_count, 10);
     assert!(retrieved.last_event.is_some());
     assert_eq!(retrieved.policy_violations_count, 3);
+}
+
+#[test]
+fn active_sessions_and_recent_events_survive_retrieval() {
+    use aa_gateway::registry::{ActiveSession, RecentEvent};
+
+    let reg = AgentRegistry::new();
+    let mut record = make_record(key(3));
+    record.active_sessions = vec![ActiveSession {
+        session_id: "aabb".into(),
+        started_at: Utc::now(),
+        status: "running".into(),
+    }];
+    record.recent_events.push_back(RecentEvent {
+        event_type: "violation".into(),
+        summary: "unauthorized tool call".into(),
+        timestamp: Utc::now(),
+    });
+    reg.register(record).unwrap();
+
+    let retrieved = reg.get(&key(3)).unwrap();
+    assert_eq!(retrieved.active_sessions.len(), 1);
+    assert_eq!(retrieved.active_sessions[0].session_id, "aabb");
+    assert_eq!(retrieved.active_sessions[0].status, "running");
+    assert_eq!(retrieved.recent_events.len(), 1);
+    assert_eq!(retrieved.recent_events[0].event_type, "violation");
+    assert_eq!(retrieved.recent_events[0].summary, "unauthorized tool call");
 }

@@ -151,6 +151,8 @@ mod tests {
             session_count: Some(5),
             last_event: Some("2025-01-01T00:00:00Z".to_string()),
             policy_violations_count: Some(2),
+            active_sessions: vec![],
+            recent_events: vec![],
         };
 
         let json = serde_json::to_string(&agent).unwrap();
@@ -220,6 +222,8 @@ mod tests {
         assert!(agent.session_count.is_none());
         assert!(agent.last_event.is_none());
         assert!(agent.policy_violations_count.is_none());
+        assert!(agent.active_sessions.is_empty());
+        assert!(agent.recent_events.is_empty());
     }
 
     #[test]
@@ -259,6 +263,8 @@ mod tests {
             session_count: Some(42),
             last_event: Some("2025-03-01T12:00:00Z".to_string()),
             policy_violations_count: Some(0),
+            active_sessions: vec![],
+            recent_events: vec![],
         };
 
         let json = serde_json::to_string(&agent).unwrap();
@@ -267,5 +273,34 @@ mod tests {
         assert_eq!(parsed.session_count, Some(42));
         assert_eq!(parsed.last_event.as_deref(), Some("2025-03-01T12:00:00Z"));
         assert_eq!(parsed.policy_violations_count, Some(0));
+    }
+
+    #[test]
+    fn active_sessions_and_recent_events_deserialize() {
+        let json = r#"{
+            "id": "dd",
+            "name": "session-agent",
+            "framework": "custom",
+            "version": "1.0.0",
+            "status": "Active",
+            "tool_names": [],
+            "metadata": {},
+            "active_sessions": [
+                {"session_id": "s1", "started_at": "2025-06-01T10:00:00Z", "status": "running"},
+                {"session_id": "s2", "started_at": "2025-06-01T11:00:00Z", "status": "idle"}
+            ],
+            "recent_events": [
+                {"event_type": "violation", "summary": "blocked call", "timestamp": "2025-06-01T10:05:00Z"}
+            ]
+        }"#;
+
+        let agent: AgentResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(agent.active_sessions.len(), 2);
+        assert_eq!(agent.active_sessions[0].session_id, "s1");
+        assert_eq!(agent.active_sessions[0].status, "running");
+        assert_eq!(agent.active_sessions[1].session_id, "s2");
+        assert_eq!(agent.recent_events.len(), 1);
+        assert_eq!(agent.recent_events[0].event_type, "violation");
+        assert_eq!(agent.recent_events[0].summary, "blocked call");
     }
 }

@@ -297,4 +297,55 @@ async fn get_agent_response_null_optional_fields() {
     assert_eq!(json["session_count"], 0);
     assert!(json["last_event"].is_null());
     assert_eq!(json["policy_violations_count"], 0);
+    assert!(json["active_sessions"].as_array().unwrap().is_empty());
+    assert!(json["recent_events"].as_array().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn get_agent_response_includes_active_sessions_and_recent_events() {
+    use aa_gateway::registry::{ActiveSession, RecentEvent};
+
+    let state = common::test_state();
+    let mut agent = test_agent(0xCC);
+    agent.active_sessions = vec![ActiveSession {
+        session_id: "sess-001".into(),
+        started_at: chrono::Utc::now(),
+        status: "running".into(),
+    }];
+    agent.recent_events.push_back(RecentEvent {
+        event_type: "violation".into(),
+        summary: "blocked tool call".into(),
+        timestamp: chrono::Utc::now(),
+    });
+    state.agent_registry.register(agent).unwrap();
+
+    let app = aa_api::server::build_app(state);
+    let id = hex_id(0xCC);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri(format!("/api/v1/agents/{id}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    let sessions = json["active_sessions"].as_array().unwrap();
+    assert_eq!(sessions.len(), 1);
+    assert_eq!(sessions[0]["session_id"], "sess-001");
+    assert_eq!(sessions[0]["status"], "running");
+    assert!(sessions[0]["started_at"].as_str().is_some());
+
+    let events = json["recent_events"].as_array().unwrap();
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0]["event_type"], "violation");
+    assert_eq!(events[0]["summary"], "blocked tool call");
+    assert!(events[0]["timestamp"].as_str().is_some());
 }
