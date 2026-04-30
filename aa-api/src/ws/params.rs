@@ -21,6 +21,7 @@ pub struct WsQueryParams {
     pub agent_id: Option<String>,
     /// Replay buffered events whose id is greater than this value.
     /// The server keeps the last 1000 events in a circular buffer.
+    #[param(value_type = Option<u64>)]
     pub since: Option<EventId>,
 }
 

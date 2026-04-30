@@ -276,6 +276,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/ws/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * `GET /api/v1/ws/events` — upgrade to WebSocket and stream events.
+         * @description Initiates a WebSocket connection for real-time governance event streaming.
+         *
+         *     ## Protocol
+         *
+         *     1. Client sends an HTTP GET with `Upgrade: websocket` headers.
+         *     2. Server responds with `101 Switching Protocols` and upgrades the connection.
+         *     3. Server sends `GovernanceEvent` JSON objects as text frames.
+         *     4. Server sends periodic ping frames (every 30s); client must respond with pong.
+         *     5. Either side may close the connection with a close frame.
+         *
+         *     ## Replay
+         *
+         *     The server maintains a circular buffer of the last 1000 events. Pass the
+         *     `since` query parameter with a previously received event `id` to replay
+         *     all buffered events after that id before switching to live streaming.
+         *
+         *     ## Event Types
+         *
+         *     Filter events using the `types` query parameter (comma-separated):
+         *     - `violation` — audit / pipeline events (policy violations)
+         *     - `approval` — human-in-the-loop approval requests
+         *     - `budget` — budget threshold alerts
+         *
+         *     All types are streamed when the parameter is omitted.
+         */
+        get: operations["ws_events_handler"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -349,6 +392,36 @@ export interface components {
             by?: string | null;
             /** @description Optional reason for the decision. */
             reason?: string | null;
+        };
+        /**
+         * @description Classification of governance events for client-side filtering.
+         *
+         *     Clients specify a comma-separated list of these values in the `types`
+         *     query parameter to receive only matching events on the WebSocket.
+         * @enum {string}
+         */
+        EventType: "violation" | "approval" | "budget";
+        /**
+         * @description A governance event delivered to WebSocket subscribers.
+         *
+         *     This is the unified JSON representation sent over the wire.
+         *     It wraps events from all three domain channels (pipeline,
+         *     approval, budget) into a single schema that clients can
+         *     filter by [`EventType`].
+         */
+        GovernanceEvent: {
+            /** @description Agent that produced or is associated with the event. */
+            agent_id: string;
+            event_type: components["schemas"]["EventType"];
+            /**
+             * Format: int64
+             * @description Monotonically increasing event identifier.
+             */
+            id: number;
+            /** @description Event-specific payload serialised as a JSON value. */
+            payload: unknown;
+            /** @description Timestamp when the event was received by the API layer (ISO 8601). */
+            timestamp: string;
         };
         /** @description Response body for the health endpoint. */
         HealthResponse: {
@@ -911,6 +984,44 @@ export interface operations {
             };
             /** @description Session not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ws_events_handler: {
+        parameters: {
+            query?: {
+                /**
+                 * @description Comma-separated event type filter (e.g. `violation,budget`).
+                 *     All types are included when omitted.
+                 */
+                types?: string | null;
+                /** @description Filter events by agent identifier (hex-encoded). */
+                agent_id?: string | null;
+                /**
+                 * @description Replay buffered events whose id is greater than this value.
+                 *     The server keeps the last 1000 events in a circular buffer.
+                 */
+                since?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description WebSocket upgrade successful. Server streams GovernanceEvent JSON text frames. */
+            101: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad request (invalid query parameters) */
+            400: {
                 headers: {
                     [name: string]: unknown;
                 };

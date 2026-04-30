@@ -18,6 +18,7 @@ pub type EventId = u64;
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct GovernanceEvent {
     /// Monotonically increasing event identifier.
+    #[schema(value_type = u64)]
     pub id: EventId,
     /// Classification of the event for client-side filtering.
     pub event_type: EventType,

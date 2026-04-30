@@ -450,6 +450,70 @@ paths:
                 $ref: '#/components/schemas/TraceResponse'
         '404':
           description: Session not found
+  /api/v1/ws/events:
+    get:
+      tags:
+      - events
+      summary: '`GET /api/v1/ws/events` — upgrade to WebSocket and stream events.'
+      description: |-
+        Initiates a WebSocket connection for real-time governance event streaming.
+
+        ## Protocol
+
+        1. Client sends an HTTP GET with `Upgrade: websocket` headers.
+        2. Server responds with `101 Switching Protocols` and upgrades the connection.
+        3. Server sends `GovernanceEvent` JSON objects as text frames.
+        4. Server sends periodic ping frames (every 30s); client must respond with pong.
+        5. Either side may close the connection with a close frame.
+
+        ## Replay
+
+        The server maintains a circular buffer of the last 1000 events. Pass the
+        `since` query parameter with a previously received event `id` to replay
+        all buffered events after that id before switching to live streaming.
+
+        ## Event Types
+
+        Filter events using the `types` query parameter (comma-separated):
+        - `violation` — audit / pipeline events (policy violations)
+        - `approval` — human-in-the-loop approval requests
+        - `budget` — budget threshold alerts
+
+        All types are streamed when the parameter is omitted.
+      operationId: ws_events_handler
+      parameters:
+      - name: types
+        in: query
+        description: |-
+          Comma-separated event type filter (e.g. `violation,budget`).
+          All types are included when omitted.
+        required: false
+        schema:
+          type: string
+          nullable: true
+      - name: agent_id
+        in: query
+        description: Filter events by agent identifier (hex-encoded).
+        required: false
+        schema:
+          type: string
+          nullable: true
+      - name: since
+        in: query
+        description: |-
+          Replay buffered events whose id is greater than this value.
+          The server keeps the last 1000 events in a circular buffer.
+        required: false
+        schema:
+          type: integer
+          format: int64
+          nullable: true
+          minimum: 0
+      responses:
+        '101':
+          description: WebSocket upgrade successful. Server streams GovernanceEvent JSON text frames.
+        '400':
+          description: Bad request (invalid query parameters)
 components:
   schemas:
     AgentResponse:
@@ -585,6 +649,48 @@ components:
           type: string
           description: Optional reason for the decision.
           nullable: true
+    EventType:
+      type: string
+      description: |-
+        Classification of governance events for client-side filtering.
+
+        Clients specify a comma-separated list of these values in the `types`
+        query parameter to receive only matching events on the WebSocket.
+      enum:
+      - violation
+      - approval
+      - budget
+    GovernanceEvent:
+      type: object
+      description: |-
+        A governance event delivered to WebSocket subscribers.
+
+        This is the unified JSON representation sent over the wire.
+        It wraps events from all three domain channels (pipeline,
+        approval, budget) into a single schema that clients can
+        filter by [`EventType`].
+      required:
+      - id
+      - event_type
+      - agent_id
+      - payload
+      - timestamp
+      properties:
+        agent_id:
+          type: string
+          description: Agent that produced or is associated with the event.
+        event_type:
+          $ref: '#/components/schemas/EventType'
+        id:
+          type: integer
+          format: int64
+          description: Monotonically increasing event identifier.
+          minimum: 0
+        payload:
+          description: Event-specific payload serialised as a JSON value.
+        timestamp:
+          type: string
+          description: Timestamp when the event was received by the API layer (ISO 8601).
     HealthResponse:
       type: object
       description: Response body for the health endpoint.
@@ -797,3 +903,5 @@ tags:
   description: Governance alerts
 - name: auth
   description: Authentication and token issuance
+- name: events
+  description: Real-time event streaming via WebSocket
