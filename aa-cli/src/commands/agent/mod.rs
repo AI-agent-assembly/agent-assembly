@@ -12,6 +12,7 @@ use crate::output::OutputFormat;
 mod inspect;
 mod kill;
 mod list;
+mod suspend;
 
 /// Arguments for the `aasm agent` subcommand group.
 #[derive(Args)]
@@ -29,6 +30,8 @@ pub enum AgentCommands {
     Inspect(inspect::InspectArgs),
     /// Deregister and terminate an agent.
     Kill(kill::KillArgs),
+    /// Suspend a running agent.
+    Suspend(suspend::SuspendArgs),
 }
 
 /// Dispatch an agent subcommand.
@@ -37,6 +40,7 @@ pub fn dispatch(args: AgentArgs, ctx: &ResolvedContext, output: OutputFormat) ->
         AgentCommands::List(list_args) => list::run(list_args, ctx, output),
         AgentCommands::Inspect(inspect_args) => inspect::run(inspect_args, ctx, output),
         AgentCommands::Kill(kill_args) => kill::run(kill_args, ctx),
+        AgentCommands::Suspend(suspend_args) => suspend::run(suspend_args, ctx, output),
     }
 }
 
