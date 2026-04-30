@@ -7,6 +7,7 @@ use std::process::ExitCode;
 
 use clap::Parser;
 
+mod client;
 mod commands;
 mod config;
 mod error;
