@@ -77,8 +77,7 @@ fn handle_approvals_key(state: &mut DashboardState, key: KeyEvent) -> InputActio
             state.approval_selected = state.approval_selected.saturating_sub(1);
         }
         KeyCode::Down | KeyCode::Char('j') if !state.pending_approvals.is_empty() => {
-            state.approval_selected = (state.approval_selected + 1)
-                .min(state.pending_approvals.len() - 1);
+            state.approval_selected = (state.approval_selected + 1).min(state.pending_approvals.len() - 1);
         }
         KeyCode::Char('a') if !state.pending_approvals.is_empty() => {
             return InputAction::Approve;
@@ -120,10 +119,7 @@ mod tests {
     #[test]
     fn quit_on_ctrl_c() {
         let mut state = DashboardState::new();
-        handle_key(
-            &mut state,
-            make_key_with_mod(KeyCode::Char('c'), KeyModifiers::CONTROL),
-        );
+        handle_key(&mut state, make_key_with_mod(KeyCode::Char('c'), KeyModifiers::CONTROL));
         assert!(state.should_quit);
     }
 
@@ -157,10 +153,7 @@ mod tests {
     #[test]
     fn shift_tab_cycles_backwards() {
         let mut state = DashboardState::new();
-        handle_key(
-            &mut state,
-            make_key_with_mod(KeyCode::Tab, KeyModifiers::SHIFT),
-        );
+        handle_key(&mut state, make_key_with_mod(KeyCode::Tab, KeyModifiers::SHIFT));
         assert_eq!(state.active_panel, Panel::Budget);
     }
 
@@ -213,16 +206,14 @@ mod tests {
     fn approve_action_returned() {
         let mut state = DashboardState::new();
         state.active_panel = Panel::Approvals;
-        state.pending_approvals = vec![
-            crate::commands::status::models::ApprovalResponse {
-                id: "1".to_string(),
-                agent_id: "a1".to_string(),
-                action: "act".to_string(),
-                reason: "r".to_string(),
-                status: "pending".to_string(),
-                created_at: "2026-04-30T10:00:00Z".to_string(),
-            },
-        ];
+        state.pending_approvals = vec![crate::commands::status::models::ApprovalResponse {
+            id: "1".to_string(),
+            agent_id: "a1".to_string(),
+            action: "act".to_string(),
+            reason: "r".to_string(),
+            status: "pending".to_string(),
+            created_at: "2026-04-30T10:00:00Z".to_string(),
+        }];
         let action = handle_key(&mut state, make_key(KeyCode::Char('a')));
         assert_eq!(action, InputAction::Approve);
     }
@@ -231,16 +222,14 @@ mod tests {
     fn reject_action_returned() {
         let mut state = DashboardState::new();
         state.active_panel = Panel::Approvals;
-        state.pending_approvals = vec![
-            crate::commands::status::models::ApprovalResponse {
-                id: "1".to_string(),
-                agent_id: "a1".to_string(),
-                action: "act".to_string(),
-                reason: "r".to_string(),
-                status: "pending".to_string(),
-                created_at: "2026-04-30T10:00:00Z".to_string(),
-            },
-        ];
+        state.pending_approvals = vec![crate::commands::status::models::ApprovalResponse {
+            id: "1".to_string(),
+            agent_id: "a1".to_string(),
+            action: "act".to_string(),
+            reason: "r".to_string(),
+            status: "pending".to_string(),
+            created_at: "2026-04-30T10:00:00Z".to_string(),
+        }];
         let action = handle_key(&mut state, make_key(KeyCode::Char('r')));
         assert_eq!(action, InputAction::Reject);
     }

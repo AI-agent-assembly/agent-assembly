@@ -16,11 +16,7 @@ pub enum DialogAction {
 }
 
 /// Render a centered confirmation dialog over the dashboard.
-pub fn draw_confirm_dialog(
-    f: &mut Frame,
-    approval: &ApprovalResponse,
-    action: DialogAction,
-) {
+pub fn draw_confirm_dialog(f: &mut Frame, approval: &ApprovalResponse, action: DialogAction) {
     let area = centered_rect(50, 30, f.area());
 
     // Clear the area behind the dialog.

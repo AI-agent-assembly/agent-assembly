@@ -13,9 +13,7 @@ use std::time::Duration;
 use clap::Args;
 use crossterm::event::{self as ct_event, DisableMouseCapture, EnableMouseCapture, Event, KeyCode};
 use crossterm::execute;
-use crossterm::terminal::{
-    EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
-};
+use crossterm::terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen};
 use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
 use tokio::sync::mpsc;
@@ -75,9 +73,8 @@ async fn run(_args: DashboardArgs, ctx: &ResolvedContext) -> ExitCode {
     loop {
         // Draw the current state, with optional dialog overlay.
         let confirm_dialog = state.confirm_dialog;
-        let dialog_approval = confirm_dialog.and_then(|_| {
-            state.pending_approvals.get(state.approval_selected).cloned()
-        });
+        let dialog_approval =
+            confirm_dialog.and_then(|_| state.pending_approvals.get(state.approval_selected).cloned());
         terminal
             .draw(|f| {
                 ui::draw(f, &state);
@@ -153,9 +150,7 @@ async fn run(_args: DashboardArgs, ctx: &ResolvedContext) -> ExitCode {
                     state.budget = budget;
                     // Clamp approval selection to valid range.
                     if !state.pending_approvals.is_empty() {
-                        state.approval_selected = state
-                            .approval_selected
-                            .min(state.pending_approvals.len() - 1);
+                        state.approval_selected = state.approval_selected.min(state.pending_approvals.len() - 1);
                     } else {
                         state.approval_selected = 0;
                     }

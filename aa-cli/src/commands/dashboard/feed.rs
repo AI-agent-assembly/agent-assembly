@@ -9,9 +9,7 @@ use tokio_tungstenite::tungstenite::Message;
 
 use crate::commands::status::client::StatusClient;
 use crate::commands::status::fetch;
-use crate::commands::status::models::{
-    AgentRow, ApprovalResponse, ApprovalsSummary, BudgetRow, RuntimeHealth,
-};
+use crate::commands::status::models::{AgentRow, ApprovalResponse, ApprovalsSummary, BudgetRow, RuntimeHealth};
 
 use super::state::EventEntry;
 

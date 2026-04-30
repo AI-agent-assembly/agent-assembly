@@ -2,9 +2,7 @@
 
 use std::collections::VecDeque;
 
-use crate::commands::status::models::{
-    AgentRow, ApprovalResponse, ApprovalsSummary, BudgetRow, RuntimeHealth,
-};
+use crate::commands::status::models::{AgentRow, ApprovalResponse, ApprovalsSummary, BudgetRow, RuntimeHealth};
 
 use super::dialog::DialogAction;
 

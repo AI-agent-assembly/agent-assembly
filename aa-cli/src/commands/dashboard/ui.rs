@@ -80,16 +80,10 @@ fn draw_agents_panel(f: &mut Frame, area: Rect, state: &DashboardState) {
     };
     let uptime = format_duration(state.runtime.uptime_secs);
     let header_line = Line::from(vec![
-        Span::styled(
-            format!("{status_indicator} "),
-            Style::default().fg(status_color),
-        ),
+        Span::styled(format!("{status_indicator} "), Style::default().fg(status_color)),
         Span::raw(format!(
             "{} | up {} | {} conns | lag {}ms",
-            state.runtime.status,
-            uptime,
-            state.runtime.active_connections,
-            state.runtime.pipeline_lag_ms,
+            state.runtime.status, uptime, state.runtime.active_connections, state.runtime.pipeline_lag_ms,
         )),
     ]);
     f.render_widget(Paragraph::new(header_line), chunks[0]);
@@ -159,10 +153,7 @@ fn draw_event_log_panel(f: &mut Frame, area: Rect, state: &DashboardState) {
                     format!("[{}] ", short_timestamp(&e.timestamp)),
                     Style::default().fg(Color::DarkGray),
                 ),
-                Span::styled(
-                    format!("{:<10} ", e.event_type),
-                    Style::default().fg(type_color),
-                ),
+                Span::styled(format!("{:<10} ", e.event_type), Style::default().fg(type_color)),
                 Span::raw(&e.message),
             ]))
         })
@@ -174,17 +165,13 @@ fn draw_event_log_panel(f: &mut Frame, area: Rect, state: &DashboardState) {
 
 /// Bottom-left: pending approval requests with selection highlight.
 fn draw_approvals_panel(f: &mut Frame, area: Rect, state: &DashboardState) {
-    let title = format!(
-        "Approvals ({} pending)",
-        state.approvals_summary.pending_count
-    );
+    let title = format!("Approvals ({} pending)", state.approvals_summary.pending_count);
     let block = panel_block(&title, Panel::Approvals, state);
     let inner = block.inner(area);
     f.render_widget(block, area);
 
     if state.pending_approvals.is_empty() {
-        let msg = Paragraph::new("No pending approvals")
-            .style(Style::default().fg(Color::DarkGray));
+        let msg = Paragraph::new("No pending approvals").style(Style::default().fg(Color::DarkGray));
         f.render_widget(msg, inner);
         return;
     }
@@ -207,10 +194,7 @@ fn draw_approvals_panel(f: &mut Frame, area: Rect, state: &DashboardState) {
                     format!("[{}] ", short_timestamp(&ap.created_at)),
                     Style::default().fg(Color::DarkGray),
                 ),
-                Span::raw(format!(
-                    "{} — {} ({})",
-                    ap.agent_id, ap.action, ap.reason
-                )),
+                Span::raw(format!("{} — {} ({})", ap.agent_id, ap.action, ap.reason)),
             ]))
             .style(style)
         })
@@ -251,12 +235,7 @@ fn draw_budget_panel(f: &mut Frame, area: Rect, state: &DashboardState) {
         .budget
         .per_agent
         .iter()
-        .map(|entry| {
-            ListItem::new(format!(
-                "  {} — ${}",
-                entry.agent_id, entry.daily_spend_usd
-            ))
-        })
+        .map(|entry| ListItem::new(format!("  {} — ${}", entry.agent_id, entry.daily_spend_usd)))
         .collect();
     let list = List::new(items);
     f.render_widget(list, chunks[1]);
@@ -278,10 +257,7 @@ fn draw_footer(f: &mut Frame, area: Rect, _state: &DashboardState) {
         Span::styled("q", Style::default().add_modifier(Modifier::BOLD)),
         Span::raw(" quit"),
     ]);
-    f.render_widget(
-        Paragraph::new(footer).style(Style::default().fg(Color::DarkGray)),
-        area,
-    );
+    f.render_widget(Paragraph::new(footer).style(Style::default().fg(Color::DarkGray)), area);
 }
 
 /// Render a centered help overlay listing all keyboard shortcuts.
@@ -363,17 +339,9 @@ fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
 
 /// Compute the budget gauge ratio and label string.
 fn compute_budget_ratio(state: &DashboardState) -> (f64, String) {
-    let spend: f64 = state
-        .budget
-        .daily_spend_usd
-        .parse()
-        .unwrap_or(0.0);
+    let spend: f64 = state.budget.daily_spend_usd.parse().unwrap_or(0.0);
 
-    let limit: Option<f64> = state
-        .budget
-        .daily_limit_usd
-        .as_deref()
-        .and_then(|s| s.parse().ok());
+    let limit: Option<f64> = state.budget.daily_limit_usd.as_deref().and_then(|s| s.parse().ok());
 
     match limit {
         Some(lim) if lim > 0.0 => {
