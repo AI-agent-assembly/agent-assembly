@@ -27,7 +27,7 @@ tower-http = { version = "0.6", features = ["trace", "cors", "compression-gzip",
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 utoipa = { version = "4", features = ["axum_extras"] }
-utoipa-swagger-ui = { version = "7", features = ["axum"] }
+utoipa-swagger-ui = { version = "9", features = ["axum"] }
 chrono = { version = "0.4", features = ["serde"] }
 futures = "0.3"
 hex = "0.4"
