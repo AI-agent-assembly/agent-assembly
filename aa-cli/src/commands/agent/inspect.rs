@@ -41,6 +41,20 @@ fn render_detail(agent: &AgentResponse) {
     };
     table.add_row(vec!["Tools".to_string(), tools]);
 
+    let pid_str = agent.pid.map_or("-".to_string(), |p| p.to_string());
+    table.add_row(vec!["PID".to_string(), pid_str]);
+
+    let sessions_str = agent.session_count.map_or("-".to_string(), |s| s.to_string());
+    table.add_row(vec!["Sessions".to_string(), sessions_str]);
+
+    let last_event_str = agent.last_event.as_deref().unwrap_or("-").to_string();
+    table.add_row(vec!["Last Event".to_string(), last_event_str]);
+
+    let violations_str = agent
+        .policy_violations_count
+        .map_or("-".to_string(), |v| v.to_string());
+    table.add_row(vec!["Policy Violations".to_string(), violations_str]);
+
     if !agent.metadata.is_empty() {
         let meta = agent
             .metadata
