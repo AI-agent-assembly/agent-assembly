@@ -2,7 +2,7 @@
 
 use comfy_table::{ContentArrangement, Table};
 
-use super::models::{AgentRow, ApprovalsSummary, BudgetRow, RuntimeHealth};
+use super::models::{AgentRow, ApprovalsSummary, BudgetRow, RuntimeHealth, StatusSnapshot};
 
 /// Render the Runtime Health section to stdout.
 pub fn render_runtime_health(health: &RuntimeHealth) {
@@ -81,4 +81,12 @@ pub fn render_budget_table(budget: &BudgetRow) {
     }
     println!("  Date:          {}", budget.date);
     println!();
+}
+
+/// Render the full status snapshot as JSON to stdout.
+pub fn render_status_json(snapshot: &StatusSnapshot) {
+    match serde_json::to_string_pretty(snapshot) {
+        Ok(json) => println!("{json}"),
+        Err(e) => eprintln!("error serializing status to JSON: {e}"),
+    }
 }
