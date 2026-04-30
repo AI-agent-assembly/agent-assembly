@@ -11,7 +11,7 @@ use super::{AuthError, AuthenticatedCaller};
 ///
 /// Variants are ordered by privilege: `Read < Write < Admin`.
 /// A caller with `Admin` scope satisfies any scope requirement.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum Scope {
     /// Read-only access to resources.

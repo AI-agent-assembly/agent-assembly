@@ -5,6 +5,7 @@ use std::sync::Arc;
 use axum::Extension;
 use axum::Json;
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
 use crate::auth::jwt::JwtSigner;
 use crate::auth::scope::Scope;
@@ -15,7 +16,7 @@ use crate::error::ProblemDetail;
 const TOKEN_EXPIRY_SECS: u64 = 24 * 60 * 60;
 
 /// Request body for `POST /auth/token`.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct TokenRequest {
     /// Requested scopes for the issued JWT.
     /// If omitted, the caller's full scopes are used.
@@ -24,7 +25,7 @@ pub struct TokenRequest {
 }
 
 /// Response body for `POST /auth/token`.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct TokenResponse {
     /// The issued JWT token string.
     pub token: String,
@@ -39,6 +40,18 @@ pub struct TokenResponse {
 /// The caller must already be authenticated (via API key or existing JWT).
 /// If `scopes` is provided in the request body, it must be a subset of
 /// the caller's granted scopes.
+#[utoipa::path(
+    post,
+    path = "/api/v1/auth/token",
+    request_body = TokenRequest,
+    responses(
+        (status = 200, description = "JWT issued successfully", body = TokenResponse),
+        (status = 401, description = "Missing or invalid credentials", body = ProblemDetail),
+        (status = 403, description = "Requested scope exceeds caller grants", body = ProblemDetail),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "auth"
+)]
 pub async fn issue_token(
     caller: AuthenticatedCaller,
     Extension(jwt_signer): Extension<Arc<JwtSigner>>,
