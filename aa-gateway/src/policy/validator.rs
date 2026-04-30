@@ -61,10 +61,15 @@ impl PolicyValidator {
             return Err(errors);
         }
 
+        let (meta_name, meta_version) = match metadata {
+            Some(m) => (m.name, m.version),
+            None => (None, None),
+        };
+
         Ok(PolicyValidatorOutput {
             document: PolicyDocument {
-                name: None,
-                policy_version: None,
+                name: meta_name,
+                policy_version: meta_version,
                 version: raw.version,
                 network,
                 schedule,
