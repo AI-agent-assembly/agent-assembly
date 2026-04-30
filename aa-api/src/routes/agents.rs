@@ -52,6 +52,15 @@ fn record_to_response(r: aa_gateway::registry::AgentRecord) -> AgentResponse {
         })
         .collect();
 
+    let recent_traces = r
+        .recent_traces
+        .into_iter()
+        .map(|t| RecentTraceResponse {
+            session_id: t.session_id,
+            timestamp: t.timestamp.to_rfc3339(),
+        })
+        .collect();
+
     AgentResponse {
         id: r.agent_id.iter().map(|b| format!("{b:02x}")).collect::<String>(),
         name: r.name,
@@ -66,6 +75,7 @@ fn record_to_response(r: aa_gateway::registry::AgentRecord) -> AgentResponse {
         policy_violations_count: r.policy_violations_count,
         active_sessions,
         recent_events,
+        recent_traces,
     }
 }
 
@@ -98,6 +108,8 @@ pub struct AgentResponse {
     pub active_sessions: Vec<ActiveSessionResponse>,
     /// Most recent events emitted by this agent.
     pub recent_events: Vec<RecentEventResponse>,
+    /// Most recent trace session IDs for this agent.
+    pub recent_traces: Vec<RecentTraceResponse>,
 }
 
 /// Summary of an active session in the API response.
@@ -119,6 +131,15 @@ pub struct RecentEventResponse {
     /// Short human-readable summary.
     pub summary: String,
     /// ISO 8601 timestamp when the event occurred.
+    pub timestamp: String,
+}
+
+/// Summary of a recent trace session for an agent.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct RecentTraceResponse {
+    /// Hex-encoded session UUID, usable with `aasm trace <session-id>`.
+    pub session_id: String,
+    /// ISO 8601 timestamp when the trace session started.
     pub timestamp: String,
 }
 
