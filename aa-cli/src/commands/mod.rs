@@ -12,6 +12,7 @@ pub mod approvals;
 pub mod completion;
 pub mod context;
 pub mod cost;
+pub mod dashboard;
 pub mod logs;
 pub mod policy;
 pub mod status;
@@ -41,6 +42,8 @@ pub enum Commands {
     Approvals(approvals::ApprovalsArgs),
     /// Query cost summary and forecast spending.
     Cost(cost::CostArgs),
+    /// Open an interactive TUI dashboard for real-time governance monitoring.
+    Dashboard(dashboard::DashboardArgs),
 }
 
 /// Dispatch the parsed CLI command to the appropriate handler.
@@ -56,5 +59,6 @@ pub fn dispatch(cmd: Commands, ctx: &ResolvedContext, output: OutputFormat) -> E
         Commands::Trace(args) => trace::dispatch(args, ctx, output),
         Commands::Approvals(args) => approvals::dispatch(args, ctx, output),
         Commands::Cost(args) => cost::dispatch(args, ctx, output),
+        Commands::Dashboard(args) => dashboard::dispatch(args, ctx),
     }
 }
