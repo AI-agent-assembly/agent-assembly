@@ -1,5 +1,7 @@
 //! HTTP client functions for the `aasm approvals` subcommand.
 
+use url::Url;
+
 use crate::config::ResolvedContext;
 use crate::error::CliError;
 
@@ -85,4 +87,23 @@ pub async fn reject_action(
     let resp = req.send().await?.error_for_status()?;
     let result = resp.json::<ApprovalResponse>().await?;
     Ok(result)
+}
+
+/// Convert an HTTP(S) base URL to a WebSocket URL for the events endpoint.
+///
+/// `http://` becomes `ws://`, `https://` becomes `wss://`.
+/// Appends `/api/v1/events?types={types}`.
+pub fn build_ws_url(base: &str, types: &str) -> Result<String, CliError> {
+    let mut parsed = Url::parse(base).map_err(|e| {
+        CliError::Io(std::io::Error::new(std::io::ErrorKind::InvalidInput, e))
+    })?;
+    let new_scheme = match parsed.scheme() {
+        "https" => "wss",
+        _ => "ws",
+    };
+    parsed
+        .set_scheme(new_scheme)
+        .map_err(|()| CliError::Io(std::io::Error::new(std::io::ErrorKind::InvalidInput, "failed to set scheme")))?;
+    let base_str = parsed.as_str().trim_end_matches('/');
+    Ok(format!("{base_str}/api/v1/events?types={types}"))
 }
