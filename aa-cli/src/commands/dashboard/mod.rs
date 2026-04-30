@@ -1,5 +1,7 @@
 //! `aasm dashboard` — interactive TUI dashboard for real-time governance monitoring.
 
+pub mod state;
+
 use std::io::{self, stdout};
 use std::process::ExitCode;
 
