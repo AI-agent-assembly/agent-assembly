@@ -171,8 +171,111 @@ fn truncate(s: &str, max_len: usize) -> String {
 }
 
 /// Stream live events via WebSocket.
-fn run_follow(_args: LogsArgs, _ctx: &ResolvedContext) -> ExitCode {
-    // Implemented in the next commit.
-    eprintln!("error: WebSocket follow not yet implemented");
-    ExitCode::FAILURE
+fn run_follow(args: LogsArgs, ctx: &ResolvedContext) -> ExitCode {
+    let rt = tokio::runtime::Runtime::new().expect("failed to create tokio runtime");
+    rt.block_on(async { stream_events(args, ctx).await })
+}
+
+/// A governance event received from the WebSocket stream.
+#[derive(Debug, Deserialize, serde::Serialize)]
+struct GovernanceEvent {
+    id: u64,
+    event_type: String,
+    agent_id: String,
+    payload: serde_json::Value,
+    timestamp: String,
+}
+
+/// Connect to the WebSocket endpoint and print events as they arrive.
+async fn stream_events(args: LogsArgs, ctx: &ResolvedContext) -> ExitCode {
+    let ws_url = build_ws_url(ctx, &args);
+
+    eprintln!("Connecting to {}…", ws_url);
+
+    let (ws_stream, _) = match tokio_tungstenite::connect_async(&ws_url).await {
+        Ok(pair) => pair,
+        Err(e) => {
+            eprintln!("error: WebSocket connection failed: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+
+    eprintln!("Connected. Streaming events (press Ctrl+C to stop)…\n");
+
+    let (_, mut reader) = ws_stream.split();
+
+    use futures_util::StreamExt;
+    use tokio_tungstenite::tungstenite::Message;
+
+    loop {
+        tokio::select! {
+            msg = reader.next() => {
+                match msg {
+                    Some(Ok(Message::Text(text))) => {
+                        print_event(&text);
+                    }
+                    Some(Ok(Message::Ping(_))) => {
+                        // tokio-tungstenite auto-responds to pings
+                    }
+                    Some(Ok(Message::Close(_))) | None => {
+                        eprintln!("\nConnection closed.");
+                        break;
+                    }
+                    Some(Ok(_)) => {}
+                    Some(Err(e)) => {
+                        eprintln!("\nerror: WebSocket error: {e}");
+                        return ExitCode::FAILURE;
+                    }
+                }
+            }
+            _ = tokio::signal::ctrl_c() => {
+                eprintln!("\nInterrupted.");
+                break;
+            }
+        }
+    }
+
+    ExitCode::SUCCESS
+}
+
+/// Build the WebSocket URL from the API base URL and filter arguments.
+fn build_ws_url(ctx: &ResolvedContext, args: &LogsArgs) -> String {
+    // Convert http(s):// to ws(s)://
+    let base = if ctx.api_url.starts_with("https://") {
+        ctx.api_url.replacen("https://", "wss://", 1)
+    } else {
+        ctx.api_url.replacen("http://", "ws://", 1)
+    };
+
+    let mut url = format!("{base}/api/v1/ws/events");
+    let mut sep = '?';
+
+    if let Some(ref event_type) = args.event_type {
+        url.push_str(&format!("{sep}types={event_type}"));
+        sep = '&';
+    }
+    if let Some(ref agent_id) = args.agent_id {
+        url.push_str(&format!("{sep}agent_id={agent_id}"));
+    }
+
+    url
+}
+
+/// Parse and print a single governance event from a WebSocket text frame.
+fn print_event(text: &str) {
+    match serde_json::from_str::<GovernanceEvent>(text) {
+        Ok(event) => {
+            println!(
+                "[{}] id={} type={} agent={} payload={}",
+                event.timestamp,
+                event.id,
+                event.event_type,
+                truncate(&event.agent_id, 12),
+                event.payload,
+            );
+        }
+        Err(_) => {
+            println!("{text}");
+        }
+    }
 }
