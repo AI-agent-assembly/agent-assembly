@@ -20,6 +20,7 @@ use aa_gateway::budget::tracker::BudgetTracker;
 use aa_gateway::engine::PolicyEngine;
 use aa_gateway::policy::history::{FsHistoryStore, HistoryConfig};
 use aa_gateway::registry::AgentRegistry;
+use aa_gateway::AuditReader;
 use aa_runtime::approval::ApprovalQueue;
 use axum::Router;
 
@@ -112,6 +113,11 @@ spec:
     let rate_limiter = Arc::new(RateLimiter::new(rpm));
     let alert_store: Arc<InMemoryAlertStore> = Arc::new(InMemoryAlertStore::new());
 
+    let audit_id = TEMP_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let audit_dir = std::env::temp_dir().join(format!("aa-api-test-audit-{}-{audit_id}", std::process::id()));
+    std::fs::create_dir_all(&audit_dir).unwrap();
+    let audit_reader = Arc::new(AuditReader::new(audit_dir));
+
     AppState {
         agent_registry,
         policy_engine,
@@ -128,6 +134,7 @@ spec:
         jwt_signer,
         jwt_verifier,
         trace_store: Arc::new(InMemoryTraceStore::new()),
+        audit_reader,
     }
 }
 

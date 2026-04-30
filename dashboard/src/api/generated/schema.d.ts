@@ -179,6 +179,7 @@ export interface paths {
         /**
          * `GET /api/v1/logs` — paginated audit log query.
          * @description Query the paginated audit log of governance events.
+         *     Supports optional filtering by agent ID and event type.
          */
         get: operations["list_logs"];
         put?: never;
@@ -334,16 +335,19 @@ export interface components {
         };
         /** @description JSON representation of an audit log entry. */
         LogEntry: {
-            /** @description Agent ID that produced this log entry. */
+            /** @description Hex-encoded agent ID that produced this log entry. */
             agent_id: string;
             /** @description Type of audit event. */
             event_type: string;
-            /** @description Unique log entry identifier. */
-            id: string;
-            /** @description Session ID for the agent run. */
+            /** @description Pre-serialized JSON payload. */
+            payload: string;
+            /**
+             * Format: int64
+             * @description Monotonic sequence number within the session.
+             */
+            seq: number;
+            /** @description Hex-encoded session ID for the agent run. */
             session_id: string;
-            /** @description Human-readable summary of the event. */
-            summary: string;
             /** @description ISO 8601 timestamp of the event. */
             timestamp: string;
         };
@@ -687,6 +691,10 @@ export interface operations {
                 page?: number | null;
                 /** @description Items per page (max 100). Defaults to 50. */
                 per_page?: number | null;
+                /** @description Filter by hex-encoded agent ID. */
+                agent_id?: string | null;
+                /** @description Filter by event type name (e.g. `PolicyViolation`). */
+                event_type?: string | null;
             };
             header?: never;
             path?: never;
