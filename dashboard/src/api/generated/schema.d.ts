@@ -577,6 +577,8 @@ export interface components {
              * @description Number of currently active WebSocket/SSE connections.
              */
             active_connections: number;
+            /** @description API version prefix (e.g. `"v1"`). */
+            api_version: string;
             /**
              * Format: int64
              * @description Pipeline processing lag in milliseconds (placeholder, always 0 for now).
@@ -589,6 +591,8 @@ export interface components {
              * @description Server uptime in seconds since startup.
              */
             uptime_secs: number;
+            /** @description Gateway version (semver from Cargo.toml). */
+            version: string;
         };
         /** @description JSON representation of an audit log entry. */
         LogEntry: {

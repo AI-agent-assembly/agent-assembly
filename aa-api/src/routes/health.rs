@@ -14,6 +14,10 @@ use crate::state::AppState;
 pub struct HealthResponse {
     /// Liveness status string, always `"ok"` when the service is running.
     pub status: String,
+    /// Gateway version (semver from Cargo.toml).
+    pub version: String,
+    /// API version prefix (e.g. `"v1"`).
+    pub api_version: String,
     /// Server uptime in seconds since startup.
     pub uptime_secs: u64,
     /// Number of currently active WebSocket/SSE connections.
@@ -43,6 +47,8 @@ pub async fn health(Extension(state): Extension<AppState>) -> impl IntoResponse 
         StatusCode::OK,
         Json(HealthResponse {
             status: "ok".to_string(),
+            version: env!("CARGO_PKG_VERSION").to_string(),
+            api_version: "v1".to_string(),
             uptime_secs,
             active_connections,
             pipeline_lag_ms: 0,

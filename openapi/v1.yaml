@@ -925,6 +925,8 @@ components:
       description: Response body for the health endpoint.
       required:
       - status
+      - version
+      - api_version
       - uptime_secs
       - active_connections
       - pipeline_lag_ms
@@ -933,6 +935,9 @@ components:
           type: integer
           format: int64
           description: Number of currently active WebSocket/SSE connections.
+        api_version:
+          type: string
+          description: API version prefix (e.g. `"v1"`).
         pipeline_lag_ms:
           type: integer
           format: int64
@@ -946,6 +951,9 @@ components:
           format: int64
           description: Server uptime in seconds since startup.
           minimum: 0
+        version:
+          type: string
+          description: Gateway version (semver from Cargo.toml).
     LogEntry:
       type: object
       description: JSON representation of an audit log entry.

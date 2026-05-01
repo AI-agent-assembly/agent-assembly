@@ -63,3 +63,32 @@ async fn health_returns_pipeline_lag_ms() {
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(json["pipeline_lag_ms"], 0);
 }
+
+#[tokio::test]
+async fn health_returns_version() {
+    let app = common::test_app();
+
+    let response = app
+        .oneshot(Request::builder().uri("/api/v1/health").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let version = json["version"].as_str().expect("version should be a string");
+    assert!(!version.is_empty(), "version should not be empty");
+}
+
+#[tokio::test]
+async fn health_returns_api_version() {
+    let app = common::test_app();
+
+    let response = app
+        .oneshot(Request::builder().uri("/api/v1/health").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["api_version"], "v1");
+}
