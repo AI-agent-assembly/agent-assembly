@@ -50,6 +50,7 @@ pub fn render_agents_table(agents: &[AgentRow]) {
         "STATUS",
         "FRAMEWORK",
         "SESSIONS",
+        "LAST_EVENT",
         "VIOLATIONS_TODAY",
         "LAYER",
     ]);
@@ -66,6 +67,7 @@ pub fn render_agents_table(agents: &[AgentRow]) {
             &format!("{status_icon} {}", agent.status),
             &agent.framework,
             &agent.sessions.to_string(),
+            &agent.last_event,
             &agent.violations_today.to_string(),
             &agent.layer,
         ]);
