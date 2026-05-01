@@ -139,9 +139,7 @@ async fn get_alert_returns_success() {
 
     Mock::given(method("GET"))
         .and(path("/api/v1/alerts/alert-001"))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_json(sample_alert_json()),
-        )
+        .respond_with(ResponseTemplate::new(200).set_body_json(sample_alert_json()))
         .expect(1)
         .mount(&server)
         .await;

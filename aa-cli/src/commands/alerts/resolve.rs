@@ -46,9 +46,7 @@ pub fn run(args: ResolveArgs, ctx: &ResolvedContext) -> ExitCode {
 
     let rt = tokio::runtime::Runtime::new().expect("failed to create tokio runtime");
 
-    let body = ResolveAlertRequest {
-        reason: args.reason,
-    };
+    let body = ResolveAlertRequest { reason: args.reason };
     let path = format!("/api/v1/alerts/{}/resolve", args.alert_id);
     match rt.block_on(client::post_opt_json::<ResolveAlertRequest, AlertResponse>(
         ctx,

@@ -63,7 +63,13 @@ pub fn apply_filters(alerts: Vec<AlertResponse>, args: &ListArgs) -> Vec<AlertRe
 pub fn render_table(alerts: &[AlertResponse]) {
     let mut table = Table::new();
     table.set_header(vec![
-        "ID", "AGENT", "SEVERITY", "TYPE", "MESSAGE", "STATUS", "CREATED_AT",
+        "ID",
+        "AGENT",
+        "SEVERITY",
+        "TYPE",
+        "MESSAGE",
+        "STATUS",
+        "CREATED_AT",
     ]);
 
     for alert in alerts {

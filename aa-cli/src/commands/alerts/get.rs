@@ -28,19 +28,13 @@ pub fn render_detail(alert: &AlertResponse) {
     table.add_row(vec!["Agent", agent]);
 
     let sev = AlertSeverity::parse(&alert.severity);
-    table.add_row(vec![
-        Cell::new("Severity"),
-        Cell::new(&alert.severity).fg(sev.color()),
-    ]);
+    table.add_row(vec![Cell::new("Severity"), Cell::new(&alert.severity).fg(sev.color())]);
 
     table.add_row(vec!["Type", &alert.category]);
     table.add_row(vec!["Message", &alert.message]);
 
     let status = AlertStatusKind::parse(&alert.status);
-    table.add_row(vec![
-        Cell::new("Status"),
-        Cell::new(&alert.status).fg(status.color()),
-    ]);
+    table.add_row(vec![Cell::new("Status"), Cell::new(&alert.status).fg(status.color())]);
 
     table.add_row(vec!["Created", &alert.created_at]);
 
