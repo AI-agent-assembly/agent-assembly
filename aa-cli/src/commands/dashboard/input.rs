@@ -288,6 +288,7 @@ mod tests {
             status: "Running".to_string(),
             sessions: 0,
             violations_today: 0,
+            last_event: "-".to_string(),
             layer: "-".to_string(),
         }];
         let action = handle_key(&mut state, make_key(KeyCode::Enter));
@@ -322,6 +323,7 @@ mod tests {
                 status: "Running".to_string(),
                 sessions: 0,
                 violations_today: 0,
+                last_event: "-".to_string(),
                 layer: "-".to_string(),
             },
             crate::commands::status::models::AgentRow {
@@ -331,6 +333,7 @@ mod tests {
                 status: "Running".to_string(),
                 sessions: 0,
                 violations_today: 0,
+                last_event: "-".to_string(),
                 layer: "-".to_string(),
             },
         ];

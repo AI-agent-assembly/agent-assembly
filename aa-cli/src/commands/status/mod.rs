@@ -77,6 +77,7 @@ mod tests {
                 status: "Running".to_string(),
                 sessions: 0,
                 violations_today: 0,
+                last_event: "-".to_string(),
                 layer: "-".to_string(),
             }],
             approvals: ApprovalsSummary {
