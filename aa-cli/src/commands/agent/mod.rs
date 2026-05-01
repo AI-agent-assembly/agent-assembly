@@ -12,8 +12,8 @@ use crate::output::OutputFormat;
 mod inspect;
 mod kill;
 mod list;
-mod resume;
-mod suspend;
+pub mod resume;
+pub mod suspend;
 
 /// Arguments for the `aasm agent` subcommand group.
 #[derive(Args)]
