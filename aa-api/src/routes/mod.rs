@@ -29,6 +29,8 @@ pub fn v1_router() -> Router {
         // Agents
         .route("/agents", get(agents::list_agents))
         .route("/agents/:id", get(agents::get_agent).delete(agents::delete_agent))
+        .route("/agents/:id/suspend", post(agents::suspend_agent))
+        .route("/agents/:id/resume", post(agents::resume_agent))
         // Logs
         .route("/logs", get(logs::list_logs))
         // Traces

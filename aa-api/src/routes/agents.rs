@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::{Extension, Json};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 use crate::error::ProblemDetail;
@@ -146,6 +146,35 @@ pub struct RecentTraceResponse {
     pub timestamp: String,
 }
 
+/// Request body for `POST /api/v1/agents/:id/suspend`.
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct SuspendRequest {
+    /// Reason for suspending the agent (logged for audit).
+    pub reason: String,
+}
+
+/// Response from `POST /api/v1/agents/:id/suspend`.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct SuspendResponse {
+    /// Hex-encoded agent UUID.
+    pub agent_id: String,
+    /// Agent status before the suspend operation.
+    pub previous_status: String,
+    /// Agent status after the suspend operation.
+    pub new_status: String,
+}
+
+/// Response from `POST /api/v1/agents/:id/resume`.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct ResumeResponse {
+    /// Hex-encoded agent UUID.
+    pub agent_id: String,
+    /// Agent status before the resume operation.
+    pub previous_status: String,
+    /// Agent status after the resume operation.
+    pub new_status: String,
+}
+
 /// `GET /api/v1/agents` — list all registered agents with pagination.
 ///
 /// Returns a paginated list of all agents currently known to the registry.
@@ -241,4 +270,129 @@ pub async fn delete_agent(
         .map_err(|_| ProblemDetail::from_status(StatusCode::NOT_FOUND).with_detail(format!("Agent not found: {id}")))?;
 
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// `POST /api/v1/agents/:id/suspend` — suspend an agent.
+///
+/// Suspend a running agent with a reason logged for audit.
+#[utoipa::path(
+    post,
+    path = "/api/v1/agents/{id}/suspend",
+
+    params(("id" = String, Path, description = "Hex-encoded agent UUID")),
+    request_body = SuspendRequest,
+    responses(
+        (status = 200, description = "Agent suspended", body = SuspendResponse),
+        (status = 400, description = "Invalid agent ID format"),
+        (status = 404, description = "Agent not found")
+    ),
+    tag = "agents"
+)]
+pub async fn suspend_agent(
+    Extension(state): Extension<AppState>,
+    axum::extract::Path(id): axum::extract::Path<String>,
+    Json(body): Json<SuspendRequest>,
+) -> Result<(StatusCode, Json<SuspendResponse>), ProblemDetail> {
+    let agent_id = parse_agent_id(&id)?;
+
+    let previous_status = state
+        .agent_registry
+        .agent_status(&agent_id)
+        .map(|s| format!("{s:?}"))
+        .map_err(|_| ProblemDetail::from_status(StatusCode::NOT_FOUND).with_detail(format!("Agent not found: {id}")))?;
+
+    state
+        .agent_registry
+        .suspend_and_notify(&agent_id, aa_gateway::registry::SuspendReason::Manual, &body.reason)
+        .await
+        .map_err(|_| ProblemDetail::from_status(StatusCode::NOT_FOUND).with_detail(format!("Agent not found: {id}")))?;
+
+    Ok((
+        StatusCode::OK,
+        Json(SuspendResponse {
+            agent_id: id,
+            previous_status,
+            new_status: "Suspended(Manual)".to_string(),
+        }),
+    ))
+}
+
+/// `POST /api/v1/agents/:id/resume` — resume a suspended agent.
+///
+/// Resume an agent that was previously suspended back to Active status.
+#[utoipa::path(
+    post,
+    path = "/api/v1/agents/{id}/resume",
+
+    params(("id" = String, Path, description = "Hex-encoded agent UUID")),
+    responses(
+        (status = 200, description = "Agent resumed", body = ResumeResponse),
+        (status = 400, description = "Invalid agent ID format"),
+        (status = 404, description = "Agent not found")
+    ),
+    tag = "agents"
+)]
+pub async fn resume_agent(
+    Extension(state): Extension<AppState>,
+    axum::extract::Path(id): axum::extract::Path<String>,
+) -> Result<(StatusCode, Json<ResumeResponse>), ProblemDetail> {
+    let agent_id = parse_agent_id(&id)?;
+
+    let previous_status = state
+        .agent_registry
+        .agent_status(&agent_id)
+        .map(|s| format!("{s:?}"))
+        .map_err(|_| ProblemDetail::from_status(StatusCode::NOT_FOUND).with_detail(format!("Agent not found: {id}")))?;
+
+    state
+        .agent_registry
+        .resume_agent(&agent_id)
+        .map_err(|_| ProblemDetail::from_status(StatusCode::NOT_FOUND).with_detail(format!("Agent not found: {id}")))?;
+
+    Ok((
+        StatusCode::OK,
+        Json(ResumeResponse {
+            agent_id: id,
+            previous_status,
+            new_status: "Active".to_string(),
+        }),
+    ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn suspend_request_deserializes() {
+        let json = r#"{"reason":"anomaly spike, under investigation"}"#;
+        let req: SuspendRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.reason, "anomaly spike, under investigation");
+    }
+
+    #[test]
+    fn suspend_response_serializes() {
+        let resp = SuspendResponse {
+            agent_id: "aabbccdd00112233".to_string(),
+            previous_status: "Active".to_string(),
+            new_status: "Suspended(Manual)".to_string(),
+        };
+        let json = serde_json::to_value(&resp).unwrap();
+        assert_eq!(json["agent_id"], "aabbccdd00112233");
+        assert_eq!(json["previous_status"], "Active");
+        assert_eq!(json["new_status"], "Suspended(Manual)");
+    }
+
+    #[test]
+    fn resume_response_serializes() {
+        let resp = ResumeResponse {
+            agent_id: "aabbccdd00112233".to_string(),
+            previous_status: "Suspended(Manual)".to_string(),
+            new_status: "Active".to_string(),
+        };
+        let json = serde_json::to_value(&resp).unwrap();
+        assert_eq!(json["agent_id"], "aabbccdd00112233");
+        assert_eq!(json["previous_status"], "Suspended(Manual)");
+        assert_eq!(json["new_status"], "Active");
+    }
 }

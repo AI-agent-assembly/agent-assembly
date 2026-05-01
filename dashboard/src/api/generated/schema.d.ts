@@ -48,6 +48,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/agents/{id}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * `POST /api/v1/agents/:id/resume` — resume a suspended agent.
+         * @description Resume an agent that was previously suspended back to Active status.
+         */
+        post: operations["resume_agent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agents/{id}/suspend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * `POST /api/v1/agents/:id/suspend` — suspend an agent.
+         * @description Suspend a running agent with a reason logged for audit.
+         */
+        post: operations["suspend_agent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/alerts": {
         parameters: {
             query?: never;
@@ -620,6 +660,15 @@ export interface components {
             /** @description ISO 8601 timestamp when the trace session started. */
             timestamp: string;
         };
+        /** @description Response from `POST /api/v1/agents/:id/resume`. */
+        ResumeResponse: {
+            /** @description Hex-encoded agent UUID. */
+            agent_id: string;
+            /** @description Agent status after the resume operation. */
+            new_status: string;
+            /** @description Agent status before the resume operation. */
+            previous_status: string;
+        };
         /**
          * @description Authorization scope level for API operations.
          *
@@ -628,6 +677,20 @@ export interface components {
          * @enum {string}
          */
         Scope: "read" | "write" | "admin";
+        /** @description Request body for `POST /api/v1/agents/:id/suspend`. */
+        SuspendRequest: {
+            /** @description Reason for suspending the agent (logged for audit). */
+            reason: string;
+        };
+        /** @description Response from `POST /api/v1/agents/:id/suspend`. */
+        SuspendResponse: {
+            /** @description Hex-encoded agent UUID. */
+            agent_id: string;
+            /** @description Agent status after the suspend operation. */
+            new_status: string;
+            /** @description Agent status before the suspend operation. */
+            previous_status: string;
+        };
         /** @description Request body for `POST /auth/token`. */
         TokenRequest: {
             /**
@@ -792,6 +855,84 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Invalid agent ID format */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Agent not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    resume_agent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Hex-encoded agent UUID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Agent resumed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResumeResponse"];
+                };
+            };
+            /** @description Invalid agent ID format */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Agent not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    suspend_agent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Hex-encoded agent UUID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SuspendRequest"];
+            };
+        };
+        responses: {
+            /** @description Agent suspended */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuspendResponse"];
+                };
             };
             /** @description Invalid agent ID format */
             400: {
