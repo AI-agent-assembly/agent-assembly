@@ -24,6 +24,7 @@ flags:
       - aa-proxy/src/
       - aa-ffi-python/src/
       - aa-ffi-node/src/
+      - aa-ffi-go/src/
       - aa-wasm/src/
       - aa-gateway/src/
       - aa-api/src/
