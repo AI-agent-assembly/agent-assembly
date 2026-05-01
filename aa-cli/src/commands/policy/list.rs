@@ -66,13 +66,13 @@ fn status_color(active: bool) -> Color {
 /// Render policies as a table using comfy-table.
 fn render_table(policies: &[PolicyResponse]) {
     let mut table = Table::new();
-    table.set_header(vec!["NAME", "VERSION", "STATUS", "RULES"]);
+    table.set_header(vec!["NAME", "STATUS", "UPDATED_AT", "RULES"]);
 
     for p in policies {
         table.add_row(vec![
             Cell::new(&p.name),
-            Cell::new(&p.version),
             Cell::new(status_label(p.active)).fg(status_color(p.active)),
+            Cell::new(&p.version),
             Cell::new(p.rule_count),
         ]);
     }
