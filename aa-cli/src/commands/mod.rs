@@ -55,7 +55,7 @@ pub fn dispatch(cmd: Commands, ctx: &ResolvedContext, output: OutputFormat) -> E
         Commands::Context(args) => context::dispatch(args),
         Commands::Completion(args) => completion::run(args),
         Commands::Status(args) => status::dispatch(args, ctx, output),
-        Commands::Version => version::run(ctx),
+        Commands::Version => version::run(ctx, output),
         Commands::Trace(args) => trace::dispatch(args, ctx, output),
         Commands::Approvals(args) => approvals::dispatch(args, ctx, output),
         Commands::Cost(args) => cost::dispatch(args, ctx, output),
