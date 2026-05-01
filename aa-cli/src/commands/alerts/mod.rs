@@ -35,6 +35,6 @@ pub fn dispatch(args: AlertsArgs, ctx: &ResolvedContext, output: OutputFormat) -
     match args.command {
         AlertsCommands::List(list_args) => list::run(list_args, ctx, output),
         AlertsCommands::Get(get_args) => get::run(get_args, ctx, output),
-        AlertsCommands::Resolve(resolve_args) => resolve::run(resolve_args, ctx),
+        AlertsCommands::Resolve(resolve_args) => resolve::run(resolve_args, ctx, output),
     }
 }

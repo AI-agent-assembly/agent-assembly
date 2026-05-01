@@ -8,6 +8,7 @@ use clap::Args;
 use super::models::{AlertResponse, ResolveAlertRequest};
 use crate::client;
 use crate::config::ResolvedContext;
+use crate::output::OutputFormat;
 
 /// Arguments for `aasm alerts resolve`.
 #[derive(Args)]
@@ -38,7 +39,7 @@ fn confirm_resolve(alert_id: &str) -> bool {
 }
 
 /// Run the `aasm alerts resolve` command.
-pub fn run(args: ResolveArgs, ctx: &ResolvedContext) -> ExitCode {
+pub fn run(args: ResolveArgs, ctx: &ResolvedContext, output: OutputFormat) -> ExitCode {
     if !args.force && !confirm_resolve(&args.alert_id) {
         eprintln!("Aborted.");
         return ExitCode::FAILURE;
@@ -54,7 +55,17 @@ pub fn run(args: ResolveArgs, ctx: &ResolvedContext) -> ExitCode {
         Some(&body),
     )) {
         Ok(alert) => {
-            println!("Alert {} resolved.", alert.id);
+            match output {
+                OutputFormat::Table => println!("Alert {} resolved.", alert.id),
+                OutputFormat::Json => match serde_json::to_string_pretty(&alert) {
+                    Ok(json) => println!("{json}"),
+                    Err(e) => eprintln!("error serializing JSON: {e}"),
+                },
+                OutputFormat::Yaml => match serde_yaml::to_string(&alert) {
+                    Ok(yaml) => print!("{yaml}"),
+                    Err(e) => eprintln!("error serializing YAML: {e}"),
+                },
+            }
             ExitCode::SUCCESS
         }
         Err(e) => {

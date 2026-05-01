@@ -214,7 +214,41 @@ async fn resolve_alert_with_force_returns_success() {
             force: true,
         };
         let ctx = make_context(&uri);
-        aa_cli::commands::alerts::resolve::run(args, &ctx)
+        aa_cli::commands::alerts::resolve::run(args, &ctx, OutputFormat::Table)
+    })
+    .join()
+    .unwrap();
+
+    assert_eq!(result, ExitCode::SUCCESS);
+}
+
+#[tokio::test]
+async fn resolve_alert_json_output() {
+    let server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/api/v1/alerts/alert-001/resolve"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "id": "alert-001",
+            "severity": "critical",
+            "category": "budget",
+            "message": "Budget exceeded",
+            "status": "resolved",
+            "created_at": "2026-04-30T10:00:00Z"
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let uri = server.uri();
+    let result = std::thread::spawn(move || {
+        let args = ResolveArgs {
+            alert_id: "alert-001".to_string(),
+            reason: None,
+            force: true,
+        };
+        let ctx = make_context(&uri);
+        aa_cli::commands::alerts::resolve::run(args, &ctx, OutputFormat::Json)
     })
     .join()
     .unwrap();
@@ -248,7 +282,7 @@ async fn resolve_alert_without_reason_sends_empty_body() {
             force: true,
         };
         let ctx = make_context(&uri);
-        aa_cli::commands::alerts::resolve::run(args, &ctx)
+        aa_cli::commands::alerts::resolve::run(args, &ctx, OutputFormat::Table)
     })
     .join()
     .unwrap();
@@ -275,7 +309,7 @@ async fn resolve_alert_server_error_returns_failure() {
             force: true,
         };
         let ctx = make_context(&uri);
-        aa_cli::commands::alerts::resolve::run(args, &ctx)
+        aa_cli::commands::alerts::resolve::run(args, &ctx, OutputFormat::Table)
     })
     .join()
     .unwrap();
