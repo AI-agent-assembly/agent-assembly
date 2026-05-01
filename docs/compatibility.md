@@ -8,7 +8,7 @@ This document tracks which versions of `aa-runtime` are compatible with each SDK
 
 ## Compatibility Matrix
 
-| `aa-runtime` | Python SDK (`aa-ffi-python`) | Node.js SDK (`aa-ffi-node`) | Go SDK | Protocol Version |
+| `aa-runtime` | Python SDK (`aa-ffi-python`) | Node.js SDK (`aa-ffi-node`) | Go SDK (`aa-ffi-go`) | Protocol Version |
 |---|---|---|---|---|
 | v0.0.1 | v0.0.1 ✓ | v0.0.1 ✓ | v0.0.1 ✓ | protocol/v1 |
 
@@ -23,9 +23,9 @@ This document tracks which versions of `aa-runtime` are compatible with each SDK
 
 | SDK | Minimum `aa-runtime` Version |
 |---|---|
-| Python SDK v0.0.1 | aa-runtime v0.0.1 |
-| Node.js SDK v0.0.1 | aa-runtime v0.0.1 |
-| Go SDK v0.0.1 | aa-runtime v0.0.1 |
+| Python SDK (`aa-ffi-python`) v0.0.1 | aa-runtime v0.0.1 |
+| Node.js SDK (`aa-ffi-node`) v0.0.1 | aa-runtime v0.0.1 |
+| Go SDK (`aa-ffi-go`) v0.0.1 | aa-runtime v0.0.1 |
 
 ---
 
@@ -77,3 +77,4 @@ See [versioning.md](versioning.md) for the full versioning and deprecation polic
 | AAASM-39 | Added `aa-ebpf-common` workspace crate (shared eBPF types, not shipped standalone) | None — internal shared types only |
 | AAASM-37  | Added `aa-ebpf-common` workspace crate (no_std shared eBPF event types, not shipped as a public API) | None — internal kernel/userspace bridge only |
 | AAASM-39 (impl) | Added exec tracepoint BPF programs, ProcessLineageTracker, ShellDetector, ExecLoader in `aa-ebpf` | None — kernel-level monitoring, not a public API |
+| AAASM-64 | Added `aa-ffi-go` workspace crate (Go C-ABI staticlib bindings) | None — new FFI crate, no existing API changes |
