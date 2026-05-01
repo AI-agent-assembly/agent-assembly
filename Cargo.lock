@@ -101,6 +101,13 @@ name = "aa-ebpf-common"
 version = "0.0.1"
 
 [[package]]
+name = "aa-ffi-go"
+version = "0.0.1"
+dependencies = [
+ "serde_json",
+]
+
+[[package]]
 name = "aa-ffi-node"
 version = "0.0.1"
 dependencies = [

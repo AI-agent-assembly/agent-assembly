@@ -40,10 +40,7 @@ struct ClientState {
 ///
 /// `endpoint` and `out_client` must be valid pointers for reads/writes.
 #[no_mangle]
-pub unsafe extern "C" fn aa_connect(
-    endpoint: *const c_char,
-    out_client: *mut *mut aa_client_handle,
-) -> AaStatus {
+pub unsafe extern "C" fn aa_connect(endpoint: *const c_char, out_client: *mut *mut aa_client_handle) -> AaStatus {
     if endpoint.is_null() || out_client.is_null() {
         return AA_STATUS_NULL_POINTER;
     }
@@ -76,10 +73,7 @@ pub unsafe extern "C" fn aa_connect(
 ///
 /// `client` and `event_json` must be valid pointers for reads.
 #[no_mangle]
-pub unsafe extern "C" fn aa_send_event(
-    client: *mut aa_client_handle,
-    event_json: *const c_char,
-) -> AaStatus {
+pub unsafe extern "C" fn aa_send_event(client: *mut aa_client_handle, event_json: *const c_char) -> AaStatus {
     if client.is_null() || event_json.is_null() {
         return AA_STATUS_NULL_POINTER;
     }
@@ -255,7 +249,7 @@ mod tests {
 
     #[test]
     fn status_mapping_invalid_utf8() {
-        let bytes = vec![0xFF, 0x00];
+        let bytes = [0xFF, 0x00];
         // SAFETY: Test-only pointer with invalid UTF-8 payload.
         let invalid = bytes.as_ptr().cast::<c_char>();
 
