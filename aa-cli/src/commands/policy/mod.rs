@@ -5,9 +5,11 @@ use std::process::ExitCode;
 use clap::{Args, Subcommand};
 
 use crate::config::ResolvedContext;
+use crate::output::OutputFormat;
 
 pub mod get;
 pub mod history;
+pub mod list;
 pub mod simulate;
 pub mod validate;
 
@@ -35,10 +37,12 @@ pub enum PolicyCommands {
     Validate(validate::ValidateArgs),
     /// Show the currently active policy YAML (or a specific version).
     Get(get::GetArgs),
+    /// List all policies deployed to the governance runtime.
+    List(list::ListArgs),
 }
 
 /// Dispatch a policy subcommand.
-pub fn dispatch(args: PolicyArgs, ctx: &ResolvedContext) -> ExitCode {
+pub fn dispatch(args: PolicyArgs, ctx: &ResolvedContext, output: OutputFormat) -> ExitCode {
     match args.command {
         PolicyCommands::Apply(apply_args) => history::run_apply(apply_args, ctx),
         PolicyCommands::History(history_args) => history::run_history(history_args),
@@ -47,5 +51,6 @@ pub fn dispatch(args: PolicyArgs, ctx: &ResolvedContext) -> ExitCode {
         PolicyCommands::Simulate(sim_args) => simulate::run(sim_args),
         PolicyCommands::Validate(val_args) => validate::run(val_args),
         PolicyCommands::Get(get_args) => get::run(get_args),
+        PolicyCommands::List(list_args) => list::run(list_args, ctx, output),
     }
 }
