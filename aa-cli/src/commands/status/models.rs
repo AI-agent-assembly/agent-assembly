@@ -54,6 +54,23 @@ pub struct AgentResponse {
     /// Governance layer this agent is assigned to.
     #[serde(default)]
     pub layer: Option<String>,
+    /// ISO 8601 timestamp of the most recent event.
+    #[serde(default)]
+    pub last_event: Option<String>,
+    /// Most recent events emitted by this agent.
+    #[serde(default)]
+    pub recent_events: Vec<RecentEventResponse>,
+}
+
+/// Summary of a recent event from the API response.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct RecentEventResponse {
+    /// Event type classification (e.g. "violation", "tool_call").
+    pub event_type: String,
+    /// Short human-readable summary.
+    pub summary: String,
+    /// ISO 8601 timestamp when the event occurred.
+    pub timestamp: String,
 }
 
 /// Flattened agent row for tabular display.
@@ -65,6 +82,7 @@ pub struct AgentRow {
     pub status: String,
     pub sessions: u32,
     pub violations_today: u32,
+    pub last_event: String,
     pub layer: String,
 }
 
@@ -189,6 +207,8 @@ mod tests {
         assert_eq!(resp.session_count, 0);
         assert_eq!(resp.policy_violations_count, 0);
         assert!(resp.layer.is_none());
+        assert!(resp.last_event.is_none());
+        assert!(resp.recent_events.is_empty());
     }
 
     #[test]
@@ -203,12 +223,19 @@ mod tests {
             "metadata": {},
             "session_count": 5,
             "policy_violations_count": 2,
-            "layer": "enforced"
+            "layer": "enforced",
+            "last_event": "2026-05-01T08:00:00Z",
+            "recent_events": [
+                {"event_type": "tool_call", "summary": "called bash", "timestamp": "2026-05-01T08:00:00Z"}
+            ]
         }"#;
         let resp: AgentResponse = serde_json::from_str(json).unwrap();
         assert_eq!(resp.session_count, 5);
         assert_eq!(resp.policy_violations_count, 2);
         assert_eq!(resp.layer.as_deref(), Some("enforced"));
+        assert_eq!(resp.last_event.as_deref(), Some("2026-05-01T08:00:00Z"));
+        assert_eq!(resp.recent_events.len(), 1);
+        assert_eq!(resp.recent_events[0].event_type, "tool_call");
     }
 
     #[test]

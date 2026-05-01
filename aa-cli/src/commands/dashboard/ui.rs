@@ -100,7 +100,7 @@ fn draw_agents_panel(f: &mut Frame, area: Rect, state: &DashboardState) {
     f.render_widget(Paragraph::new(header_line), chunks[0]);
 
     // Agents table.
-    let header = Row::new(vec!["ID", "NAME", "STATUS", "FW", "SESS", "VIOL", "LAYER"])
+    let header = Row::new(vec!["ID", "NAME", "STATUS", "FW", "SESS", "LAST EVT", "VIOL", "LAYER"])
         .style(Style::default().add_modifier(Modifier::BOLD))
         .bottom_margin(0);
 
@@ -121,6 +121,7 @@ fn draw_agents_panel(f: &mut Frame, area: Rect, state: &DashboardState) {
                 Cell::from(a.status.as_str()).style(status_style),
                 Cell::from(a.framework.as_str()),
                 Cell::from(a.sessions.to_string()),
+                Cell::from(a.last_event.as_str()),
                 Cell::from(a.violations_today.to_string()),
                 Cell::from(a.layer.as_str()),
             ]);
@@ -145,6 +146,7 @@ fn draw_agents_panel(f: &mut Frame, area: Rect, state: &DashboardState) {
             Constraint::Length(8),
             Constraint::Length(10),
             Constraint::Length(5),
+            Constraint::Length(20),
             Constraint::Length(5),
             Constraint::Length(8),
         ],
