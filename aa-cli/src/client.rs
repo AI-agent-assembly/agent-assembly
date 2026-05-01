@@ -60,6 +60,28 @@ pub async fn post_empty<T: DeserializeOwned>(ctx: &ResolvedContext, path: &str) 
     Ok(result)
 }
 
+/// Perform a POST request to the gateway with an optional JSON body and deserialize the response.
+pub async fn post_opt_json<B: Serialize, T: DeserializeOwned>(
+    ctx: &ResolvedContext,
+    path: &str,
+    body: Option<&B>,
+) -> Result<T, CliError> {
+    let url = format!("{}{path}", ctx.api_url);
+    let client = build_client();
+
+    let mut req = match body {
+        Some(b) => client.post(&url).json(b),
+        None => client.post(&url),
+    };
+    if let Some(ref key) = ctx.api_key {
+        req = req.bearer_auth(key);
+    }
+
+    let resp = req.send().await?.error_for_status()?;
+    let result = resp.json::<T>().await?;
+    Ok(result)
+}
+
 /// Perform a DELETE request to the gateway.
 pub async fn delete(ctx: &ResolvedContext, path: &str) -> Result<(), CliError> {
     let url = format!("{}{path}", ctx.api_url);
