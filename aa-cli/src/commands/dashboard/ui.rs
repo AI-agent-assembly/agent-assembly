@@ -146,7 +146,7 @@ fn draw_agents_panel(f: &mut Frame, area: Rect, state: &DashboardState) {
             Constraint::Length(8),
             Constraint::Length(10),
             Constraint::Length(5),
-            Constraint::Length(10),
+            Constraint::Length(20),
             Constraint::Length(5),
             Constraint::Length(8),
         ],

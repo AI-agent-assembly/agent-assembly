@@ -32,15 +32,19 @@ pub fn build_runtime_health(resp: Option<HealthResponse>) -> RuntimeHealth {
 pub fn build_agent_rows(agents: Vec<AgentResponse>) -> Vec<AgentRow> {
     agents
         .into_iter()
-        .map(|a| AgentRow {
-            id: a.id,
-            name: a.name,
-            framework: a.framework,
-            status: a.status,
-            sessions: a.session_count,
-            violations_today: a.policy_violations_count,
-            last_event: format_relative_time(a.last_event.as_deref()),
-            layer: a.layer.unwrap_or_else(|| "-".to_string()),
+        .map(|a| {
+            let event_type = a.recent_events.first().map(|e| e.event_type.as_str());
+            let last_event = format_last_event(a.last_event.as_deref(), event_type);
+            AgentRow {
+                id: a.id,
+                name: a.name,
+                framework: a.framework,
+                status: a.status,
+                sessions: a.session_count,
+                violations_today: a.policy_violations_count,
+                last_event,
+                layer: a.layer.unwrap_or_else(|| "-".to_string()),
+            }
         })
         .collect()
 }
@@ -109,6 +113,21 @@ pub fn build_budget_row(cost: CostResponse) -> BudgetRow {
     }
 }
 
+/// Combine a relative timestamp with the latest event type for display.
+///
+/// Returns `"-"` when no timestamp is available.
+/// Examples: `"2m ago tool_call"`, `"1h ago violation"`, `"just now"`.
+pub fn format_last_event(iso_timestamp: Option<&str>, event_type: Option<&str>) -> String {
+    let relative = format_relative_time(iso_timestamp);
+    if relative == "-" {
+        return relative;
+    }
+    match event_type {
+        Some(et) => format!("{relative} {et}"),
+        None => relative,
+    }
+}
+
 /// Format an optional ISO 8601 timestamp as a compact relative time string.
 ///
 /// Returns `"-"` when the input is `None` or unparseable.
@@ -156,6 +175,7 @@ fn format_duration(dur: chrono::Duration) -> String {
 mod tests {
     use std::collections::BTreeMap;
 
+    use super::super::models::RecentEventResponse;
     use super::*;
 
     #[test]
@@ -198,6 +218,11 @@ mod tests {
             policy_violations_count: 1,
             layer: Some("advisory".to_string()),
             last_event: Some("2026-05-01T08:00:00Z".to_string()),
+            recent_events: vec![RecentEventResponse {
+                event_type: "tool_call".to_string(),
+                summary: "called bash".to_string(),
+                timestamp: "2026-05-01T08:00:00Z".to_string(),
+            }],
         }];
         let rows = build_agent_rows(agents);
         assert_eq!(rows.len(), 1);
@@ -207,6 +232,8 @@ mod tests {
         assert_eq!(rows[0].status, "Running");
         assert_eq!(rows[0].sessions, 3);
         assert_eq!(rows[0].violations_today, 1);
+        // last_event should contain both relative time and event type
+        assert!(rows[0].last_event.contains("tool_call"));
         assert_ne!(rows[0].last_event, "-");
         assert_eq!(rows[0].layer, "advisory");
     }
@@ -225,6 +252,7 @@ mod tests {
             policy_violations_count: 0,
             layer: None,
             last_event: None,
+            recent_events: vec![],
         }];
         let rows = build_agent_rows(agents);
         assert_eq!(rows[0].last_event, "-");
@@ -321,5 +349,28 @@ mod tests {
     fn format_duration_days() {
         let dur = chrono::Duration::days(1) + chrono::Duration::hours(3);
         assert_eq!(format_duration(dur), "1d 3h");
+    }
+
+    #[test]
+    fn format_last_event_none_timestamp_returns_dash() {
+        assert_eq!(format_last_event(None, Some("tool_call")), "-");
+    }
+
+    #[test]
+    fn format_last_event_with_event_type() {
+        let ts = (Utc::now() - chrono::Duration::minutes(2)).to_rfc3339();
+        assert_eq!(format_last_event(Some(&ts), Some("tool_call")), "2m ago tool_call");
+    }
+
+    #[test]
+    fn format_last_event_without_event_type() {
+        let ts = (Utc::now() - chrono::Duration::minutes(5)).to_rfc3339();
+        assert_eq!(format_last_event(Some(&ts), None), "5m ago");
+    }
+
+    #[test]
+    fn format_last_event_just_now_with_event_type() {
+        let ts = Utc::now().to_rfc3339();
+        assert_eq!(format_last_event(Some(&ts), Some("violation")), "just now violation");
     }
 }
