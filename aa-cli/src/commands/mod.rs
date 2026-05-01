@@ -9,6 +9,7 @@ use crate::output::OutputFormat;
 
 pub mod agent;
 pub mod approvals;
+pub mod audit;
 pub mod completion;
 pub mod context;
 pub mod cost;
@@ -24,6 +25,8 @@ pub mod version;
 pub enum Commands {
     /// Manage monitored agent processes.
     Agent(agent::AgentArgs),
+    /// Query audit log entries and export compliance reports.
+    Audit(audit::AuditArgs),
     /// Query and stream audit log events.
     Logs(logs::LogsArgs),
     /// Manage governance policies.
@@ -50,6 +53,7 @@ pub enum Commands {
 pub fn dispatch(cmd: Commands, ctx: &ResolvedContext, output: OutputFormat) -> ExitCode {
     match cmd {
         Commands::Agent(args) => agent::dispatch(args, ctx, output),
+        Commands::Audit(args) => audit::dispatch(args, ctx, output),
         Commands::Logs(args) => logs::dispatch(args, ctx),
         Commands::Policy(args) => policy::dispatch(args, ctx),
         Commands::Context(args) => context::dispatch(args),
