@@ -39,7 +39,7 @@ impl FsHistoryStore {
     fn sha256_hex(content: &str) -> String {
         let mut hasher = Sha256::new();
         hasher.update(content.as_bytes());
-        format!("{:x}", hasher.finalize())
+        hex::encode(hasher.finalize())
     }
 
     /// Build the filename stem: `<timestamp>-<sha256_prefix>`.
