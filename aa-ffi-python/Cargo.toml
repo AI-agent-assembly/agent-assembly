@@ -12,7 +12,7 @@ crate-type = ["cdylib", "lib"]
 [dependencies]
 aa-core = { path = "../aa-core" }
 aa-proto = { path = "../aa-proto" }
-prost = "0.13"
+prost = "0.14"
 pyo3 = "0.24"
 tokio = { version = "1", features = ["net", "rt", "sync", "time", "io-util", "macros"] }
 tracing = "0.1"
