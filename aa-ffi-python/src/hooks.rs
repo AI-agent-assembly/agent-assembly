@@ -27,7 +27,7 @@ const HOOK_MODULES: &[(&str, &str)] = &[
 fn ensure_hooks_on_path(py: Python<'_>) -> PyResult<()> {
     let hooks_dir = concat!(env!("CARGO_MANIFEST_DIR"), "/python");
     let sys = py.import("sys")?;
-    let path = sys.getattr("path")?.downcast_into::<PyList>()?;
+    let path = sys.getattr("path")?.cast_into::<PyList>()?;
 
     // Check if already present.
     let already = path

@@ -174,7 +174,7 @@ impl AssemblyHandle {
 
             // Join the background thread, releasing the GIL to avoid deadlock.
             if let Some(thread) = ipc.thread.take() {
-                py.allow_threads(|| {
+                py.detach(|| {
                     let _ = thread.join();
                 });
             }
