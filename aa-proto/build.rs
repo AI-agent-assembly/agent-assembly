@@ -18,13 +18,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         proto_root.join("event.proto"),
     ];
 
+    // Re-run this build script if any proto file changes.
+    println!("cargo:rerun-if-changed={}", proto_root.display());
+
     tonic_prost_build::configure()
         .build_server(true)
         .build_client(true)
         .compile_protos(&proto_files, &[proto_root])?;
-
-    // Re-run this build script if any proto file changes.
-    println!("cargo:rerun-if-changed={}", proto_root.display());
 
     Ok(())
 }
