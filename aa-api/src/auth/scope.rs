@@ -1,6 +1,5 @@
 //! Authorization scope levels for API operations.
 
-use axum::async_trait;
 use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
 use serde::{Deserialize, Serialize};
@@ -68,7 +67,6 @@ impl RequireScope {
 /// Require `Scope::Read` — the caller must have at least read access.
 pub struct RequireRead(pub AuthenticatedCaller);
 
-#[async_trait]
 impl<S> FromRequestParts<S> for RequireRead
 where
     S: Send + Sync,
@@ -85,7 +83,6 @@ where
 /// Require `Scope::Write` — the caller must have at least write access.
 pub struct RequireWrite(pub AuthenticatedCaller);
 
-#[async_trait]
 impl<S> FromRequestParts<S> for RequireWrite
 where
     S: Send + Sync,
@@ -102,7 +99,6 @@ where
 /// Require `Scope::Admin` — the caller must have admin access.
 pub struct RequireAdmin(pub AuthenticatedCaller);
 
-#[async_trait]
 impl<S> FromRequestParts<S> for RequireAdmin
 where
     S: Send + Sync,
