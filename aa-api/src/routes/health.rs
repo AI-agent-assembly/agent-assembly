@@ -7,6 +7,7 @@ use axum::response::IntoResponse;
 use axum::{Extension, Json};
 use serde::Serialize;
 
+use crate::error::ProblemDetail;
 use crate::state::AppState;
 
 /// Response body for the health endpoint.
