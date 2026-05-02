@@ -27,7 +27,7 @@ const HOOK_MODULES: &[(&str, &str)] = &[
 fn ensure_hooks_on_path(py: Python<'_>) -> PyResult<()> {
     let hooks_dir = concat!(env!("CARGO_MANIFEST_DIR"), "/python");
     let sys = py.import("sys")?;
-    let path = sys.getattr("path")?.downcast_into::<PyList>()?;
+    let path = sys.getattr("path")?.cast_into::<PyList>()?;
 
     // Check if already present.
     let already = path
@@ -116,8 +116,8 @@ mod tests {
 
     #[test]
     fn install_hooks_no_frameworks_is_noop() {
-        pyo3::prepare_freethreaded_python();
-        Python::with_gil(|py| {
+        pyo3::Python::initialize();
+        Python::attach(|py| {
             let handle = Py::new(py, test_handle()).unwrap();
             let installed = install_hooks(py, handle.bind(py), &[]);
             assert!(installed.is_empty());
@@ -126,8 +126,8 @@ mod tests {
 
     #[test]
     fn install_hooks_unknown_framework_skips() {
-        pyo3::prepare_freethreaded_python();
-        Python::with_gil(|py| {
+        pyo3::Python::initialize();
+        Python::attach(|py| {
             let handle = Py::new(py, test_handle()).unwrap();
             let detected = vec!["pytorch".to_string()];
             let installed = install_hooks(py, handle.bind(py), &detected);
@@ -139,8 +139,8 @@ mod tests {
     fn install_hooks_openai_without_openai_package_degrades() {
         // When the openai Python package is not installed, the hook's
         // install() will fail — but install_hooks should degrade gracefully.
-        pyo3::prepare_freethreaded_python();
-        Python::with_gil(|py| {
+        pyo3::Python::initialize();
+        Python::attach(|py| {
             let handle = Py::new(py, test_handle()).unwrap();
             let detected = vec!["openai".to_string()];
             let installed = install_hooks(py, handle.bind(py), &detected);

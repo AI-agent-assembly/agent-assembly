@@ -174,7 +174,7 @@ impl AssemblyHandle {
 
             // Join the background thread, releasing the GIL to avoid deadlock.
             if let Some(thread) = ipc.thread.take() {
-                py.allow_threads(|| {
+                py.detach(|| {
                     let _ = thread.join();
                 });
             }
@@ -299,11 +299,11 @@ mod tests {
 
     #[test]
     fn report_llm_call_on_shutdown_handle_returns_error() {
-        pyo3::prepare_freethreaded_python();
+        pyo3::Python::initialize();
         let (handle, _rx) = test_handle();
 
         // Shut down the handle first.
-        Python::with_gil(|py| handle.shutdown(py).unwrap());
+        Python::attach(|py| handle.shutdown(py).unwrap());
 
         // Now report_llm_call should fail.
         let result = handle.report_llm_call("gpt-4o".to_string(), 0, 0, 0, "openai");

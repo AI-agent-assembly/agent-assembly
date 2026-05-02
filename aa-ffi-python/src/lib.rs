@@ -108,8 +108,8 @@ mod tests {
 
     #[test]
     fn init_assembly_rejects_empty_agent_id() {
-        pyo3::prepare_freethreaded_python();
-        Python::with_gil(|py| {
+        pyo3::Python::initialize();
+        Python::attach(|py| {
             let result = init_assembly(py, String::new(), None, "auto");
             let err = result.expect_err("should reject empty agent_id");
             assert!(err.to_string().contains("agent_id must not be empty"));
@@ -118,8 +118,8 @@ mod tests {
 
     #[test]
     fn init_assembly_rejects_embedded_mode() {
-        pyo3::prepare_freethreaded_python();
-        Python::with_gil(|py| {
+        pyo3::Python::initialize();
+        Python::attach(|py| {
             let result = init_assembly(py, "test-agent".to_string(), None, "embedded");
             let err = result.expect_err("should reject embedded mode");
             assert!(err.to_string().contains("embedded mode is not yet supported"));
@@ -128,8 +128,8 @@ mod tests {
 
     #[test]
     fn init_assembly_rejects_unknown_mode() {
-        pyo3::prepare_freethreaded_python();
-        Python::with_gil(|py| {
+        pyo3::Python::initialize();
+        Python::attach(|py| {
             let result = init_assembly(py, "test-agent".to_string(), None, "bogus");
             let err = result.expect_err("should reject unknown mode");
             assert!(err.to_string().contains("unknown mode"));
@@ -141,8 +141,8 @@ mod tests {
         // In auto mode with a valid agent_id, init_assembly should succeed
         // even though the socket doesn't exist — the IPC thread spawns and
         // will fail to connect asynchronously.
-        pyo3::prepare_freethreaded_python();
-        Python::with_gil(|py| {
+        pyo3::Python::initialize();
+        Python::attach(|py| {
             let result = init_assembly(
                 py,
                 "test-agent".to_string(),
