@@ -52,7 +52,7 @@ jobs:
         run: cargo llvm-cov --all-features --workspace --exclude aa-ebpf --exclude aa-ffi-python --lcov --output-path lcov.info
 
       - name: SonarCloud scan
-        uses: SonarSource/sonarqube-scan-action@2f77a1ec69fb1d595b06f35ab27e97605bdef703 # v5
+        uses: SonarSource/sonarqube-scan-action@55e44800a8f495208cce6e4e82f5dedb45fcf0ef # v7.2.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
