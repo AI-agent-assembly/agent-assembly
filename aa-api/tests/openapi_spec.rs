@@ -3,12 +3,12 @@
 use utoipa::OpenApi;
 
 #[test]
-fn spec_version_is_3_0_3() {
+fn spec_version_is_3_1_0() {
     let spec = aa_api::ApiDoc::openapi();
     assert_eq!(spec.info.version, "0.0.1");
-    // utoipa 4.x generates OpenAPI 3.0.3
+    // utoipa 5.x generates OpenAPI 3.1.0
     let yaml = serde_yaml::to_string(&spec).unwrap();
-    assert!(yaml.starts_with("openapi: 3.0.3"));
+    assert!(yaml.starts_with("openapi: 3.1.0"));
 }
 
 #[test]
