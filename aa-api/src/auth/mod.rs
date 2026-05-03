@@ -12,7 +12,6 @@ pub mod scope;
 
 use std::sync::Arc;
 
-use axum::async_trait;
 use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
 use axum::http::StatusCode;
@@ -97,7 +96,6 @@ pub struct AuthenticatedCaller {
 /// Prefix used by API keys (`aa_`).
 const API_KEY_PREFIX: &str = "aa_";
 
-#[async_trait]
 impl<S> FromRequestParts<S> for AuthenticatedCaller
 where
     S: Send + Sync,

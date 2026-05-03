@@ -16,7 +16,7 @@ integration-test = []
 [dependencies]
 aa-core                     = { path = "../aa-core" }
 aa-proto                    = { path = "../aa-proto" }
-axum                        = "0.7"
+axum                        = "0.8"
 bitflags                    = "2"
 dashmap                     = "6"
 uuid                        = { version = "1", features = ["v4"] }

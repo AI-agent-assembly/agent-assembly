@@ -11,7 +11,7 @@ aa-core = { path = "../aa-core" }
 aa-gateway = { path = "../aa-gateway" }
 aa-runtime = { path = "../aa-runtime" }
 argon2 = "0.5"
-axum = { version = "0.7", features = ["ws"] }
+axum = { version = "0.8", features = ["ws"] }
 dashmap = "6"
 http = "1"
 hyper = { version = "1", features = ["full"] }
