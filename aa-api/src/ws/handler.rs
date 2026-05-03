@@ -105,7 +105,13 @@ async fn handle_socket(socket: WebSocket, params: WsQueryParams, state: AppState
                 return;
             }
             pong_flag.store(false, std::sync::atomic::Ordering::Relaxed);
-            if ping_sender.lock().await.send(Message::Ping(Bytes::new())).await.is_err() {
+            if ping_sender
+                .lock()
+                .await
+                .send(Message::Ping(Bytes::new()))
+                .await
+                .is_err()
+            {
                 return;
             }
         }
@@ -211,5 +217,10 @@ async fn send_event(
     event: &GovernanceEvent,
 ) -> Result<(), ()> {
     let json = serde_json::to_string(event).map_err(|_| ())?;
-    sender.lock().await.send(Message::Text(json.into())).await.map_err(|_| ())
+    sender
+        .lock()
+        .await
+        .send(Message::Text(json.into()))
+        .await
+        .map_err(|_| ())
 }
