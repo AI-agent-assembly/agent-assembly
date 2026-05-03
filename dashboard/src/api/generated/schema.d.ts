@@ -560,12 +560,17 @@ export interface components {
         GovernanceEvent: {
             /** @description Agent that produced or is associated with the event. */
             agent_id: string;
+            /** @description Classification of the event for client-side filtering. */
             event_type: components["schemas"]["EventType"];
             /**
              * Format: int64
              * @description Monotonically increasing event identifier.
              */
             id: number;
+            /**
+             * @description Event-specific payload whose schema depends on `event_type`:
+             *     `ViolationPayload`, `ApprovalPayload`, or `BudgetAlertPayload`.
+             */
             payload: components["schemas"]["EventPayload"];
             /** @description Timestamp when the event was received by the API layer (ISO 8601). */
             timestamp: string;

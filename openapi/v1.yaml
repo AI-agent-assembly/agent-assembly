@@ -1,4 +1,4 @@
-openapi: 3.0.3
+openapi: 3.1.0
 info:
   title: Agent Assembly API
   description: |-
@@ -29,18 +29,20 @@ paths:
         description: Page number (1-indexed). Defaults to 1.
         required: false
         schema:
-          type: integer
+          type:
+          - integer
+          - 'null'
           format: int32
-          nullable: true
           minimum: 1
       - name: per_page
         in: query
         description: Items per page (max 100). Defaults to 50.
         required: false
         schema:
-          type: integer
+          type:
+          - integer
+          - 'null'
           format: int32
-          nullable: true
           maximum: 100
           minimum: 1
       responses:
@@ -166,18 +168,20 @@ paths:
         description: Page number (1-indexed). Defaults to 1.
         required: false
         schema:
-          type: integer
+          type:
+          - integer
+          - 'null'
           format: int32
-          nullable: true
           minimum: 1
       - name: per_page
         in: query
         description: Items per page (max 100). Defaults to 50.
         required: false
         schema:
-          type: integer
+          type:
+          - integer
+          - 'null'
           format: int32
-          nullable: true
           maximum: 100
           minimum: 1
       responses:
@@ -202,18 +206,20 @@ paths:
         description: Page number (1-indexed). Defaults to 1.
         required: false
         schema:
-          type: integer
+          type:
+          - integer
+          - 'null'
           format: int32
-          nullable: true
           minimum: 1
       - name: per_page
         in: query
         description: Items per page (max 100). Defaults to 50.
         required: false
         schema:
-          type: integer
+          type:
+          - integer
+          - 'null'
           format: int32
-          nullable: true
           maximum: 100
           minimum: 1
       responses:
@@ -240,7 +246,6 @@ paths:
         schema:
           type: string
       requestBody:
-        description: ''
         content:
           application/json:
             schema:
@@ -270,7 +275,6 @@ paths:
         schema:
           type: string
       requestBody:
-        description: ''
         content:
           application/json:
             schema:
@@ -375,18 +379,20 @@ paths:
         description: Page number (1-indexed). Defaults to 1.
         required: false
         schema:
-          type: integer
+          type:
+          - integer
+          - 'null'
           format: int32
-          nullable: true
           minimum: 1
       - name: per_page
         in: query
         description: Items per page (max 100). Defaults to 50.
         required: false
         schema:
-          type: integer
+          type:
+          - integer
+          - 'null'
           format: int32
-          nullable: true
           maximum: 100
           minimum: 1
       - name: agent_id
@@ -394,15 +400,17 @@ paths:
         description: Filter by hex-encoded agent ID.
         required: false
         schema:
-          type: string
-          nullable: true
+          type:
+          - string
+          - 'null'
       - name: event_type
         in: query
         description: Filter by event type name (e.g. `PolicyViolation`).
         required: false
         schema:
-          type: string
-          nullable: true
+          type:
+          - string
+          - 'null'
       responses:
         '200':
           description: Paginated audit log entries
@@ -425,18 +433,20 @@ paths:
         description: Page number (1-indexed). Defaults to 1.
         required: false
         schema:
-          type: integer
+          type:
+          - integer
+          - 'null'
           format: int32
-          nullable: true
           minimum: 1
       - name: per_page
         in: query
         description: Items per page (max 100). Defaults to 50.
         required: false
         schema:
-          type: integer
+          type:
+          - integer
+          - 'null'
           format: int32
-          nullable: true
           maximum: 100
           minimum: 1
       responses:
@@ -547,15 +557,17 @@ paths:
           All types are included when omitted.
         required: false
         schema:
-          type: string
-          nullable: true
+          type:
+          - string
+          - 'null'
       - name: agent_id
         in: query
         description: Filter events by agent identifier (hex-encoded).
         required: false
         schema:
-          type: string
-          nullable: true
+          type:
+          - string
+          - 'null'
       - name: since
         in: query
         description: |-
@@ -563,9 +575,10 @@ paths:
           The server keeps the last 1000 events in a circular buffer.
         required: false
         schema:
-          type: integer
+          type:
+          - integer
+          - 'null'
           format: int64
-          nullable: true
           minimum: 0
       responses:
         '101':
@@ -615,9 +628,10 @@ components:
           type: string
           description: Calendar date (YYYY-MM-DD) the daily spend applies to.
         monthly_spend_usd:
-          type: string
+          type:
+          - string
+          - 'null'
           description: Total spend this month in USD for this agent (if monthly tracking is enabled).
-          nullable: true
     AgentResponse:
       type: object
       description: JSON representation of an agent returned by the API.
@@ -647,26 +661,31 @@ components:
           type: string
           description: Hex-encoded agent UUID.
         last_event:
-          type: string
+          type:
+          - string
+          - 'null'
           description: ISO 8601 timestamp of the most recent event.
-          nullable: true
         layer:
-          type: string
+          type:
+          - string
+          - 'null'
           description: Governance layer this agent is assigned to (e.g. "advisory", "enforced").
-          nullable: true
         metadata:
           type: object
           description: Arbitrary metadata key-value pairs.
           additionalProperties:
             type: string
+          propertyNames:
+            type: string
         name:
           type: string
           description: Human-readable agent name.
         pid:
-          type: integer
+          type:
+          - integer
+          - 'null'
           format: int32
           description: OS process ID, if known.
-          nullable: true
           minimum: 0
         policy_violations_count:
           type: integer
@@ -710,9 +729,10 @@ components:
       - timestamp
       properties:
         agent_id:
-          type: string
+          type:
+          - string
+          - 'null'
           description: Agent ID that triggered the alert (if applicable).
-          nullable: true
         category:
           type: string
           description: Alert category (e.g. "budget", "policy_violation", "anomaly").
@@ -823,9 +843,10 @@ components:
       - date
       properties:
         daily_limit_usd:
-          type: string
+          type:
+          - string
+          - 'null'
           description: Configured daily budget limit in USD, if set.
-          nullable: true
         daily_spend_usd:
           type: string
           description: Total spend today in USD.
@@ -833,13 +854,15 @@ components:
           type: string
           description: Calendar date (YYYY-MM-DD) the daily spend applies to.
         monthly_limit_usd:
-          type: string
+          type:
+          - string
+          - 'null'
           description: Configured monthly budget limit in USD, if set.
-          nullable: true
         monthly_spend_usd:
-          type: string
+          type:
+          - string
+          - 'null'
           description: Total spend this month in USD (if monthly tracking is enabled).
-          nullable: true
         per_agent:
           type: array
           items:
@@ -859,18 +882,23 @@ components:
       description: Request body for approval decide actions.
       properties:
         by:
-          type: string
+          type:
+          - string
+          - 'null'
           description: Identity of the operator making the decision.
-          nullable: true
         reason:
-          type: string
+          type:
+          - string
+          - 'null'
           description: Optional reason for the decision.
-          nullable: true
     EventPayload:
       oneOf:
       - $ref: '#/components/schemas/ViolationPayload'
+        description: Pipeline / violation event payload.
       - $ref: '#/components/schemas/ApprovalPayload'
+        description: Approval request event payload.
       - $ref: '#/components/schemas/BudgetAlertPayload'
+        description: Budget threshold alert payload.
       description: |-
         Discriminated union of all possible `GovernanceEvent.payload` shapes.
 
@@ -910,6 +938,7 @@ components:
           description: Agent that produced or is associated with the event.
         event_type:
           $ref: '#/components/schemas/EventType'
+          description: Classification of the event for client-side filtering.
         id:
           type: integer
           format: int64
@@ -917,6 +946,9 @@ components:
           minimum: 0
         payload:
           $ref: '#/components/schemas/EventPayload'
+          description: |-
+            Event-specific payload whose schema depends on `event_type`:
+            `ViolationPayload`, `ApprovalPayload`, or `BudgetAlertPayload`.
         timestamp:
           type: string
           description: Timestamp when the event was received by the API layer (ISO 8601).
@@ -1016,13 +1048,15 @@ components:
       - status
       properties:
         detail:
-          type: string
+          type:
+          - string
+          - 'null'
           description: Human-readable explanation specific to this occurrence.
-          nullable: true
         instance:
-          type: string
+          type:
+          - string
+          - 'null'
           description: URI reference identifying the specific occurrence.
-          nullable: true
         status:
           type: integer
           format: int32
@@ -1129,13 +1163,14 @@ components:
       description: Request body for `POST /auth/token`.
       properties:
         scopes:
-          type: array
+          type:
+          - array
+          - 'null'
           items:
             $ref: '#/components/schemas/Scope'
           description: |-
             Requested scopes for the issued JWT.
             If omitted, the caller's full scopes are used.
-          nullable: true
     TokenResponse:
       type: object
       description: Response body for `POST /auth/token`.
@@ -1185,20 +1220,23 @@ components:
       - start_time
       properties:
         decision:
-          type: string
+          type:
+          - string
+          - 'null'
           description: Governance decision result for this span.
-          nullable: true
         end_time:
-          type: string
+          type:
+          - string
+          - 'null'
           description: End time of the span (ISO 8601, if completed).
-          nullable: true
         operation:
           type: string
           description: Operation name.
         parent_span_id:
-          type: string
+          type:
+          - string
+          - 'null'
           description: Parent span identifier (links to the calling action).
-          nullable: true
         span_id:
           type: string
           description: Span identifier.
@@ -1259,8 +1297,6 @@ components:
 
         Represents a governance audit event from the pipeline — either an
         action that violated policy or an interception layer degradation.
-      discriminator:
-        propertyName: kind
   securitySchemes:
     bearer_auth:
       type: http
