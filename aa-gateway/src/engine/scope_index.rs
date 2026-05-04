@@ -104,4 +104,13 @@ impl ScopeIndex {
     pub fn is_empty(&self) -> bool {
         self.policies.is_empty()
     }
+
+    /// Return the ids of every policy registered under `scope`, in
+    /// insertion order. Returns an empty slice when no policy has ever
+    /// been registered (or all of them have since been removed).
+    ///
+    /// Cheap — backed directly by the index `Vec`, no allocation.
+    pub fn policies_for_scope(&self, scope: &PolicyScope) -> &[PolicyId] {
+        self.by_scope.get(scope).map(Vec::as_slice).unwrap_or(&[])
+    }
 }
