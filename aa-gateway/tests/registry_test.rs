@@ -30,6 +30,7 @@ fn make_record(key: [u8; 16]) -> AgentRecord {
         recent_events: VecDeque::new(),
         recent_traces: Vec::new(),
         layer: None,
+        governance_level: aa_core::GovernanceLevel::default(),
     }
 }
 
@@ -225,6 +226,7 @@ async fn concurrent_registration_of_100_agents() {
                 recent_events: VecDeque::new(),
                 recent_traces: Vec::new(),
                 layer: None,
+                governance_level: aa_core::GovernanceLevel::default(),
             };
             reg.register(record).unwrap();
         }));

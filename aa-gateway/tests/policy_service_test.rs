@@ -280,6 +280,7 @@ budget:
         recent_events: std::collections::VecDeque::new(),
         recent_traces: Vec::new(),
         layer: None,
+        governance_level: aa_core::GovernanceLevel::default(),
     };
     registry.register(record).unwrap();
 
@@ -355,6 +356,7 @@ budget:
         recent_events: std::collections::VecDeque::new(),
         recent_traces: Vec::new(),
         layer: None,
+        governance_level: aa_core::GovernanceLevel::default(),
     };
     registry.register(record).unwrap();
 

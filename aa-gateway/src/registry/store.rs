@@ -2,6 +2,7 @@
 
 use std::collections::{BTreeMap, VecDeque};
 
+use aa_core::GovernanceLevel;
 use chrono::{DateTime, Utc};
 use dashmap::DashMap;
 use tokio::sync::mpsc;
@@ -89,6 +90,14 @@ pub struct AgentRecord {
     pub recent_traces: Vec<RecentTrace>,
     /// Governance layer this agent is assigned to (e.g. "advisory", "enforced").
     pub layer: Option<String>,
+    /// Governance level (L0–L3) the registry tracks for this agent.
+    ///
+    /// Determined by the dev-tool adapter at registration time and consulted
+    /// by `PolicyEngine::evaluate` for level-conditional rules. Defaults to
+    /// [`GovernanceLevel::L0Discover`] when not declared by the registrant —
+    /// existing agents registered before this field was introduced retain
+    /// the discover-only default.
+    pub governance_level: GovernanceLevel,
 }
 
 /// Channel sender type for pushing [`ControlCommand`]s to an agent's control stream.
