@@ -25,6 +25,7 @@ cfg_if::cfg_if! {
 pub mod agent;
 #[cfg(feature = "alloc")]
 pub mod audit;
+pub mod dev_tool;
 pub mod evaluators;
 pub mod identity;
 pub mod policy;
