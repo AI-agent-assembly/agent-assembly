@@ -102,13 +102,15 @@ PRs whose commits are missing the sign-off trailer will be blocked by the DCO ch
 
 Pre-commit hooks enforce these automatically on every `git commit`:
 
-| Check | Command |
-|---|---|
-| Formatting | `cargo fmt --all -- --check` |
-| Linting | `cargo clippy --all-targets -- -D warnings` |
-| Dependencies | `cargo deny check` |
+| Check | Command | Config |
+|---|---|---|
+| Formatting | `cargo fmt --all -- --check` | [`rustfmt.toml`](rustfmt.toml) |
+| Linting | `cargo clippy --all-targets -- -D warnings` | [`clippy.toml`](clippy.toml) + `[workspace.lints.clippy]` in [`Cargo.toml`](Cargo.toml) |
+| Dependencies | `cargo deny check` | [`deny.toml`](deny.toml) |
 
 On `git push`, documentation is also checked: `cargo doc --workspace --no-deps`.
+
+The workspace-level clippy lints (`correctness = deny`, `suspicious = deny`, others `warn`) live in `[workspace.lints.clippy]` of the top-level `Cargo.toml` — do not override them per-crate.
 
 ## Build docs locally
 
