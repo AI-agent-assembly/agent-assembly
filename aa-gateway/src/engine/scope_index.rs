@@ -50,3 +50,40 @@ pub struct ScopeIndex {
     /// Monotonic counter feeding new [`PolicyId`] values.
     next_id: u64,
 }
+
+impl ScopeIndex {
+    /// Construct an empty index.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Register `doc` under its declared `scope`, returning the freshly
+    /// allocated [`PolicyId`].
+    ///
+    /// The id is appended to the scope's bucket so subsequent
+    /// [`Self::policies_for_scope`] calls observe insertion order.
+    pub fn insert(&mut self, doc: PolicyDocument) -> PolicyId {
+        let id = PolicyId(self.next_id);
+        self.next_id += 1;
+
+        let scope = doc.scope.clone();
+        self.policies.insert(id, Arc::new(doc));
+        self.by_scope.entry(scope).or_default().push(id);
+        id
+    }
+
+    /// Look up a stored document by id.
+    pub fn policy(&self, id: PolicyId) -> Option<&Arc<PolicyDocument>> {
+        self.policies.get(&id)
+    }
+
+    /// Total number of policies currently indexed.
+    pub fn len(&self) -> usize {
+        self.policies.len()
+    }
+
+    /// Whether the index holds any policies.
+    pub fn is_empty(&self) -> bool {
+        self.policies.is_empty()
+    }
+}
