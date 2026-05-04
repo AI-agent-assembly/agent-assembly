@@ -7,6 +7,8 @@
 
 #[cfg(feature = "alloc")]
 use alloc::string::String;
+#[cfg(feature = "alloc")]
+use alloc::vec::Vec;
 #[cfg(feature = "std")]
 use std::path::PathBuf;
 
@@ -67,6 +69,30 @@ pub enum DevToolKind {
     WindsurfCascade,
     /// Adapter-defined custom tool identified by an opaque name string.
     Custom(String),
+}
+
+/// Lightweight description of an MCP server an adapter is aware of.
+///
+/// Returned by [`DevToolAdapter::list_mcp_servers`] and consumed by
+/// [`DevToolAdapter::apply_mcp_governance`]. This is a minimal placeholder;
+/// when `aa-core` grows a richer MCP type (e.g. transport-aware
+/// description), this struct will be replaced or wrapped without any
+/// trait-method signature change.
+///
+/// [`DevToolAdapter::list_mcp_servers`]: <not yet defined; introduced in this same Subtask>
+/// [`DevToolAdapter::apply_mcp_governance`]: <not yet defined; introduced in this same Subtask>
+#[cfg(feature = "alloc")]
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct McpServerInfo {
+    /// Stable identifier the tool uses for this MCP server (matches the
+    /// key under which the server appears in the tool's native
+    /// configuration file).
+    pub name: String,
+    /// Executable invoked to start the MCP server process.
+    pub command: String,
+    /// Arguments passed to `command` when the MCP server is started.
+    pub args: Vec<String>,
 }
 
 /// Error type for [`DevToolAdapter`] method failures.
