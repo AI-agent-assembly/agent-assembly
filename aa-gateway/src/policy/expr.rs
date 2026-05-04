@@ -485,6 +485,16 @@ mod tests {
     }
 
     #[test]
+    fn rule_with_ge_l2_fires_for_l2_agent() {
+        // An L2 agent satisfies `governance_level >= L2`.
+        assert!(evaluate(
+            "governance_level >= L2",
+            &tool("any"),
+            Some(GovernanceLevel::L2Enforce),
+        ));
+    }
+
+    #[test]
     fn parser_accepts_l0_through_l3() {
         // Each named level parses and compares equal against an agent of the
         // same level — covering all four members of the `GovernanceLevel`
