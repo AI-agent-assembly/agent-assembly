@@ -78,6 +78,26 @@ To add a new crate to the workspace:
 - CI must be green before review is requested.
 - At least **1 approval** from the Pioneer team is required to merge.
 
+## Developer Certificate of Origin (DCO)
+
+Every commit must be signed off under the [Developer Certificate of Origin v1.1](https://developercertificate.org/) — this licenses your contribution to the project under the [Apache License 2.0](LICENSE).
+
+Sign off by adding a `Signed-off-by` trailer to each commit message:
+
+```
+✨ (aa-core): Add AgentId newtype wrapper
+
+Signed-off-by: Jane Doe <jane@example.com>
+```
+
+The easiest way is to pass `-s` (or `--signoff`) to `git commit`:
+
+```bash
+git commit -s -m "✨ (aa-core): Add AgentId newtype wrapper"
+```
+
+PRs whose commits are missing the sign-off trailer will be blocked by the DCO check.
+
 ## Code Quality
 
 Pre-commit hooks enforce these automatically on every `git commit`:
