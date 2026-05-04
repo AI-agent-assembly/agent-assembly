@@ -5,6 +5,11 @@
 //! loaded under that scope, in insertion order, so the cascading evaluator
 //! added by AAASM-220 (F93) can resolve applicable policies in O(1).
 
+use std::collections::HashMap;
+use std::sync::Arc;
+
+use crate::policy::{PolicyDocument, PolicyScope};
+
 /// Opaque identifier returned by [`ScopeIndex::insert`] (and by
 /// [`crate::engine::PolicyEngine::load_policy`] in turn).
 ///
@@ -28,4 +33,20 @@ impl PolicyId {
     pub const fn as_raw(&self) -> u64 {
         self.0
     }
+}
+
+/// Owns loaded policy documents and a secondary index from
+/// [`PolicyScope`] to the list of [`PolicyId`]s registered under that
+/// scope, preserving insertion order within each bucket.
+///
+/// Phase B (this Sub-task) only populates the index; the cascading
+/// evaluator that *consumes* it lands in F93 (AAASM-220).
+#[derive(Debug, Default)]
+pub struct ScopeIndex {
+    /// Owned policy documents keyed by their assigned id.
+    policies: HashMap<PolicyId, Arc<PolicyDocument>>,
+    /// Per-scope insertion-ordered list of policy ids.
+    by_scope: HashMap<PolicyScope, Vec<PolicyId>>,
+    /// Monotonic counter feeding new [`PolicyId`] values.
+    next_id: u64,
 }
