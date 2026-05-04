@@ -39,11 +39,11 @@ pub struct AgentContext {
     pub metadata: BTreeMap<String, String>,
     /// Governance level (L0–L3) carried for level-conditional policy rules.
     ///
-    /// Populated by the gateway from the agent's [`AgentRecord`] at the
-    /// boundary between transport and the policy engine. Defaults to
-    /// [`GovernanceLevel::L0Discover`] so old serialised contexts (and
-    /// callers that have not yet been updated) deserialise / construct
-    /// without churn.
+    /// Populated by the gateway from the agent's `AgentRecord` (defined in
+    /// `aa-gateway`) at the boundary between transport and the policy
+    /// engine. Defaults to [`GovernanceLevel::L0Discover`] so old serialised
+    /// contexts — and callers that have not yet been updated — deserialise
+    /// or construct without churn.
     #[cfg_attr(feature = "serde", serde(default))]
     pub governance_level: GovernanceLevel,
 }
