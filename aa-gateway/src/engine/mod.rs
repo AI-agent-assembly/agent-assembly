@@ -15,6 +15,7 @@ use std::{
 
 use crate::budget::BudgetTracker;
 
+use crate::engine::scope_index::ScopeIndex;
 use crate::policy::document::ActionOnExceed;
 use crate::policy::{PolicyDocument, PolicyValidator};
 
@@ -77,6 +78,13 @@ pub struct PolicyEngine {
     compiled_patterns: Vec<regex::Regex>,
     rate_state: DashMap<String, Mutex<crate::engine::rate_limit::TokenBucket>>,
     budget: Arc<BudgetTracker>,
+    /// Scope-keyed index of additionally-loaded policies (AAASM-951).
+    ///
+    /// Populated via [`PolicyEngine::load_policy`]. The single primary
+    /// policy held in `policy` (above) is unaffected — F93 (AAASM-220)
+    /// will migrate the evaluator to consult this index for cascading
+    /// most-restrictive-wins resolution.
+    scope_index: ScopeIndex,
     _watcher: Option<notify::RecommendedWatcher>,
 }
 
@@ -148,6 +156,7 @@ impl PolicyEngine {
             compiled_patterns,
             rate_state: DashMap::new(),
             budget,
+            scope_index: ScopeIndex::new(),
             _watcher: watcher,
         })
     }
@@ -178,6 +187,7 @@ impl PolicyEngine {
             compiled_patterns,
             rate_state: DashMap::new(),
             budget,
+            scope_index: ScopeIndex::new(),
             _watcher: watcher,
         })
     }
@@ -560,6 +570,7 @@ mod tests {
                 monthly_limit,
                 chrono_tz::UTC,
             )),
+            scope_index: ScopeIndex::new(),
             _watcher: None,
         }
     }
@@ -1230,6 +1241,7 @@ mod tests {
                 chrono_tz::UTC,
                 alert_tx,
             )),
+            scope_index: ScopeIndex::new(),
             _watcher: None,
         }
     }
