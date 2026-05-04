@@ -139,3 +139,27 @@ stateDiagram-v2
 | **Draining** | On `SIGTERM`, stop accepting new connections, finish in-flight requests, flush the audit batch, then exit. |
 
 Health and metrics are exposed at `http://localhost:8080/healthz` and `/metrics` (Prometheus format) throughout the Enforcing phase.
+
+## Policy evaluation path
+
+When `aa-gateway` receives a `PolicyDecisionRequest`, it walks four stages before returning a decision. The implementation lives under [`aa-gateway/src/policy/`](https://github.com/AI-agent-assembly/agent-assembly/tree/master/aa-gateway/src/policy):
+
+```mermaid
+flowchart LR
+    Req[PolicyDecisionRequest] --> Parse
+    Parse[policy/raw.rs<br/>parse + validate] --> Compile
+    Compile[policy/expr.rs<br/>compile rule expressions] --> Eval
+    Eval[policy/document.rs<br/>evaluate scope cascade] --> Budget
+    Budget[budget/tracker.rs<br/>check team budget] --> Decide{Decision}
+    Decide -->|ALLOW| Audit
+    Decide -->|DENY| Audit
+    Audit[audit.rs<br/>append immutable event] --> Resp[PolicyDecisionResponse]
+```
+
+1. **Parse + validate** — `policy/raw.rs` deserialises the active policy bundle (TOML or YAML) and `policy/validator.rs` enforces structural invariants such as scope wellformedness and unique rule names.
+2. **Compile** — `policy/expr.rs` turns rule predicates into a typed expression tree the engine can evaluate against the request's `ActionType`, target, and labels.
+3. **Evaluate scope cascade** — `policy/document.rs` walks scopes in `org → team → agent → tool` order and applies a *most-restrictive-wins* merge. Cycle detection prevents circular delegation.
+4. **Budget check** — `budget/tracker.rs` consults the per-team budget (using `budget/pricing.rs` cost tables); a request that would breach the budget downgrades from `ALLOW` to `DENY`.
+5. **Audit** — every decision (allow or deny) is appended to the immutable audit log via `audit.rs`. The reader API is exposed by `audit_reader.rs` and surfaced over HTTP by `aa-api`.
+
+Latency targets and current p99 measurements live in the [Benchmarks — Policy Check p99](benchmarks/policy-check-p99.md) chapter.
