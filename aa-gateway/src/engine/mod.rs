@@ -508,6 +508,7 @@ mod tests {
             pid: 1,
             started_at: Timestamp::from_nanos(0),
             metadata: BTreeMap::new(),
+            governance_level: aa_core::GovernanceLevel::default(),
         }
     }
 

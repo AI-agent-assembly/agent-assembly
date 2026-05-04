@@ -59,6 +59,7 @@ impl SimulationEngine {
             pid: 0,
             started_at: aa_core::time::Timestamp::from_nanos(0),
             metadata: BTreeMap::new(),
+            governance_level: aa_core::GovernanceLevel::default(),
         };
 
         let result = self.engine.evaluate(&ctx, &action);

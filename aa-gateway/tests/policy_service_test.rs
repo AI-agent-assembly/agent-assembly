@@ -292,6 +292,7 @@ budget:
         pid: 0,
         started_at: aa_core::time::Timestamp::from_nanos(0),
         metadata: std::collections::BTreeMap::new(),
+        governance_level: aa_core::GovernanceLevel::default(),
     };
     engine.record_spend(&agent_ctx, 2.0); // exceeds $1.0 daily limit
 
@@ -366,6 +367,7 @@ budget:
         pid: 0,
         started_at: aa_core::time::Timestamp::from_nanos(0),
         metadata: std::collections::BTreeMap::new(),
+        governance_level: aa_core::GovernanceLevel::default(),
     };
     engine.record_spend(&agent_ctx, 2.0);
 
