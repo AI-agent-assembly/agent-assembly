@@ -132,6 +132,137 @@ pub struct DevToolInfo {
     pub supports_managed_settings: bool,
 }
 
+/// Per-tool integration contract for the dev tool governance framework.
+///
+/// Every per-tool adapter (Claude Code, Codex, GitHub Copilot, Windsurf
+/// Cascade, third-party SaaS coding agents) implements this trait. The
+/// gateway and the `aa run` launcher consume adapters via `dyn
+/// DevToolAdapter`, so the trait must be object-safe — that property is
+/// locked in by an explicit compile-time check added in AAASM-925.
+///
+/// Implementations live in their own crates / Stories and are out of
+/// scope for this Subtask (see AAASM-201 through AAASM-205, AAASM-918).
+///
+/// ## Async dispatch
+///
+/// The `async fn` methods are macro-desugared by `async_trait::async_trait`
+/// into boxed-future return types so that `dyn DevToolAdapter` is
+/// dyn-safe on stable Rust. The boxing cost is negligible compared to
+/// the I/O these methods perform (filesystem reads, subprocess writes,
+/// MCP discovery).
+#[cfg(feature = "std")]
+#[async_trait::async_trait]
+pub trait DevToolAdapter: Send + Sync {
+    /// Detect whether the tool this adapter targets is installed on the
+    /// current host.
+    ///
+    /// ### Contract
+    /// * Returns `Some(DevToolInfo)` when the tool's binary or
+    ///   well-known installation marker is present and readable.
+    /// * Returns `None` when the tool is not installed, is unreadable,
+    ///   or cannot be confirmed (e.g. the user lacks filesystem
+    ///   permission).
+    /// * Must not perform network I/O — detection runs at every CLI
+    ///   invocation and is on the hot path.
+    fn detect(&self) -> Option<DevToolInfo>;
+
+    /// Translate an Agent Assembly [`PolicyDocument`] into the tool's
+    /// native managed-settings format (e.g. JSON for Claude Code,
+    /// `.codex/config.toml` for Codex).
+    ///
+    /// ### Contract
+    /// * On success, returns the rendered settings document as a UTF-8
+    ///   string ready to be written by [`apply_settings`].
+    /// * Returns `AdapterError::SettingsGenerationFailed` (added in
+    ///   AAASM-925) when the policy contains constructs the tool's
+    ///   native config cannot express.
+    /// * Pure: must not touch the filesystem.
+    ///
+    /// [`PolicyDocument`]: crate::policy::PolicyDocument
+    /// [`apply_settings`]: Self::apply_settings
+    async fn generate_managed_settings(&self, policy: &crate::policy::PolicyDocument) -> Result<String, AdapterError>;
+
+    /// Write the rendered managed settings into the tool's
+    /// configuration surface, replacing any prior managed block.
+    ///
+    /// ### Contract
+    /// * On success, the tool will pick up the new policy on its next
+    ///   launch (some tools require a restart; the adapter is expected
+    ///   to document that in its own crate-level docs).
+    /// * Returns `AdapterError::SettingsApplyFailed` (added in
+    ///   AAASM-925) on filesystem error.
+    /// * Idempotent: applying the same `settings` twice is a no-op.
+    async fn apply_settings(&self, settings: &str) -> Result<(), AdapterError>;
+
+    /// Build the [`std::process::Command`] used by the `aa run` launcher
+    /// to start the tool with governance wiring (proxy, env vars,
+    /// agent identity, optional team identity).
+    ///
+    /// ### Contract
+    /// * Caller passes raw `tool_args` plus the agent and (optional)
+    ///   team identity that the gateway issued for this run.
+    /// * `proxy_addr`, when set, is the `host:port` of the local MitM
+    ///   proxy; the adapter must inject the appropriate
+    ///   `HTTPS_PROXY` / `OPENAI_BASE_URL` / similar env var so the
+    ///   tool routes traffic through it.
+    /// * Returns `AdapterError::LaunchFailed` (added in AAASM-925)
+    ///   when the tool's binary cannot be located or its argument
+    ///   format cannot accommodate the wiring.
+    /// * Sync (no I/O performed) — the returned `Command` is *built*,
+    ///   not spawned. Spawning is the launcher's job.
+    fn build_launch_command(
+        &self,
+        tool_args: &[String],
+        agent_id: &str,
+        team_id: Option<&str>,
+        proxy_addr: Option<&str>,
+    ) -> Result<std::process::Command, AdapterError>;
+
+    /// Enumerate the MCP servers the tool is currently configured to
+    /// connect to.
+    ///
+    /// ### Contract
+    /// * Returns the parsed list from the tool's native MCP config
+    ///   surface (e.g. `~/.claude/mcp_servers.json`).
+    /// * Returns an empty `Vec` (not an error) when the tool supports
+    ///   MCP but has no servers configured.
+    /// * Returns `AdapterError::McpConfigFailed` (added in
+    ///   AAASM-925) when the config exists but is malformed.
+    /// * Tools whose `DevToolInfo::supports_mcp == false` should
+    ///   instead return an empty `Vec`.
+    async fn list_mcp_servers(&self) -> Result<Vec<McpServerInfo>, AdapterError>;
+
+    /// Apply an MCP allow / deny list to the tool's configuration.
+    ///
+    /// ### Contract
+    /// * `allowed` lists MCP server names that are permitted; any
+    ///   server not in `allowed` and present in `denied` (or in the
+    ///   currently-configured set) must be removed from the tool's
+    ///   active config.
+    /// * `denied` is an explicit blocklist applied even if a server
+    ///   appears in `allowed` — `denied` wins on conflict (matches
+    ///   policy-engine evaluation order).
+    /// * Returns `AdapterError::McpConfigFailed` (added in
+    ///   AAASM-925) on filesystem write failure.
+    /// * Tools without MCP support should return `Ok(())` without
+    ///   performing any work.
+    async fn apply_mcp_governance(&self, allowed: &[String], denied: &[String]) -> Result<(), AdapterError>;
+
+    /// Highest governance level this adapter can achieve for the tool
+    /// it targets.
+    ///
+    /// ### Contract
+    /// * Returns the static, build-time-known cap for this adapter
+    ///   (e.g. an SDK-integrated adapter returns `L3Native`; a SaaS
+    ///   coding agent's observability-only adapter returns
+    ///   `L1Observe`).
+    /// * Must agree with `detect()`'s `DevToolInfo::governance_level`
+    ///   for any successful detection — gateway uses this to
+    ///   short-circuit policy decisions when an action would require
+    ///   a level the adapter cannot enforce.
+    fn governance_level(&self) -> GovernanceLevel;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
