@@ -792,11 +792,7 @@ data:
         for (yaml_scalar, expected_substring) in cases {
             let yaml = format!("scope: {}\n", yaml_scalar);
             let result = PolicyValidator::from_yaml(&yaml);
-            assert!(
-                result.is_err(),
-                "expected error for malformed scope {:?}",
-                yaml_scalar,
-            );
+            assert!(result.is_err(), "expected error for malformed scope {:?}", yaml_scalar,);
             let errs = result.unwrap_err();
             assert!(
                 errs.iter().any(|e| e.message.contains(expected_substring)),
