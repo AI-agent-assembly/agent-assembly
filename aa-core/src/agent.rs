@@ -8,9 +8,9 @@ use alloc::{collections::BTreeMap, string::String};
 
 #[cfg(feature = "alloc")]
 use crate::{
-    GovernanceLevel,
     identity::{AgentId, SessionId},
     time::Timestamp,
+    GovernanceLevel,
 };
 
 /// Identity carrier for an agent execution.
