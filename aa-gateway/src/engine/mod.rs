@@ -506,6 +506,20 @@ impl PolicyEngine {
     pub fn policies_for_scope(&self, scope: &crate::policy::PolicyScope) -> &[scope_index::PolicyId] {
         self.scope_index.policies_for_scope(scope)
     }
+
+    /// Look up a policy previously registered via [`Self::load_policy`]
+    /// by its [`scope_index::PolicyId`].
+    ///
+    /// Returns `None` if the id was never issued, or if the policy
+    /// has since been removed via [`Self::remove_policy`]. Cheap —
+    /// backed by a `HashMap` lookup with no allocation.
+    ///
+    /// F93 (AAASM-220) will use this to materialise the cascading
+    /// chain of `(scope, doc)` pairs once it consults
+    /// [`Self::policies_for_scope`].
+    pub fn policy(&self, id: scope_index::PolicyId) -> Option<&Arc<PolicyDocument>> {
+        self.scope_index.policy(id)
+    }
 }
 
 /// Implement the `aa_core::PolicyEvaluator` trait so `PolicyEngine` can be used
