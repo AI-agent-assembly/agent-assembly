@@ -47,7 +47,9 @@ message RegisterRequest {
   map<string, string>            metadata          = 8;
   // UUID of the parent agent that spawned this one — None for root agents.
   optional string                parent_agent_id   = 9;
-  // next: 10
+  // Free-form reason the parent delegated to this agent — recorded for audit/observability.
+  optional string                delegation_reason = 10;
+  // next: 11
 }
 
 message RegisterResponse {
