@@ -77,6 +77,24 @@ impl ScopeIndex {
         self.policies.get(&id)
     }
 
+    /// Remove the policy registered under `id`, keeping `by_scope` in sync.
+    ///
+    /// Returns the dropped `Arc<PolicyDocument>` if the id was present, or
+    /// `None` if it had already been removed (or was never inserted). When
+    /// the affected scope bucket becomes empty it is dropped from the map
+    /// so callers can rely on the bucket's presence implying at least one
+    /// live policy.
+    pub fn remove(&mut self, id: PolicyId) -> Option<Arc<PolicyDocument>> {
+        let doc = self.policies.remove(&id)?;
+        if let Some(bucket) = self.by_scope.get_mut(&doc.scope) {
+            bucket.retain(|existing| *existing != id);
+            if bucket.is_empty() {
+                self.by_scope.remove(&doc.scope);
+            }
+        }
+        Some(doc)
+    }
+
     /// Total number of policies currently indexed.
     pub fn len(&self) -> usize {
         self.policies.len()
