@@ -473,6 +473,39 @@ impl PolicyEngine {
     pub fn budget_tracker(&self) -> Arc<BudgetTracker> {
         Arc::clone(&self.budget)
     }
+
+    // ── F92 Phase B (AAASM-951): scope-keyed policy index ──────────────────
+
+    /// Register `doc` in the scope-keyed index and return the freshly
+    /// allocated [`scope_index::PolicyId`].
+    ///
+    /// Distinct from the [`aa_core::PolicyEvaluator::load_policy`] trait
+    /// method (which is a stub on this type — see `impl PolicyEvaluator`
+    /// below): this inherent method takes the gateway's own
+    /// [`PolicyDocument`] and returns an id rather than a `Result<()>`.
+    ///
+    /// Phase B does not yet have the cascading evaluator consult this
+    /// index — that wiring lands in F93 (AAASM-220). For now `load_policy`
+    /// is purely about populating the index for backward-compat tests
+    /// and so consumers can prepare scoped policies in advance.
+    pub fn load_policy(&mut self, doc: PolicyDocument) -> scope_index::PolicyId {
+        self.scope_index.insert(doc)
+    }
+
+    /// Drop a previously-registered policy by id, keeping `by_scope`
+    /// consistent. Returns the dropped `Arc<PolicyDocument>` if the id
+    /// was present, or `None` if it had already been removed.
+    pub fn remove_policy(&mut self, id: scope_index::PolicyId) -> Option<Arc<PolicyDocument>> {
+        self.scope_index.remove(id)
+    }
+
+    /// Return the [`scope_index::PolicyId`]s registered under `scope`,
+    /// in load order. Returns an empty slice when no policy has ever
+    /// been registered under that scope (or all of them have been
+    /// removed).
+    pub fn policies_for_scope(&self, scope: &crate::policy::PolicyScope) -> &[scope_index::PolicyId] {
+        self.scope_index.policies_for_scope(scope)
+    }
 }
 
 /// Implement the `aa_core::PolicyEvaluator` trait so `PolicyEngine` can be used
