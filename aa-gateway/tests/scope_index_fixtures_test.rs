@@ -82,6 +82,30 @@ fn agent_scoped_fixture_lands_in_matching_agent_bucket() {
     assert_eq!(engine.policies_for_scope(&expected_scope), &[id]);
 }
 
+/// Backward-compat: a YAML fixture from before F92 (no `scope:` field, in
+/// the envelope format used by `policy-examples/`) must validate cleanly
+/// and land under `PolicyScope::Global` when registered with the engine.
+#[test]
+fn pre_f92_fixture_without_scope_field_lands_in_global() {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("workspace root")
+        .join("policy-examples/high-risk.yaml");
+    let yaml = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+    let doc = PolicyValidator::from_yaml(&yaml)
+        .unwrap_or_else(|errs| panic!("validate {}: {errs:?}", path.display()))
+        .document;
+    assert_eq!(doc.scope, PolicyScope::Global, "missing scope: must default to Global");
+
+    let mut engine = empty_engine();
+    let id = engine.load_policy(doc);
+    assert_eq!(
+        engine.policies_for_scope(&PolicyScope::Global),
+        &[id],
+        "pre-F92 fixture must register under Global without any code change to the YAML",
+    );
+}
+
 #[test]
 fn distinct_scoped_fixtures_do_not_contaminate_other_buckets() {
     let global = load_fixture("global");
