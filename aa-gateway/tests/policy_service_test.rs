@@ -418,3 +418,186 @@ async fn gateway_client_connect_failure() {
     let result = aa_runtime::gateway_client::GatewayClient::connect("http://127.0.0.1:1").await;
     assert!(result.is_err(), "should fail to connect to closed port");
 }
+
+// ── Governance-level conditional rules (AAASM-1041 / AAASM-206) ──────────────
+
+/// Helper: build an `AgentRecord` with the given `governance_level` and the
+/// 16-byte key derived from `proto_id`.
+fn level_test_record(
+    proto_id: &ProtoAgentId,
+    level: aa_core::GovernanceLevel,
+) -> aa_gateway::registry::store::AgentRecord {
+    use aa_gateway::registry::convert::proto_agent_id_to_key;
+    use aa_gateway::registry::store::AgentRecord;
+    use aa_gateway::registry::AgentStatus;
+
+    AgentRecord {
+        agent_id: proto_agent_id_to_key(proto_id),
+        name: "level-test-agent".into(),
+        framework: "custom".into(),
+        version: "1.0.0".into(),
+        risk_tier: 0,
+        tool_names: vec![],
+        public_key: "pk_test".into(),
+        credential_token: "tok_test".into(),
+        metadata: std::collections::BTreeMap::new(),
+        registered_at: chrono::Utc::now(),
+        last_heartbeat: chrono::Utc::now(),
+        status: AgentStatus::Active,
+        pid: None,
+        session_count: 0,
+        last_event: None,
+        policy_violations_count: 0,
+        active_sessions: Vec::new(),
+        recent_events: std::collections::VecDeque::new(),
+        recent_traces: Vec::new(),
+        layer: None,
+        governance_level: level,
+    }
+}
+
+/// Start a `PolicyService` with both an `AgentRegistry` AND an `ApprovalQueue`
+/// attached, so `RequiresApproval` evaluations can be observed and responded
+/// to in-test.
+async fn start_server_with_registry_and_approval(
+    policy_yaml: &str,
+) -> (
+    SocketAddr,
+    Arc<aa_gateway::registry::AgentRegistry>,
+    Arc<aa_runtime::approval::ApprovalQueue>,
+) {
+    use aa_gateway::registry::AgentRegistry;
+    use aa_runtime::approval::ApprovalQueue;
+
+    let mut tmp = tempfile::NamedTempFile::new().unwrap();
+    write!(tmp, "{}", policy_yaml).unwrap();
+    tmp.flush().unwrap();
+
+    let (alert_tx, _) = tokio::sync::broadcast::channel::<aa_gateway::budget::BudgetAlert>(64);
+    let engine = Arc::new(PolicyEngine::load_from_file(tmp.path(), alert_tx).unwrap());
+    let registry = Arc::new(AgentRegistry::new());
+    let approval_queue = ApprovalQueue::new();
+    let (audit_tx, _audit_rx) = tokio::sync::mpsc::channel(4096);
+    let audit_drops = Arc::new(AtomicU64::new(0));
+    let service = PolicyServiceImpl::with_registry_and_approval(
+        engine,
+        Arc::clone(&registry),
+        Arc::clone(&approval_queue),
+        audit_tx,
+        audit_drops,
+        [0u8; 32],
+    );
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+
+    tokio::spawn(async move {
+        let _tmp = tmp;
+        let incoming = tokio_stream::wrappers::TcpListenerStream::new(listener);
+        Server::builder()
+            .add_service(PolicyServiceServer::new(service))
+            .serve_with_incoming(incoming)
+            .await
+            .unwrap();
+    });
+
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    (addr, registry, approval_queue)
+}
+
+#[tokio::test]
+async fn governance_level_rule_fires_for_registered_l2_agent() {
+    use aa_runtime::approval::ApprovalDecision;
+
+    // Policy: any tool call must request approval when the agent is L2+.
+    let yaml = r#"
+version: "1"
+tools:
+  any_tool:
+    allow: true
+    requires_approval_if: "governance_level >= L2"
+"#;
+    let (addr, registry, queue) = start_server_with_registry_and_approval(yaml).await;
+
+    // Register the request's agent at L2Enforce.
+    let proto_id = ProtoAgentId {
+        org_id: "org".into(),
+        team_id: "team".into(),
+        agent_id: "agent-1".into(),
+    };
+    registry
+        .register(level_test_record(&proto_id, aa_core::GovernanceLevel::L2Enforce))
+        .unwrap();
+
+    // Issue the request on a background task so we can inspect the approval
+    // queue while the server is blocked on the operator decision.
+    let mut client = PolicyServiceClient::connect(format!("http://{addr}")).await.unwrap();
+    let client_task = tokio::spawn(async move { client.check_action(tool_call_request("any_tool")).await });
+
+    // Allow the server time to enqueue the request.
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+    // The rule must have fired → exactly one pending entry.
+    let pending = queue.list();
+    assert_eq!(
+        pending.len(),
+        1,
+        "rule with `governance_level >= L2` must enqueue an approval request for an L2 agent",
+    );
+    assert_eq!(pending[0].agent_id, "agent-1");
+
+    // Decide approve so the client task can complete cleanly.
+    queue
+        .decide(
+            pending[0].request_id,
+            ApprovalDecision::Approved {
+                by: "test".to_string(),
+                reason: None,
+            },
+        )
+        .unwrap();
+
+    let resp = client_task.await.unwrap().unwrap().into_inner();
+    assert_eq!(resp.decision, Decision::Allow as i32);
+}
+
+#[tokio::test]
+async fn governance_level_rule_does_not_fire_for_registered_l1_agent() {
+    // Same policy as above, but the agent is L1Observe — below the L2
+    // threshold, so the approval rule must NOT fire and the request must
+    // pass through directly with `Decision::Allow`.
+    let yaml = r#"
+version: "1"
+tools:
+  any_tool:
+    allow: true
+    requires_approval_if: "governance_level >= L2"
+"#;
+    let (addr, registry, queue) = start_server_with_registry_and_approval(yaml).await;
+
+    let proto_id = ProtoAgentId {
+        org_id: "org".into(),
+        team_id: "team".into(),
+        agent_id: "agent-1".into(),
+    };
+    registry
+        .register(level_test_record(&proto_id, aa_core::GovernanceLevel::L1Observe))
+        .unwrap();
+
+    let mut client = PolicyServiceClient::connect(format!("http://{addr}")).await.unwrap();
+    let resp = client
+        .check_action(tool_call_request("any_tool"))
+        .await
+        .unwrap()
+        .into_inner();
+
+    assert_eq!(
+        resp.decision,
+        Decision::Allow as i32,
+        "rule should not fire for an L1 agent below the L2 threshold",
+    );
+    assert!(
+        queue.list().is_empty(),
+        "no approval entry should have been enqueued for an L1 agent",
+    );
+}
