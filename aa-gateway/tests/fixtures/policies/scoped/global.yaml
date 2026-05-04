@@ -1,0 +1,4 @@
+scope: global
+network:
+  allowlist:
+    - api.example.com
