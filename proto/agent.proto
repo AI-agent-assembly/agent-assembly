@@ -65,7 +65,9 @@ message RegisterResponse {
   int64           heartbeat_interval_sec = 3;
   // Echo of `parent_agent_id` from the request — confirms the gateway accepted the topology metadata.
   optional string parent_agent_id        = 4;
-  // next: 5
+  // Echo of the `team_id` from the request's `AgentId` — confirms the gateway accepted team scoping.
+  optional string team_id                = 5;
+  // next: 6
 }
 
 // ── Heartbeat ─────────────────────────────────────────────────────────────────
