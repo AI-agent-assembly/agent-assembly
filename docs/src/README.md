@@ -19,3 +19,15 @@ This book targets contributors and operators of `agent-assembly`. SDK users (Pyt
 - [README](https://github.com/AI-agent-assembly/agent-assembly/blob/master/README.md) — top-level project overview, prerequisites, quickstart
 - [CONTRIBUTING](https://github.com/AI-agent-assembly/agent-assembly/blob/master/CONTRIBUTING.md) — development workflow, branch naming, PR rules
 - API reference — generate locally with `cargo doc --workspace --no-deps --open`
+
+## Diagram rendering
+
+This book renders Mermaid diagrams via the `mdbook-mermaid` preprocessor:
+
+```mermaid
+graph LR
+    SDK[SDK shim] --> Gateway[aa-gateway]
+    Proxy[aa-proxy] --> Gateway
+    eBPF[aa-ebpf] --> Gateway
+    Gateway --> Audit[(Audit log)]
+```
