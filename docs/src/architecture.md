@@ -4,7 +4,7 @@ This chapter describes how `agent-assembly` is composed and how its parts intera
 
 ## Crate dependency graph
 
-The Cargo workspace contains 16 member crates. Edges in the diagram below are derived from `path` dependencies declared in each crate's `Cargo.toml`.
+The Cargo workspace declares **14 member crates** in the top-level `Cargo.toml`. Two additional eBPF crates (`aa-ebpf-probes`, `aa-ebpf-programs`) live alongside but are intentionally outside the workspace because they compile for the `bpfel-unknown-none` BPF target — they are built by `aa-ebpf/build.rs` via `aya-build`. Edges in the diagram below are derived from `path` dependencies declared in each crate's `Cargo.toml`.
 
 ```mermaid
 graph TD
@@ -13,6 +13,7 @@ graph TD
     classDef ffi fill:#eaf6ee,stroke:#3aa55b
     classDef control fill:#fff3d6,stroke:#c98a00
     classDef edge fill:#f3e8ff,stroke:#8b5cf6
+    classDef outOfWorkspace fill:#fdecea,stroke:#d75748,stroke-dasharray: 5 3
 
     aa_core[aa-core]:::foundation
     aa_proto[aa-proto]:::foundation
@@ -20,8 +21,8 @@ graph TD
 
     aa_runtime[aa-runtime]:::foundation
     aa_ebpf[aa-ebpf]:::ebpf
-    aa_ebpf_probes[aa-ebpf-probes]:::ebpf
-    aa_ebpf_programs[aa-ebpf-programs]:::ebpf
+    aa_ebpf_probes["aa-ebpf-probes<br/><i>out-of-workspace</i>"]:::outOfWorkspace
+    aa_ebpf_programs["aa-ebpf-programs<br/><i>out-of-workspace</i>"]:::outOfWorkspace
     aa_proxy[aa-proxy]:::ebpf
 
     aa_gateway[aa-gateway]:::control
@@ -66,7 +67,7 @@ graph TD
     conformance --> aa_proto
 ```
 
-`aa-ffi-go` has no Cargo dependencies on other workspace crates — it talks to the gateway over gRPC at runtime, with bindings generated from the same `proto/` source as `aa-proto`.
+Dashed nodes are *out-of-workspace* — they cannot be selected with `cargo -p`. `aa-ffi-go` has no Cargo dependencies on other workspace crates: it talks to the gateway over gRPC at runtime, with bindings generated from the same `proto/` source as `aa-proto`.
 
 ## Three-layer interception model
 
