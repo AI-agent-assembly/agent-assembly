@@ -32,6 +32,7 @@
 ## Requirements
 
 - Rust stable (≥ 1.75)
+- `protoc` — Protocol Buffers compiler (`brew install protobuf` on macOS, `apt-get install protobuf-compiler` on Debian/Ubuntu); required by `aa-proto` and `aa-gateway` build scripts
 - [cargo-nextest](https://nexte.st/) for running tests
 - [cargo-deny](https://embarkstudios.github.io/cargo-deny/) for dependency checks
 - [Lefthook](https://github.com/evilmartians/lefthook) for git hooks
