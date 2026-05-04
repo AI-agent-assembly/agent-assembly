@@ -82,6 +82,17 @@ fn agent_scoped_fixture_lands_in_matching_agent_bucket() {
     assert_eq!(engine.policies_for_scope(&expected_scope), &[id]);
 }
 
+#[test]
+fn tool_scoped_fixture_lands_in_matching_tool_bucket() {
+    let doc = load_fixture("tool_slack_mcp");
+    let expected_scope = PolicyScope::Tool("slack-mcp".to_owned());
+    assert_eq!(doc.scope, expected_scope);
+
+    let mut engine = empty_engine();
+    let id = engine.load_policy(doc);
+    assert_eq!(engine.policies_for_scope(&expected_scope), &[id]);
+}
+
 /// Backward-compat: a YAML fixture from before F92 (no `scope:` field, in
 /// the envelope format used by `policy-examples/`) must validate cleanly
 /// and land under `PolicyScope::Global` when registered with the engine.
@@ -130,11 +141,13 @@ fn distinct_scoped_fixtures_do_not_contaminate_other_buckets() {
     let global = load_fixture("global");
     let org = load_fixture("org_acme");
     let team = load_fixture("team_platform");
+    let tool = load_fixture("tool_slack_mcp");
 
     let mut engine = empty_engine();
     let id_global = engine.load_policy(global);
     let id_org = engine.load_policy(org);
     let id_team = engine.load_policy(team);
+    let id_tool = engine.load_policy(tool);
 
     assert_eq!(engine.policies_for_scope(&PolicyScope::Global), &[id_global]);
     assert_eq!(
@@ -144,5 +157,9 @@ fn distinct_scoped_fixtures_do_not_contaminate_other_buckets() {
     assert_eq!(
         engine.policies_for_scope(&PolicyScope::Team("platform".to_owned())),
         &[id_team],
+    );
+    assert_eq!(
+        engine.policies_for_scope(&PolicyScope::Tool("slack-mcp".to_owned())),
+        &[id_tool],
     );
 }

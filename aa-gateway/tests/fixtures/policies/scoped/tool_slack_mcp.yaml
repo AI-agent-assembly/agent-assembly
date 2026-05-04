@@ -1,0 +1,4 @@
+scope: tool:slack-mcp
+network:
+  allowlist:
+    - slack.com
