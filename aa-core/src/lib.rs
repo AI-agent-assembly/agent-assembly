@@ -39,10 +39,12 @@ pub use policy::{FileMode, PolicyDecision, PolicyError};
 
 #[cfg(feature = "alloc")]
 pub use agent::AgentContext;
-#[cfg(feature = "std")]
-pub use dev_tool::DevToolInfo;
 #[cfg(feature = "alloc")]
 pub use dev_tool::DevToolKind;
+#[cfg(feature = "alloc")]
+pub use dev_tool::{AdapterError, McpServerInfo};
+#[cfg(feature = "std")]
+pub use dev_tool::{DevToolAdapter, DevToolInfo};
 
 #[cfg(feature = "alloc")]
 pub use policy::{ArgsJson, GovernanceAction, PolicyDocument, PolicyEvaluator, PolicyResult, PolicyRule};
