@@ -20,7 +20,7 @@
 
 # Migration
 
-- [Migration Template]()
+- [Migration Template](migration/template.md)
 
 # Benchmarks
 
