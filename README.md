@@ -36,6 +36,7 @@
 - [cargo-nextest](https://nexte.st/) for running tests
 - [cargo-deny](https://embarkstudios.github.io/cargo-deny/) for dependency checks
 - [Lefthook](https://github.com/evilmartians/lefthook) for git hooks
+- **Linux only**: `pkg-config` and `libssl-dev` (or `openssl-devel` on RHEL-family) for native TLS in `aa-proxy`; eBPF crates additionally require a recent kernel with BTF and a nightly Rust toolchain (see `aa-ebpf/README.md`)
 
 ## Getting Started
 
