@@ -139,7 +139,7 @@ stateDiagram-v2
 | **Enforcing** | Forward outbound HTTPS, calling `PolicyDecisionRequest` on the gateway for governed action types. Allowed traffic is re-encrypted with the upstream certificate the proxy verified itself. |
 | **Draining** | On `SIGTERM`, stop accepting new connections, finish in-flight requests, flush the audit batch, then exit. |
 
-Health and metrics are exposed at `http://localhost:8080/healthz` and `/metrics` (Prometheus format) throughout the Enforcing phase.
+A readiness probe is exposed at `http://localhost:8080/ready` throughout the Enforcing phase (this is the endpoint the docker-compose healthcheck polls).
 
 ## Policy evaluation path
 
