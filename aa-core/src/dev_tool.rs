@@ -69,6 +69,21 @@ pub enum DevToolKind {
     Custom(String),
 }
 
+/// Error type for [`DevToolAdapter`] method failures.
+///
+/// This is an intentional minimal stub introduced together with the
+/// `DevToolAdapter` trait so the trait signatures resolve. AAASM-925 will
+/// populate the concrete error variants (`ToolNotFound`,
+/// `DetectionFailed`, `SettingsGenerationFailed`, etc.) and add a
+/// `thiserror::Error` derive. Marked `#[non_exhaustive]` so that addition
+/// is not a breaking change for downstream callers.
+///
+/// [`DevToolAdapter`]: <not yet defined; introduced in this same Subtask>
+#[cfg(feature = "alloc")]
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum AdapterError {}
+
 /// Static metadata describing a detected AI dev tool installation.
 ///
 /// Returned by `DevToolAdapter::detect` and used to drive registry
