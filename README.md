@@ -94,15 +94,12 @@ The sidecar exposes:
 - The agent IPC socket at `/tmp/aa-runtime-my-agent-001.sock`
 - Readiness probe at `http://localhost:8080/ready`
 
-To exercise the governance gateway directly (without Docker), use one of the bundled YAML policies:
+To run only the governance gateway (without Docker), point it at one of the bundled YAML policies:
 
 ```bash
-# Terminal A — start the gateway against a sample policy file
+# Start the gateway gRPC server with a sample policy file.
+# Listens on 127.0.0.1:50051 by default; SDK shims and aa-proxy connect over gRPC.
 cargo run -p aa-gateway -- --policy policy-examples/low-risk.yaml
-
-# Terminal B — confirm the aasm CLI builds and reaches the gateway
-cargo run -p aa-cli -- version
-cargo run -p aa-cli -- status
 ```
 
 `policy-examples/{low,medium,high}-risk.yaml` are reference policies — pick one or write your own following the same schema.
