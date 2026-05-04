@@ -79,3 +79,37 @@ graph TD
 | **3 — eBPF** | `aa-ebpf`, `aa-ebpf-common`, `aa-ebpf-probes`, `aa-ebpf-programs` | Linux kernel | Lowest (catches bypass attempts) | Linux-only; requires elevated privileges |
 
 Layers compose: a deployment can run any subset. Audit events from each layer carry the same wire format defined in `aa-proto`, so the gateway sees a single unified view regardless of which layer produced an event.
+
+## IPC flow
+
+The gateway is the central control plane. Each interception layer reaches it through a different transport, but all messages share the protobuf schema in `aa-proto`:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Agent
+    participant SDK as SDK shim<br/>(aa-ffi-*)
+    participant Proxy as Sidecar<br/>(aa-proxy)
+    participant eBPF as eBPF probes<br/>(aa-ebpf-probes)
+    participant GW as Gateway<br/>(aa-gateway)
+    participant API as HTTP API<br/>(aa-api)
+
+    Agent->>SDK: Tool / LLM / network call
+    SDK->>GW: gRPC PolicyDecisionRequest
+    GW-->>SDK: ALLOW / DENY (+ audit event)
+    SDK-->>Agent: Pass-through or error
+
+    Agent->>Proxy: HTTPS request
+    Proxy->>GW: gRPC PolicyDecisionRequest
+    GW-->>Proxy: ALLOW / DENY
+    Proxy-->>Agent: Forwarded response or 4xx
+
+    eBPF->>GW: Audit-only event stream
+    GW->>GW: Persist to immutable audit log
+    API->>GW: Read API (registry, topology, audit)
+```
+
+- **SDK ↔ Gateway**: synchronous gRPC over Unix domain socket (default `/tmp/aa-runtime-<agent-id>.sock`) or TCP for cross-host deployments. Request and response types live in `aa-proto`.
+- **Proxy ↔ Gateway**: same gRPC client surface as the SDK; the proxy adapts inbound HTTPS into `PolicyDecisionRequest` calls.
+- **eBPF ↔ Gateway**: one-way audit events; eBPF cannot block in-kernel for bypass-detection use cases — it observes and forwards.
+- **API ↔ Gateway**: in-process — `aa-api` depends on `aa-gateway` directly and exposes its read APIs over HTTP via `utoipa`.
