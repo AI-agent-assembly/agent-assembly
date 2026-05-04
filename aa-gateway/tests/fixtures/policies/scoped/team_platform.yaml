@@ -1,0 +1,4 @@
+scope: team:platform
+network:
+  allowlist:
+    - platform.acme.internal

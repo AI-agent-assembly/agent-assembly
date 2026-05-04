@@ -3,7 +3,10 @@
 //! Core rate limiting and enforcement mechanisms for the Agent Assembly policy engine.
 
 pub(crate) mod rate_limit;
+pub mod scope_index;
 pub(crate) mod watcher;
+
+pub use scope_index::PolicyId;
 
 use arc_swap::ArcSwap;
 use dashmap::DashMap;
@@ -14,6 +17,7 @@ use std::{
 
 use crate::budget::BudgetTracker;
 
+use crate::engine::scope_index::ScopeIndex;
 use crate::policy::document::ActionOnExceed;
 use crate::policy::{PolicyDocument, PolicyValidator};
 
@@ -76,6 +80,13 @@ pub struct PolicyEngine {
     compiled_patterns: Vec<regex::Regex>,
     rate_state: DashMap<String, Mutex<crate::engine::rate_limit::TokenBucket>>,
     budget: Arc<BudgetTracker>,
+    /// Scope-keyed index of additionally-loaded policies (AAASM-951).
+    ///
+    /// Populated via [`PolicyEngine::load_policy`]. The single primary
+    /// policy held in `policy` (above) is unaffected — F93 (AAASM-220)
+    /// will migrate the evaluator to consult this index for cascading
+    /// most-restrictive-wins resolution.
+    scope_index: ScopeIndex,
     _watcher: Option<notify::RecommendedWatcher>,
 }
 
@@ -147,6 +158,7 @@ impl PolicyEngine {
             compiled_patterns,
             rate_state: DashMap::new(),
             budget,
+            scope_index: ScopeIndex::new(),
             _watcher: watcher,
         })
     }
@@ -177,6 +189,7 @@ impl PolicyEngine {
             compiled_patterns,
             rate_state: DashMap::new(),
             budget,
+            scope_index: ScopeIndex::new(),
             _watcher: watcher,
         })
     }
@@ -462,6 +475,53 @@ impl PolicyEngine {
     pub fn budget_tracker(&self) -> Arc<BudgetTracker> {
         Arc::clone(&self.budget)
     }
+
+    // ── F92 Phase B (AAASM-951): scope-keyed policy index ──────────────────
+
+    /// Register `doc` in the scope-keyed index and return the freshly
+    /// allocated [`scope_index::PolicyId`].
+    ///
+    /// Distinct from the [`aa_core::PolicyEvaluator::load_policy`] trait
+    /// method (which is a stub on this type — see `impl PolicyEvaluator`
+    /// below): this inherent method takes the gateway's own
+    /// [`PolicyDocument`] and returns an id rather than a `Result<()>`.
+    ///
+    /// Phase B does not yet have the cascading evaluator consult this
+    /// index — that wiring lands in F93 (AAASM-220). For now `load_policy`
+    /// is purely about populating the index for backward-compat tests
+    /// and so consumers can prepare scoped policies in advance.
+    pub fn load_policy(&mut self, doc: PolicyDocument) -> scope_index::PolicyId {
+        self.scope_index.insert(doc)
+    }
+
+    /// Drop a previously-registered policy by id, keeping `by_scope`
+    /// consistent. Returns the dropped `Arc<PolicyDocument>` if the id
+    /// was present, or `None` if it had already been removed.
+    pub fn remove_policy(&mut self, id: scope_index::PolicyId) -> Option<Arc<PolicyDocument>> {
+        self.scope_index.remove(id)
+    }
+
+    /// Return the [`scope_index::PolicyId`]s registered under `scope`,
+    /// in load order. Returns an empty slice when no policy has ever
+    /// been registered under that scope (or all of them have been
+    /// removed).
+    pub fn policies_for_scope(&self, scope: &crate::policy::PolicyScope) -> &[scope_index::PolicyId] {
+        self.scope_index.policies_for_scope(scope)
+    }
+
+    /// Look up a policy previously registered via [`Self::load_policy`]
+    /// by its [`scope_index::PolicyId`].
+    ///
+    /// Returns `None` if the id was never issued, or if the policy
+    /// has since been removed via [`Self::remove_policy`]. Cheap —
+    /// backed by a `HashMap` lookup with no allocation.
+    ///
+    /// F93 (AAASM-220) will use this to materialise the cascading
+    /// chain of `(scope, doc)` pairs once it consults
+    /// [`Self::policies_for_scope`].
+    pub fn policy(&self, id: scope_index::PolicyId) -> Option<&Arc<PolicyDocument>> {
+        self.scope_index.policy(id)
+    }
 }
 
 /// Implement the `aa_core::PolicyEvaluator` trait so `PolicyEngine` can be used
@@ -559,6 +619,7 @@ mod tests {
                 monthly_limit,
                 chrono_tz::UTC,
             )),
+            scope_index: ScopeIndex::new(),
             _watcher: None,
         }
     }
@@ -1023,7 +1084,12 @@ mod tests {
             name: "stub".to_string(),
             rules: vec![],
         };
-        let result = engine.load_policy(&stub);
+        // PolicyEngine now also exposes an inherent `load_policy` that
+        // returns a `PolicyId` (AAASM-951). Use fully-qualified syntax so
+        // method resolution picks the trait stub under test rather than
+        // the inherent method, mirroring the trait-vs-inherent disambiguation
+        // already used for `evaluate` above.
+        let result = <PolicyEngine as PolicyEvaluator>::load_policy(&mut engine, &stub);
         assert_eq!(result, Err(aa_core::PolicyError::InvalidDocument));
     }
 
@@ -1229,6 +1295,7 @@ mod tests {
                 chrono_tz::UTC,
                 alert_tx,
             )),
+            scope_index: ScopeIndex::new(),
             _watcher: None,
         }
     }
