@@ -67,3 +67,15 @@ graph TD
 ```
 
 `aa-ffi-go` has no Cargo dependencies on other workspace crates — it talks to the gateway over gRPC at runtime, with bindings generated from the same `proto/` source as `aa-proto`.
+
+## Three-layer interception model
+
+`agent-assembly` enforces governance at three independently-deployable layers, ordered lowest-latency first and highest-detection-authority first:
+
+| Layer | Crate(s) | Where it runs | Bypass risk | Tradeoff |
+|---|---|---|---|---|
+| **1 — In-process SDK** | `aa-ffi-python`, `aa-ffi-node`, `aa-ffi-go`, `aa-wasm` | Inside the agent process | Highest (agent could skip the SDK) | Fastest path; requires SDK adoption |
+| **2 — Sidecar proxy** | `aa-proxy` | Adjacent process / sidecar container | Medium (network egress only) | Catches everything routed through the proxy without code changes |
+| **3 — eBPF** | `aa-ebpf`, `aa-ebpf-common`, `aa-ebpf-probes`, `aa-ebpf-programs` | Linux kernel | Lowest (catches bypass attempts) | Linux-only; requires elevated privileges |
+
+Layers compose: a deployment can run any subset. Audit events from each layer carry the same wire format defined in `aa-proto`, so the gateway sees a single unified view regardless of which layer produced an event.
