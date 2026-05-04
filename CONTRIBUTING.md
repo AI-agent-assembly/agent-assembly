@@ -68,6 +68,24 @@ Pre-commit hooks enforce these automatically on every `git commit`:
 
 On `git push`, documentation is also checked: `cargo doc --workspace --no-deps`.
 
+## Build docs locally
+
+Contributor documentation is an [mdBook](https://rust-lang.github.io/mdBook/) rooted at `docs/`. To build or preview it:
+
+```bash
+# One-time install (pin matches CI)
+cargo install --locked --version 0.5.2 mdbook
+cargo install --locked --version 0.17.0 mdbook-mermaid
+
+# Build static HTML into docs/book/
+mdbook build docs
+
+# Live-reload preview at http://localhost:3000
+mdbook serve docs --open
+```
+
+Mermaid diagrams use the `mdbook-mermaid` preprocessor, which is wired in `docs/book.toml`. The `Docs` GitHub Actions workflow runs `mdbook build docs` on every PR that touches `docs/**`, `README.md`, or `CONTRIBUTING.md` and fails the build on errors.
+
 ## Reporting Issues
 
 Use the GitHub issue templates:

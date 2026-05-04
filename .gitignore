@@ -1,6 +1,9 @@
 # Rust build artifacts
 /target/
 
+# mdBook build output
+docs/book/
+
 # IDE
 .idea/
 .vscode/
