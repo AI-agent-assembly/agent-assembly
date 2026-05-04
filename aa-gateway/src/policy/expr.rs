@@ -33,6 +33,7 @@ enum FieldRef {
     Url,
     Method,
     Command,
+    GovernanceLevel,
 }
 
 #[derive(Debug, PartialEq)]
@@ -51,6 +52,7 @@ enum OpKind {
 enum LiteralVal {
     Str(String),
     Num(f64),
+    Level(GovernanceLevel),
 }
 
 #[derive(Debug, PartialEq)]
@@ -147,6 +149,11 @@ fn tokenize(expr: &str) -> Option<Vec<Token>> {
                 "url" => Token::Field(FieldRef::Url),
                 "method" => Token::Field(FieldRef::Method),
                 "command" => Token::Field(FieldRef::Command),
+                "governance_level" => Token::Field(FieldRef::GovernanceLevel),
+                "L0" => Token::Literal(LiteralVal::Level(GovernanceLevel::L0Discover)),
+                "L1" => Token::Literal(LiteralVal::Level(GovernanceLevel::L1Observe)),
+                "L2" => Token::Literal(LiteralVal::Level(GovernanceLevel::L2Enforce)),
+                "L3" => Token::Literal(LiteralVal::Level(GovernanceLevel::L3Native)),
                 "contains" => Token::Op(OpKind::Contains),
                 "starts_with" => Token::Op(OpKind::StartsWith),
                 other => {
@@ -180,7 +187,8 @@ fn field_value<'a>(field: &FieldRef, action: &'a GovernanceAction) -> &'a str {
         (FieldRef::Url, GovernanceAction::NetworkRequest { url, .. }) => url.as_str(),
         (FieldRef::Method, GovernanceAction::NetworkRequest { method, .. }) => method.as_str(),
         (FieldRef::Command, GovernanceAction::ProcessExec { command }) => command.as_str(),
-        // Field does not match the action variant → treat as empty string
+        // Field does not match the action variant, or governance_level is
+        // handled out-of-band in `eval_clause_safe` → treat as empty string.
         _ => "",
     }
 }
@@ -189,7 +197,40 @@ fn field_value<'a>(field: &FieldRef, action: &'a GovernanceAction) -> &'a str {
 // Clause evaluation
 // ---------------------------------------------------------------------------
 
-fn eval_clause_safe(field: &FieldRef, op: &OpKind, literal: &LiteralVal, action: &GovernanceAction) -> bool {
+fn eval_clause_safe(
+    field: &FieldRef,
+    op: &OpKind,
+    literal: &LiteralVal,
+    action: &GovernanceAction,
+    agent_level: Option<GovernanceLevel>,
+) -> bool {
+    // governance_level is the only field whose value type is not a string;
+    // route it through an Ord-based comparison and return early.
+    if let FieldRef::GovernanceLevel = field {
+        let rhs = match literal {
+            LiteralVal::Level(l) => *l,
+            // Mismatched literal kind (e.g. `governance_level == "L2"`) cannot
+            // match — treat as no-fire rather than fail-safe approval, since
+            // the validator should have rejected it before evaluation.
+            _ => return false,
+        };
+        let lhs = match agent_level {
+            Some(l) => l,
+            // No agent level supplied → cannot compare; treat as no-match.
+            None => return false,
+        };
+        return match op {
+            OpKind::Eq => lhs == rhs,
+            OpKind::Ne => lhs != rhs,
+            OpKind::Gt => lhs > rhs,
+            OpKind::Gte => lhs >= rhs,
+            OpKind::Lt => lhs < rhs,
+            OpKind::Lte => lhs <= rhs,
+            // String operators do not apply to governance_level.
+            OpKind::Contains | OpKind::StartsWith => false,
+        };
+    }
+
     let lhs = field_value(field, action);
 
     match op {
@@ -216,6 +257,8 @@ fn eval_clause_safe(field: &FieldRef, op: &OpKind, literal: &LiteralVal, action:
                 }
             }
             LiteralVal::Str(rhs) => lhs == rhs.as_str(),
+            // A level literal against a non-level field cannot match.
+            LiteralVal::Level(_) => false,
         },
         OpKind::Ne => match literal {
             LiteralVal::Num(rhs) => {
@@ -226,6 +269,9 @@ fn eval_clause_safe(field: &FieldRef, op: &OpKind, literal: &LiteralVal, action:
                 }
             }
             LiteralVal::Str(rhs) => lhs != rhs.as_str(),
+            // A level literal against a non-level field is unconditionally
+            // not-equal — matches the symmetric `Eq` handling above.
+            LiteralVal::Level(_) => true,
         },
         OpKind::Gt => {
             let rhs = numeric_literal(literal);
@@ -266,6 +312,8 @@ fn numeric_literal(lit: &LiteralVal) -> Option<f64> {
     match lit {
         LiteralVal::Num(n) => Some(*n),
         LiteralVal::Str(s) => s.parse::<f64>().ok(),
+        // Level literals never participate in numeric comparisons.
+        LiteralVal::Level(_) => None,
     }
 }
 
@@ -280,7 +328,7 @@ struct Clause<'t> {
     literal: &'t LiteralVal,
 }
 
-fn eval_tokens(tokens: &[Token], action: &GovernanceAction, _agent_level: Option<GovernanceLevel>) -> bool {
+fn eval_tokens(tokens: &[Token], action: &GovernanceAction, agent_level: Option<GovernanceLevel>) -> bool {
     // Parse tokens into a sequence of clauses separated by AND/OR.
     // Strategy: split into OR-groups where each group is a slice of
     // AND-connected clauses.  Result = any OR-group where all clauses are true.
@@ -329,7 +377,7 @@ fn eval_tokens(tokens: &[Token], action: &GovernanceAction, _agent_level: Option
     // Evaluate: OR across groups, AND within each group
     or_groups
         .iter()
-        .any(|group| group.iter().all(|c| eval_clause_safe(c.field, c.op, c.literal, action)))
+        .any(|group| group.iter().all(|c| eval_clause_safe(c.field, c.op, c.literal, action, agent_level)))
 }
 
 // ---------------------------------------------------------------------------
