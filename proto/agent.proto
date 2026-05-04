@@ -49,7 +49,9 @@ message RegisterRequest {
   optional string                parent_agent_id   = 9;
   // Free-form reason the parent delegated to this agent — recorded for audit/observability.
   optional string                delegation_reason = 10;
-  // next: 11
+  // Tool / framework that triggered the spawn (e.g. "langgraph.subgraph", "openai.handoff").
+  optional string                spawned_by_tool   = 11;
+  // next: 12
 }
 
 message RegisterResponse {
