@@ -4,9 +4,12 @@
 //! module with the `Tool(...)` variant and a scope index inside `PolicyEngine`.
 
 use std::fmt;
+use std::str::FromStr;
 
 use aa_core::identity::AgentId;
 use uuid::Uuid;
+
+use crate::policy::error::PolicyParseError;
 
 /// String identifier for an organisation. May be promoted to a newtype later.
 pub type OrgId = String;
@@ -38,6 +41,41 @@ impl fmt::Display for PolicyScope {
             Self::Org(id) => write!(f, "org:{}", id),
             Self::Team(id) => write!(f, "team:{}", id),
             Self::Agent(id) => write!(f, "agent:{}", Uuid::from_bytes(*id.as_bytes())),
+        }
+    }
+}
+
+impl FromStr for PolicyScope {
+    type Err = PolicyParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let invalid = |reason: &str| PolicyParseError::InvalidScope {
+            raw: s.to_owned(),
+            reason: reason.to_owned(),
+        };
+
+        if s == "global" {
+            return Ok(Self::Global);
+        }
+
+        let (kind, value) = match s.split_once(':') {
+            Some(parts) => parts,
+            None => return Err(invalid("expected `global` or `<kind>:<id>`")),
+        };
+
+        if value.is_empty() {
+            return Err(invalid("identifier after ':' must not be empty"));
+        }
+
+        match kind {
+            "org" => Ok(Self::Org(value.to_owned())),
+            "team" => Ok(Self::Team(value.to_owned())),
+            "agent" => {
+                let uuid = Uuid::parse_str(value)
+                    .map_err(|e| invalid(&format!("agent id is not a valid UUID: {}", e)))?;
+                Ok(Self::Agent(AgentId::from_bytes(*uuid.as_bytes())))
+            }
+            other => Err(invalid(&format!("unknown scope kind {:?}", other))),
         }
     }
 }
