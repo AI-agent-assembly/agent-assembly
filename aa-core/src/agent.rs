@@ -10,6 +10,7 @@ use alloc::{collections::BTreeMap, string::String};
 use crate::{
     identity::{AgentId, SessionId},
     time::Timestamp,
+    GovernanceLevel,
 };
 
 /// Identity carrier for an agent execution.
@@ -36,6 +37,15 @@ pub struct AgentContext {
     /// Keys are owned `String` so the map is serde-compatible and accepts
     /// both string-literal keys and computed keys at runtime.
     pub metadata: BTreeMap<String, String>,
+    /// Governance level (L0–L3) carried for level-conditional policy rules.
+    ///
+    /// Populated by the gateway from the agent's `AgentRecord` (defined in
+    /// `aa-gateway`) at the boundary between transport and the policy
+    /// engine. Defaults to [`GovernanceLevel::L0Discover`] so old serialised
+    /// contexts — and callers that have not yet been updated — deserialise
+    /// or construct without churn.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub governance_level: GovernanceLevel,
 }
 
 #[cfg(all(feature = "alloc", feature = "std"))]
@@ -50,6 +60,7 @@ impl AgentContext {
             session_id,
             pid,
             metadata: BTreeMap::new(),
+            governance_level: GovernanceLevel::default(),
         }
     }
 }
@@ -68,6 +79,7 @@ mod tests {
             pid: 42,
             started_at: Timestamp::from_nanos(1_000_000),
             metadata: BTreeMap::new(),
+            governance_level: GovernanceLevel::default(),
         }
     }
 
@@ -121,5 +133,23 @@ mod tests {
         let json = serde_json::to_string(&original).expect("serialize");
         let restored: AgentContext = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(original, restored);
+    }
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn agent_context_defaults_to_l0_when_governance_level_missing() {
+        // Old serialised contexts written before `governance_level` was
+        // added must still deserialise — the field must default to
+        // `L0Discover`. This is the runtime-stable backward-compat
+        // guarantee called out by AAASM-1041.
+        let json = r#"{
+            "agent_id":[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+            "session_id":[2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2],
+            "pid":42,
+            "started_at":1000000,
+            "metadata":{}
+        }"#;
+        let restored: AgentContext = serde_json::from_str(json).expect("deserialize");
+        assert_eq!(restored.governance_level, GovernanceLevel::L0Discover);
     }
 }

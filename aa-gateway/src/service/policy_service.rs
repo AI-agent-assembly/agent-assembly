@@ -108,10 +108,22 @@ impl PolicyServiceImpl {
     /// the conversion.
     #[allow(clippy::result_large_err)] // tonic::Status is the standard gRPC error type
     fn evaluate_one(&self, req: &CheckActionRequest) -> Result<(EvaluationResult, i64, String), Status> {
-        let (ctx, action) = convert::request_to_core(req).map_err(|e| {
+        let (mut ctx, action) = convert::request_to_core(req).map_err(|e| {
             tracing::error!(error = %e, "failed to convert CheckActionRequest");
             Status::invalid_argument(e.to_string())
         })?;
+
+        // Populate `ctx.governance_level` from the registered `AgentRecord`
+        // so level-conditional policy rules (e.g. `governance_level >= L2`)
+        // see the agent's actual level instead of the proto-default. Falls
+        // back to whatever default `request_to_core` produced when the
+        // registry is not attached or the agent is not registered.
+        if let (Some(registry), Some(proto_agent)) = (&self.registry, req.agent_id.as_ref()) {
+            let agent_key = proto_agent_id_to_key(proto_agent);
+            if let Some(record) = registry.get(&agent_key) {
+                ctx.governance_level = record.governance_level;
+            }
+        }
 
         let start = Instant::now();
         let eval = self.engine.evaluate(&ctx, &action);

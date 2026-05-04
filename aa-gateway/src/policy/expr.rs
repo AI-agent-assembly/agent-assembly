@@ -20,7 +20,7 @@
 // rustc sees them as dead code.  The allow is intentional and temporary.
 #![allow(dead_code)]
 
-use aa_core::GovernanceAction;
+use aa_core::{GovernanceAction, GovernanceLevel};
 
 // ---------------------------------------------------------------------------
 // Internal token types
@@ -33,6 +33,7 @@ enum FieldRef {
     Url,
     Method,
     Command,
+    GovernanceLevel,
 }
 
 #[derive(Debug, PartialEq)]
@@ -51,6 +52,7 @@ enum OpKind {
 enum LiteralVal {
     Str(String),
     Num(f64),
+    Level(GovernanceLevel),
 }
 
 #[derive(Debug, PartialEq)]
@@ -147,6 +149,11 @@ fn tokenize(expr: &str) -> Option<Vec<Token>> {
                 "url" => Token::Field(FieldRef::Url),
                 "method" => Token::Field(FieldRef::Method),
                 "command" => Token::Field(FieldRef::Command),
+                "governance_level" => Token::Field(FieldRef::GovernanceLevel),
+                "L0" => Token::Literal(LiteralVal::Level(GovernanceLevel::L0Discover)),
+                "L1" => Token::Literal(LiteralVal::Level(GovernanceLevel::L1Observe)),
+                "L2" => Token::Literal(LiteralVal::Level(GovernanceLevel::L2Enforce)),
+                "L3" => Token::Literal(LiteralVal::Level(GovernanceLevel::L3Native)),
                 "contains" => Token::Op(OpKind::Contains),
                 "starts_with" => Token::Op(OpKind::StartsWith),
                 other => {
@@ -180,7 +187,8 @@ fn field_value<'a>(field: &FieldRef, action: &'a GovernanceAction) -> &'a str {
         (FieldRef::Url, GovernanceAction::NetworkRequest { url, .. }) => url.as_str(),
         (FieldRef::Method, GovernanceAction::NetworkRequest { method, .. }) => method.as_str(),
         (FieldRef::Command, GovernanceAction::ProcessExec { command }) => command.as_str(),
-        // Field does not match the action variant → treat as empty string
+        // Field does not match the action variant, or governance_level is
+        // handled out-of-band in `eval_clause_safe` → treat as empty string.
         _ => "",
     }
 }
@@ -189,7 +197,40 @@ fn field_value<'a>(field: &FieldRef, action: &'a GovernanceAction) -> &'a str {
 // Clause evaluation
 // ---------------------------------------------------------------------------
 
-fn eval_clause_safe(field: &FieldRef, op: &OpKind, literal: &LiteralVal, action: &GovernanceAction) -> bool {
+fn eval_clause_safe(
+    field: &FieldRef,
+    op: &OpKind,
+    literal: &LiteralVal,
+    action: &GovernanceAction,
+    agent_level: Option<GovernanceLevel>,
+) -> bool {
+    // governance_level is the only field whose value type is not a string;
+    // route it through an Ord-based comparison and return early.
+    if let FieldRef::GovernanceLevel = field {
+        let rhs = match literal {
+            LiteralVal::Level(l) => *l,
+            // Mismatched literal kind (e.g. `governance_level == "L2"`) cannot
+            // match — treat as no-fire rather than fail-safe approval, since
+            // the validator should have rejected it before evaluation.
+            _ => return false,
+        };
+        let lhs = match agent_level {
+            Some(l) => l,
+            // No agent level supplied → cannot compare; treat as no-match.
+            None => return false,
+        };
+        return match op {
+            OpKind::Eq => lhs == rhs,
+            OpKind::Ne => lhs != rhs,
+            OpKind::Gt => lhs > rhs,
+            OpKind::Gte => lhs >= rhs,
+            OpKind::Lt => lhs < rhs,
+            OpKind::Lte => lhs <= rhs,
+            // String operators do not apply to governance_level.
+            OpKind::Contains | OpKind::StartsWith => false,
+        };
+    }
+
     let lhs = field_value(field, action);
 
     match op {
@@ -216,6 +257,8 @@ fn eval_clause_safe(field: &FieldRef, op: &OpKind, literal: &LiteralVal, action:
                 }
             }
             LiteralVal::Str(rhs) => lhs == rhs.as_str(),
+            // A level literal against a non-level field cannot match.
+            LiteralVal::Level(_) => false,
         },
         OpKind::Ne => match literal {
             LiteralVal::Num(rhs) => {
@@ -226,6 +269,9 @@ fn eval_clause_safe(field: &FieldRef, op: &OpKind, literal: &LiteralVal, action:
                 }
             }
             LiteralVal::Str(rhs) => lhs != rhs.as_str(),
+            // A level literal against a non-level field is unconditionally
+            // not-equal — matches the symmetric `Eq` handling above.
+            LiteralVal::Level(_) => true,
         },
         OpKind::Gt => {
             let rhs = numeric_literal(literal);
@@ -266,6 +312,8 @@ fn numeric_literal(lit: &LiteralVal) -> Option<f64> {
     match lit {
         LiteralVal::Num(n) => Some(*n),
         LiteralVal::Str(s) => s.parse::<f64>().ok(),
+        // Level literals never participate in numeric comparisons.
+        LiteralVal::Level(_) => None,
     }
 }
 
@@ -280,7 +328,7 @@ struct Clause<'t> {
     literal: &'t LiteralVal,
 }
 
-fn eval_tokens(tokens: &[Token], action: &GovernanceAction) -> bool {
+fn eval_tokens(tokens: &[Token], action: &GovernanceAction, agent_level: Option<GovernanceLevel>) -> bool {
     // Parse tokens into a sequence of clauses separated by AND/OR.
     // Strategy: split into OR-groups where each group is a slice of
     // AND-connected clauses.  Result = any OR-group where all clauses are true.
@@ -327,25 +375,75 @@ fn eval_tokens(tokens: &[Token], action: &GovernanceAction) -> bool {
     }
 
     // Evaluate: OR across groups, AND within each group
-    or_groups
-        .iter()
-        .any(|group| group.iter().all(|c| eval_clause_safe(c.field, c.op, c.literal, action)))
+    or_groups.iter().any(|group| {
+        group
+            .iter()
+            .all(|c| eval_clause_safe(c.field, c.op, c.literal, action, agent_level))
+    })
 }
 
 // ---------------------------------------------------------------------------
 // Public entry point
 // ---------------------------------------------------------------------------
 
-/// Evaluate a flat boolean expression against a [`GovernanceAction`].
+/// Validate that every `governance_level` literal in `expr` is one of the
+/// four known levels (L0..L3).
+///
+/// Returns the spec-mandated error message
+/// `unknown governance level: <value>; valid values: L0, L1, L2, L3` when the
+/// expression mentions an unknown level (e.g. `L4` or `LX`). Other shapes are
+/// not rejected here — the runtime evaluator is fail-safe for everything else.
+pub(crate) fn validate_governance_levels(expr: &str) -> Result<(), String> {
+    let mut chars = expr.chars().peekable();
+    while let Some(&ch) = chars.peek() {
+        if ch == 'L' {
+            // Collect the identifier-like word starting with 'L'.
+            let mut word = String::new();
+            while let Some(&c) = chars.peek() {
+                if c.is_alphanumeric() || c == '_' {
+                    word.push(c);
+                    chars.next();
+                } else {
+                    break;
+                }
+            }
+            // Only reject `L<digit>+` shapes — these are clearly intended as
+            // level literals. Anything else (`Logger`, `Limit`, …) is left
+            // for the runtime tokenizer to handle.
+            let rest = &word[1..];
+            if !rest.is_empty() && rest.chars().all(|c| c.is_ascii_digit()) {
+                match word.as_str() {
+                    "L0" | "L1" | "L2" | "L3" => {}
+                    _ => {
+                        return Err(format!(
+                            "unknown governance level: {word}; valid values: L0, L1, L2, L3"
+                        ));
+                    }
+                }
+            }
+            continue;
+        }
+        chars.next();
+    }
+    Ok(())
+}
+
+/// Evaluate a flat boolean expression against a [`GovernanceAction`] and the
+/// governing agent's [`GovernanceLevel`].
+///
+/// `agent_level` is consulted only by clauses referencing the
+/// `governance_level` field; pass `None` when the caller does not know the
+/// agent's level (e.g. legacy code paths) — clauses that depend on the
+/// level are then treated as unknown comparisons (no-match).
 ///
 /// Returns `true` if the expression matches (approval required).
 /// Returns `true` on ANY parse/tokenization error (fail-safe).
-pub(crate) fn evaluate(expr: &str, action: &GovernanceAction) -> bool {
+pub(crate) fn evaluate(expr: &str, action: &GovernanceAction, agent_level: Option<GovernanceLevel>) -> bool {
     let tokens = match tokenize(expr) {
         Some(t) if !t.is_empty() => t,
         _ => return true, // fail-safe
     };
-    eval_tokens(&tokens, action)
+    eval_tokens(&tokens, action, agent_level)
 }
 
 // ---------------------------------------------------------------------------
@@ -386,47 +484,115 @@ mod tests {
 
     #[test]
     fn eq_operator_matches_tool_name() {
-        assert!(evaluate(r#"tool == "search""#, &tool("search")));
+        assert!(evaluate(r#"tool == "search""#, &tool("search"), None));
     }
 
     #[test]
     fn ne_operator_false_when_equal() {
-        assert!(!evaluate(r#"tool != "search""#, &tool("search")));
+        assert!(!evaluate(r#"tool != "search""#, &tool("search"), None));
     }
 
     #[test]
     fn contains_operator_on_url() {
-        assert!(evaluate(r#"url contains "evil""#, &network("https://evil.com", "GET")));
+        assert!(evaluate(
+            r#"url contains "evil""#,
+            &network("https://evil.com", "GET"),
+            None
+        ));
     }
 
     #[test]
     fn starts_with_operator_on_path() {
-        assert!(evaluate(r#"path starts_with "/etc""#, &file("/etc/passwd")));
+        assert!(evaluate(r#"path starts_with "/etc""#, &file("/etc/passwd"), None));
     }
 
     #[test]
     fn and_combinator_all_true() {
-        assert!(evaluate(r#"tool == "search" AND tool == "search""#, &tool("search")));
+        assert!(evaluate(
+            r#"tool == "search" AND tool == "search""#,
+            &tool("search"),
+            None
+        ));
     }
 
     #[test]
     fn and_combinator_short_circuits() {
-        assert!(!evaluate(r#"tool == "search" AND tool == "other""#, &tool("search")));
+        assert!(!evaluate(
+            r#"tool == "search" AND tool == "other""#,
+            &tool("search"),
+            None
+        ));
     }
 
     #[test]
     fn or_combinator_first_true() {
-        assert!(evaluate(r#"tool == "x" OR tool == "search""#, &tool("search")));
+        assert!(evaluate(r#"tool == "x" OR tool == "search""#, &tool("search"), None));
     }
 
     #[test]
     fn fail_safe_on_bad_expr() {
-        assert!(evaluate("not valid @@@ expr", &tool("anything")));
+        assert!(evaluate("not valid @@@ expr", &tool("anything"), None));
     }
 
     #[test]
     fn field_absent_for_action_variant_returns_false() {
         // `tool` field is "" for ProcessExec → should NOT match "foo"
-        assert!(!evaluate(r#"tool == "foo""#, &process("ls")));
+        assert!(!evaluate(r#"tool == "foo""#, &process("ls"), None));
+    }
+
+    #[test]
+    fn rule_with_ge_l2_fires_for_l2_agent() {
+        // An L2 agent satisfies `governance_level >= L2`.
+        assert!(evaluate(
+            "governance_level >= L2",
+            &tool("any"),
+            Some(GovernanceLevel::L2Enforce),
+        ));
+    }
+
+    #[test]
+    fn rule_with_ge_l2_does_not_fire_for_l1_agent() {
+        // An L1 agent does not satisfy `governance_level >= L2`.
+        assert!(!evaluate(
+            "governance_level >= L2",
+            &tool("any"),
+            Some(GovernanceLevel::L1Observe),
+        ));
+    }
+
+    #[test]
+    fn rule_without_level_condition_fires_for_all_levels() {
+        // Backward compat: a condition that does not mention
+        // `governance_level` evaluates the same way at every level.
+        for level in [
+            GovernanceLevel::L0Discover,
+            GovernanceLevel::L1Observe,
+            GovernanceLevel::L2Enforce,
+            GovernanceLevel::L3Native,
+        ] {
+            assert!(
+                evaluate(r#"tool == "search""#, &tool("search"), Some(level)),
+                "tool-only condition unexpectedly skipped for {level:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn parser_accepts_l0_through_l3() {
+        // Each named level parses and compares equal against an agent of the
+        // same level — covering all four members of the `GovernanceLevel`
+        // enum in a single test.
+        for (literal, level) in [
+            ("L0", GovernanceLevel::L0Discover),
+            ("L1", GovernanceLevel::L1Observe),
+            ("L2", GovernanceLevel::L2Enforce),
+            ("L3", GovernanceLevel::L3Native),
+        ] {
+            let expr = format!("governance_level == {literal}");
+            assert!(
+                evaluate(&expr, &tool("any"), Some(level)),
+                "{literal} did not parse / compare equal for matching agent level"
+            );
+        }
     }
 }

@@ -81,6 +81,7 @@ mod tests {
             pid: 42,
             started_at: crate::time::Timestamp::from_nanos(0),
             metadata: alloc::collections::BTreeMap::new(),
+            governance_level: crate::GovernanceLevel::default(),
         }
     }
 

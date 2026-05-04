@@ -72,6 +72,9 @@ pub fn request_to_core(req: &CheckActionRequest) -> Result<(AgentContext, Govern
         pid: 0, // not available in proto — set to 0
         started_at: Timestamp::from_nanos(0),
         metadata,
+        // Provisional default — overwritten by the gateway service layer
+        // with the agent's registered level before the engine sees it.
+        governance_level: aa_core::GovernanceLevel::default(),
     };
 
     // --- Governance action ---

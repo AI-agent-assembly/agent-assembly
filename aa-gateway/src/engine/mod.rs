@@ -300,7 +300,7 @@ impl PolicyEngine {
         if let aa_core::GovernanceAction::ToolCall { name, .. } = action {
             if let Some(tp) = policy.tools.get(name) {
                 if let Some(expr) = &tp.requires_approval_if {
-                    if !expr.is_empty() && crate::policy::expr::evaluate(expr, action) {
+                    if !expr.is_empty() && crate::policy::expr::evaluate(expr, action, Some(ctx.governance_level)) {
                         return EvaluationResult {
                             decision: aa_core::PolicyResult::RequiresApproval {
                                 timeout_secs: policy.approval_timeout_secs,
@@ -508,6 +508,7 @@ mod tests {
             pid: 1,
             started_at: Timestamp::from_nanos(0),
             metadata: BTreeMap::new(),
+            governance_level: aa_core::GovernanceLevel::default(),
         }
     }
 

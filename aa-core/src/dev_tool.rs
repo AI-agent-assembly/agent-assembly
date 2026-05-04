@@ -26,11 +26,15 @@ use serde::{Deserialize, Serialize};
 /// | [`L1Observe`][Self::L1Observe] | Network, file, process, and MCP observability without enforcement. |
 /// | [`L2Enforce`][Self::L2Enforce] | Allow / deny, approval, redaction, and budget enforcement. |
 /// | [`L3Native`][Self::L3Native] | Full SDK-integrated governance with identity, lineage, and semantic context. |
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum GovernanceLevel {
     /// L0 — Discover. eBPF / proxy detects unknown agents and their
     /// external behavior; no policy enforcement is applied.
+    ///
+    /// This is also the [`Default`] for [`GovernanceLevel`]: any agent or
+    /// rule that does not declare a level is treated as L0 (discover-only).
+    #[default]
     L0Discover,
     /// L1 — Observe. Network, file, process, and MCP observability
     /// without enforcement.
