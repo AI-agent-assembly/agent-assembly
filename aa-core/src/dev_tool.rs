@@ -7,6 +7,8 @@
 
 #[cfg(feature = "alloc")]
 use alloc::string::String;
+#[cfg(feature = "std")]
+use std::path::PathBuf;
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -61,4 +63,26 @@ pub enum DevToolKind {
     WindsurfCascade,
     /// Adapter-defined custom tool identified by an opaque name string.
     Custom(String),
+}
+
+/// Static metadata describing a detected AI dev tool installation.
+///
+/// Returned by `DevToolAdapter::detect` and used to drive registry
+/// decisions, managed-settings generation, and per-tool launch wiring.
+#[cfg(feature = "std")]
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct DevToolInfo {
+    /// Concrete tool variant.
+    pub kind: DevToolKind,
+    /// Tool version string, if reported by the binary.
+    pub version: Option<String>,
+    /// Absolute path to the installed tool binary.
+    pub install_path: PathBuf,
+    /// Highest governance level this installation can operate at.
+    pub governance_level: GovernanceLevel,
+    /// Whether the tool exposes MCP server configuration we can govern.
+    pub supports_mcp: bool,
+    /// Whether the tool reads governance config from a managed-settings file.
+    pub supports_managed_settings: bool,
 }
