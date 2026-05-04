@@ -41,6 +41,21 @@ impl PolicyId {
 ///
 /// Phase B (this Sub-task) only populates the index; the cascading
 /// evaluator that *consumes* it lands in F93 (AAASM-220).
+///
+/// # Invariants
+///
+/// * Every id in any `by_scope` bucket points to a live entry in
+///   `policies`. [`Self::remove`] preserves this by editing both
+///   collections atomically.
+/// * Empty buckets are not retained — once the last id under a scope
+///   is removed, the scope itself is dropped from `by_scope`.
+///   [`Self::policies_for_scope`] therefore returns `&[]` both for
+///   "scope was never used" and "scope is now empty"; callers cannot
+///   distinguish these two states (and shouldn't need to).
+/// * Buckets preserve **insertion order**: ids appear in the order
+///   their corresponding documents were passed to [`Self::insert`].
+///   Documents inserted under unrelated scopes between two same-scope
+///   inserts do not affect the relative order of the same-scope ids.
 #[derive(Debug, Default)]
 pub struct ScopeIndex {
     /// Owned policy documents keyed by their assigned id.
