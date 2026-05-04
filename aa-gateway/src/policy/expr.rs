@@ -20,7 +20,7 @@
 // rustc sees them as dead code.  The allow is intentional and temporary.
 #![allow(dead_code)]
 
-use aa_core::GovernanceAction;
+use aa_core::{GovernanceAction, GovernanceLevel};
 
 // ---------------------------------------------------------------------------
 // Internal token types
@@ -280,7 +280,7 @@ struct Clause<'t> {
     literal: &'t LiteralVal,
 }
 
-fn eval_tokens(tokens: &[Token], action: &GovernanceAction) -> bool {
+fn eval_tokens(tokens: &[Token], action: &GovernanceAction, _agent_level: Option<GovernanceLevel>) -> bool {
     // Parse tokens into a sequence of clauses separated by AND/OR.
     // Strategy: split into OR-groups where each group is a slice of
     // AND-connected clauses.  Result = any OR-group where all clauses are true.
@@ -336,16 +336,22 @@ fn eval_tokens(tokens: &[Token], action: &GovernanceAction) -> bool {
 // Public entry point
 // ---------------------------------------------------------------------------
 
-/// Evaluate a flat boolean expression against a [`GovernanceAction`].
+/// Evaluate a flat boolean expression against a [`GovernanceAction`] and the
+/// governing agent's [`GovernanceLevel`].
+///
+/// `agent_level` is consulted only by clauses referencing the
+/// `governance_level` field; pass `None` when the caller does not know the
+/// agent's level (e.g. legacy code paths) — clauses that depend on the
+/// level are then treated as unknown comparisons (no-match).
 ///
 /// Returns `true` if the expression matches (approval required).
 /// Returns `true` on ANY parse/tokenization error (fail-safe).
-pub(crate) fn evaluate(expr: &str, action: &GovernanceAction) -> bool {
+pub(crate) fn evaluate(expr: &str, action: &GovernanceAction, agent_level: Option<GovernanceLevel>) -> bool {
     let tokens = match tokenize(expr) {
         Some(t) if !t.is_empty() => t,
         _ => return true, // fail-safe
     };
-    eval_tokens(&tokens, action)
+    eval_tokens(&tokens, action, agent_level)
 }
 
 // ---------------------------------------------------------------------------
@@ -386,47 +392,47 @@ mod tests {
 
     #[test]
     fn eq_operator_matches_tool_name() {
-        assert!(evaluate(r#"tool == "search""#, &tool("search")));
+        assert!(evaluate(r#"tool == "search""#, &tool("search"), None));
     }
 
     #[test]
     fn ne_operator_false_when_equal() {
-        assert!(!evaluate(r#"tool != "search""#, &tool("search")));
+        assert!(!evaluate(r#"tool != "search""#, &tool("search"), None));
     }
 
     #[test]
     fn contains_operator_on_url() {
-        assert!(evaluate(r#"url contains "evil""#, &network("https://evil.com", "GET")));
+        assert!(evaluate(r#"url contains "evil""#, &network("https://evil.com", "GET"), None));
     }
 
     #[test]
     fn starts_with_operator_on_path() {
-        assert!(evaluate(r#"path starts_with "/etc""#, &file("/etc/passwd")));
+        assert!(evaluate(r#"path starts_with "/etc""#, &file("/etc/passwd"), None));
     }
 
     #[test]
     fn and_combinator_all_true() {
-        assert!(evaluate(r#"tool == "search" AND tool == "search""#, &tool("search")));
+        assert!(evaluate(r#"tool == "search" AND tool == "search""#, &tool("search"), None));
     }
 
     #[test]
     fn and_combinator_short_circuits() {
-        assert!(!evaluate(r#"tool == "search" AND tool == "other""#, &tool("search")));
+        assert!(!evaluate(r#"tool == "search" AND tool == "other""#, &tool("search"), None));
     }
 
     #[test]
     fn or_combinator_first_true() {
-        assert!(evaluate(r#"tool == "x" OR tool == "search""#, &tool("search")));
+        assert!(evaluate(r#"tool == "x" OR tool == "search""#, &tool("search"), None));
     }
 
     #[test]
     fn fail_safe_on_bad_expr() {
-        assert!(evaluate("not valid @@@ expr", &tool("anything")));
+        assert!(evaluate("not valid @@@ expr", &tool("anything"), None));
     }
 
     #[test]
     fn field_absent_for_action_variant_returns_false() {
         // `tool` field is "" for ProcessExec → should NOT match "foo"
-        assert!(!evaluate(r#"tool == "foo""#, &process("ls")));
+        assert!(!evaluate(r#"tool == "foo""#, &process("ls"), None));
     }
 }
