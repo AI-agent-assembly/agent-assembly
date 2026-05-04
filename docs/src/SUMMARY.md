@@ -24,5 +24,5 @@
 
 # Benchmarks
 
-- [Baseline]()
-- [Policy Check p99]()
+- [Baseline](benchmarks/BASELINE.md)
+- [Policy Check p99](benchmarks/policy-check-p99.md)
