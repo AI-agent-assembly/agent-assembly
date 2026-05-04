@@ -516,6 +516,7 @@ mod tests {
             name: None,
             policy_version: None,
             version: None,
+            scope: crate::policy::scope::PolicyScope::Global,
             network: None,
             schedule: None,
             budget: None,

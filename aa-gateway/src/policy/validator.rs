@@ -9,6 +9,7 @@ use crate::policy::{
     },
     error::{ValidationError, ValidationWarning},
     raw::{GovernancePolicyEnvelope, RawPolicyDocument},
+    scope::PolicyScope,
 };
 
 /// Result of a successful parse+validate pass.
@@ -71,6 +72,7 @@ impl PolicyValidator {
                 name: meta_name,
                 policy_version: meta_version,
                 version: raw.version,
+                scope: raw.scope.unwrap_or(PolicyScope::Global),
                 network,
                 schedule,
                 budget,

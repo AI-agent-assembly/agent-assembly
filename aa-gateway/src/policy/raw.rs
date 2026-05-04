@@ -100,6 +100,10 @@ pub struct GovernancePolicyEnvelope {
 pub struct RawPolicyDocument {
     /// Version tag from the YAML front-matter.
     pub version: Option<String>,
+    /// Optional hierarchical scope this policy applies to. When absent the
+    /// validator defaults to [`crate::policy::scope::PolicyScope::Global`] so
+    /// pre-F92 policy files keep their existing semantics.
+    pub scope: Option<crate::policy::scope::PolicyScope>,
     /// Network egress policy.
     pub network: Option<RawNetworkPolicy>,
     /// Schedule / active-hours policy.
