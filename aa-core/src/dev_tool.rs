@@ -115,4 +115,21 @@ mod tests {
             assert_eq!(restored, original);
         }
     }
+
+    #[cfg(all(feature = "serde", feature = "std"))]
+    #[test]
+    fn dev_tool_info_round_trips_via_serde_json() {
+        let original = DevToolInfo {
+            kind: DevToolKind::ClaudeCode,
+            version: Some(String::from("1.2.3")),
+            install_path: PathBuf::from("/usr/local/bin/claude"),
+            governance_level: GovernanceLevel::L2Enforce,
+            supports_mcp: true,
+            supports_managed_settings: false,
+        };
+        let json1 = serde_json::to_string(&original).expect("serialize");
+        let restored: DevToolInfo = serde_json::from_str(&json1).expect("deserialize");
+        let json2 = serde_json::to_string(&restored).expect("re-serialize");
+        assert_eq!(json1, json2);
+    }
 }
