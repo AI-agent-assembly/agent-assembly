@@ -329,6 +329,11 @@ impl PolicyValidator {
                         format!("tools.{}.requires_approval_if", name),
                         "CEL expression must not be empty",
                     ));
+                } else if let Err(msg) = super::expr::validate_governance_levels(expr) {
+                    errors.push(ValidationError::new(
+                        format!("tools.{}.requires_approval_if", name),
+                        msg,
+                    ));
                 }
             }
 

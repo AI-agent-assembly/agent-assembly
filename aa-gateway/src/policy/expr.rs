@@ -384,6 +384,48 @@ fn eval_tokens(tokens: &[Token], action: &GovernanceAction, agent_level: Option<
 // Public entry point
 // ---------------------------------------------------------------------------
 
+/// Validate that every `governance_level` literal in `expr` is one of the
+/// four known levels (L0..L3).
+///
+/// Returns the spec-mandated error message
+/// `unknown governance level: <value>; valid values: L0, L1, L2, L3` when the
+/// expression mentions an unknown level (e.g. `L4` or `LX`). Other shapes are
+/// not rejected here — the runtime evaluator is fail-safe for everything else.
+pub(crate) fn validate_governance_levels(expr: &str) -> Result<(), String> {
+    let mut chars = expr.chars().peekable();
+    while let Some(&ch) = chars.peek() {
+        if ch == 'L' {
+            // Collect the identifier-like word starting with 'L'.
+            let mut word = String::new();
+            while let Some(&c) = chars.peek() {
+                if c.is_alphanumeric() || c == '_' {
+                    word.push(c);
+                    chars.next();
+                } else {
+                    break;
+                }
+            }
+            // Only reject `L<digit>+` shapes — these are clearly intended as
+            // level literals. Anything else (`Logger`, `Limit`, …) is left
+            // for the runtime tokenizer to handle.
+            let rest = &word[1..];
+            if !rest.is_empty() && rest.chars().all(|c| c.is_ascii_digit()) {
+                match word.as_str() {
+                    "L0" | "L1" | "L2" | "L3" => {}
+                    _ => {
+                        return Err(format!(
+                            "unknown governance level: {word}; valid values: L0, L1, L2, L3"
+                        ));
+                    }
+                }
+            }
+            continue;
+        }
+        chars.next();
+    }
+    Ok(())
+}
+
 /// Evaluate a flat boolean expression against a [`GovernanceAction`] and the
 /// governing agent's [`GovernanceLevel`].
 ///
