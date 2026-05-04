@@ -213,6 +213,19 @@ fn check_action_response_allow_round_trips() {
 }
 
 #[test]
+fn register_request_old_payload_decodes_with_none_topology_fields() {
+    // Golden was generated before topology fields existed (pre-AAASM-933).
+    // Decoding it into the new RegisterRequest must succeed and leave all
+    // four topology fields as None — confirms wire-format backward compat.
+    let golden = load_golden_bin("register_request");
+    let decoded = RegisterRequest::decode(golden.as_slice()).expect("decode old RegisterRequest");
+    assert_eq!(decoded.parent_agent_id, None);
+    assert_eq!(decoded.delegation_reason, None);
+    assert_eq!(decoded.spawned_by_tool, None);
+    assert_eq!(decoded.max_child_depth, None);
+}
+
+#[test]
 fn register_request_topology_fields_round_trip() {
     let original = RegisterRequest {
         agent_id: Some(AgentId {
