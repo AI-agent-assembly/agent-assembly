@@ -134,6 +134,7 @@ fn main() {
             ]
             .into_iter()
             .collect(),
+            ..Default::default()
         },
     );
 

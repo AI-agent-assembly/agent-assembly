@@ -122,6 +122,7 @@ fn register_request_matches_golden() {
         ]
         .into_iter()
         .collect(),
+        ..Default::default()
     };
     // RegisterRequest contains a HashMap metadata field whose serialisation order
     // is non-deterministic. Use a round-trip check instead of a golden comparison.
