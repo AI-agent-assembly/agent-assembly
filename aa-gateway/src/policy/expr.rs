@@ -375,9 +375,11 @@ fn eval_tokens(tokens: &[Token], action: &GovernanceAction, agent_level: Option<
     }
 
     // Evaluate: OR across groups, AND within each group
-    or_groups
-        .iter()
-        .any(|group| group.iter().all(|c| eval_clause_safe(c.field, c.op, c.literal, action, agent_level)))
+    or_groups.iter().any(|group| {
+        group
+            .iter()
+            .all(|c| eval_clause_safe(c.field, c.op, c.literal, action, agent_level))
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -492,7 +494,11 @@ mod tests {
 
     #[test]
     fn contains_operator_on_url() {
-        assert!(evaluate(r#"url contains "evil""#, &network("https://evil.com", "GET"), None));
+        assert!(evaluate(
+            r#"url contains "evil""#,
+            &network("https://evil.com", "GET"),
+            None
+        ));
     }
 
     #[test]
@@ -502,12 +508,20 @@ mod tests {
 
     #[test]
     fn and_combinator_all_true() {
-        assert!(evaluate(r#"tool == "search" AND tool == "search""#, &tool("search"), None));
+        assert!(evaluate(
+            r#"tool == "search" AND tool == "search""#,
+            &tool("search"),
+            None
+        ));
     }
 
     #[test]
     fn and_combinator_short_circuits() {
-        assert!(!evaluate(r#"tool == "search" AND tool == "other""#, &tool("search"), None));
+        assert!(!evaluate(
+            r#"tool == "search" AND tool == "other""#,
+            &tool("search"),
+            None
+        ));
     }
 
     #[test]

@@ -439,9 +439,8 @@ mod tests {
     fn validator_accepts_all_known_governance_levels() {
         // Backward-compat sanity: valid L0..L3 conditions pass validation.
         for lvl in ["L0", "L1", "L2", "L3"] {
-            let yaml = format!(
-                "tools:\n  bash:\n    allow: true\n    requires_approval_if: \"governance_level == {lvl}\"\n",
-            );
+            let yaml =
+                format!("tools:\n  bash:\n    allow: true\n    requires_approval_if: \"governance_level == {lvl}\"\n",);
             assert!(
                 PolicyValidator::from_yaml(&yaml).is_ok(),
                 "validator unexpectedly rejected condition with {lvl}",
