@@ -107,6 +107,25 @@ fn pre_f92_fixture_without_scope_field_lands_in_global() {
 }
 
 #[test]
+fn engine_policy_accessor_round_trips_loaded_doc() {
+    let doc = load_fixture("team_platform");
+    let team = PolicyScope::Team("platform".to_owned());
+
+    let mut engine = empty_engine();
+    let id = engine.load_policy(doc);
+
+    let stored = engine.policy(id).expect("just-loaded policy must be retrievable");
+    assert_eq!(stored.scope, team, "policy(id) returns the same doc that was loaded");
+
+    let removed = engine.remove_policy(id);
+    assert!(removed.is_some(), "remove returns the dropped doc");
+    assert!(
+        engine.policy(id).is_none(),
+        "policy(id) returns None after the doc is removed",
+    );
+}
+
+#[test]
 fn distinct_scoped_fixtures_do_not_contaminate_other_buckets() {
     let global = load_fixture("global");
     let org = load_fixture("org_acme");
