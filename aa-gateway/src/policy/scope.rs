@@ -75,6 +75,10 @@ pub enum PolicyScope {
     Team(TeamId),
     /// Applies to a single specific agent.
     Agent(AgentId),
+    /// Applies to a specific tool / MCP server, across every agent
+    /// otherwise admitted by higher scopes. Sits at the most-restrictive
+    /// end of the cascading chain (`Global → Org → Team → Agent → Tool`).
+    Tool(String),
 }
 
 impl fmt::Display for PolicyScope {
@@ -84,6 +88,7 @@ impl fmt::Display for PolicyScope {
             Self::Org(id) => write!(f, "org:{}", id),
             Self::Team(id) => write!(f, "team:{}", id),
             Self::Agent(id) => write!(f, "agent:{}", Uuid::from_bytes(*id.as_bytes())),
+            Self::Tool(name) => write!(f, "tool:{}", name),
         }
     }
 }
@@ -118,6 +123,7 @@ impl FromStr for PolicyScope {
                     Uuid::parse_str(value).map_err(|e| invalid(&format!("agent id is not a valid UUID: {}", e)))?;
                 Ok(Self::Agent(AgentId::from_bytes(*uuid.as_bytes())))
             }
+            "tool" => Ok(Self::Tool(value.to_owned())),
             other => Err(invalid(&format!("unknown scope kind {:?}", other))),
         }
     }
