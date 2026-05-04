@@ -505,6 +505,23 @@ mod tests {
     }
 
     #[test]
+    fn rule_without_level_condition_fires_for_all_levels() {
+        // Backward compat: a condition that does not mention
+        // `governance_level` evaluates the same way at every level.
+        for level in [
+            GovernanceLevel::L0Discover,
+            GovernanceLevel::L1Observe,
+            GovernanceLevel::L2Enforce,
+            GovernanceLevel::L3Native,
+        ] {
+            assert!(
+                evaluate(r#"tool == "search""#, &tool("search"), Some(level)),
+                "tool-only condition unexpectedly skipped for {level:?}"
+            );
+        }
+    }
+
+    #[test]
     fn parser_accepts_l0_through_l3() {
         // Each named level parses and compares equal against an agent of the
         // same level — covering all four members of the `GovernanceLevel`
