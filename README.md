@@ -5,6 +5,8 @@
 [![CI](https://github.com/AI-agent-assembly/agent-assembly/actions/workflows/ci.yml/badge.svg)](https://github.com/AI-agent-assembly/agent-assembly/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/AI-agent-assembly/agent-assembly/branch/master/graph/badge.svg)](https://codecov.io/gh/AI-agent-assembly/agent-assembly)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+<!-- crates.io badge will be added once the first public crate (likely `aa-cli`) is published; tracked under Epic AAASM-13. -->
+
 
 ## Overview
 
