@@ -1,0 +1,12 @@
+[book]
+title = "agent-assembly"
+description = "Governance-native runtime for AI agents — open-source core."
+authors = ["Agent Assembly Contributors"]
+language = "en"
+src = "src"
+
+[output.html]
+default-theme = "rust"
+preferred-dark-theme = "navy"
+git-repository-url = "https://github.com/AI-agent-assembly/agent-assembly"
+edit-url-template = "https://github.com/AI-agent-assembly/agent-assembly/edit/master/docs/{path}"
