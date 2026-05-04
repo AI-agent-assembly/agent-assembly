@@ -1,7 +1,12 @@
-//! Policy scope hierarchy types (`global` / `org:<id>` / `team:<id>` / `agent:<uuid>`).
+//! Policy scope hierarchy types
+//! (`global` / `org:<id>` / `team:<id>` / `agent:<uuid>` / `tool:<name>`).
 //!
-//! See AAASM-219 (F92) for the design. Subsequent Sub-tasks will extend this
-//! module with the `Tool(...)` variant and a scope index inside `PolicyEngine`.
+//! See AAASM-219 (F92) for the design. The 5-level chain is the
+//! complete scope vocabulary; the `ScopeIndex` in
+//! [`crate::engine::scope_index`] indexes loaded policies by these
+//! variants, and the cascading evaluator in F93 (AAASM-220) consults
+//! them in `Global → Org → Team → Agent → Tool` order
+//! (most-restrictive-wins).
 
 use std::fmt;
 use std::str::FromStr;
@@ -20,9 +25,12 @@ pub type TeamId = String;
 
 /// Hierarchical scope a policy applies to.
 ///
-/// Resolution order is `Global → Org → Team → Agent`, with most-restrictive-wins
-/// merging performed by [`crate::engine::PolicyEngine`] (wired in F93). The
-/// `Tool` variant for a 5-level chain is added by AAASM-1008.
+/// Resolution order is `Global → Org → Team → Agent → Tool`, with
+/// most-restrictive-wins merging performed by
+/// [`crate::engine::PolicyEngine`] (wired in F93, AAASM-220). `Tool`
+/// sits at the most-restrictive end of the chain so a policy can,
+/// for example, deny `slack-mcp` for every agent in `team-x` even
+/// when team- and agent-level policies would otherwise allow it.
 ///
 /// # Wire format
 ///
@@ -35,6 +43,7 @@ pub type TeamId = String;
 /// | `Org(id)`       | `org:<id>`                            |
 /// | `Team(id)`      | `team:<id>`                           |
 /// | `Agent(uuid)`   | `agent:<hyphenated-uuid>`             |
+/// | `Tool(name)`    | `tool:<tool-name>`                    |
 ///
 /// # Examples
 ///
