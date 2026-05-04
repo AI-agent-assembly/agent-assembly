@@ -75,10 +75,23 @@ agent-assembly/
 
 ## Documentation
 
-| Document | Description |
+The contributor-facing documentation is published as an [mdBook](https://rust-lang.github.io/mdBook/). Sources live under `docs/src/`. Build it locally with:
+
+```bash
+cargo install --locked --version 0.5.2 mdbook
+cargo install --locked --version 0.17.0 mdbook-mermaid
+mdbook serve docs --open
+```
+
+| Chapter | Description |
 |---|---|
-| [docs/compatibility.md](docs/compatibility.md) | Version compatibility matrix — which `aa-runtime` versions work with which SDK versions |
-| [docs/versioning.md](docs/versioning.md) | Protocol versioning policy — semver rules, breaking change classification, deprecation lifecycle |
+| [Introduction](docs/src/README.md) | Book overview and audience |
+| [Compatibility Matrix](docs/src/compatibility.md) | Which `aa-runtime` versions work with which SDK versions |
+| [Versioning Policy](docs/src/versioning.md) | Protocol semver rules, breaking-change classification, deprecation lifecycle |
+| [Protocol Changelog](docs/src/protocol/CHANGELOG.md) | Wire-protocol change log |
+| [Migration Template](docs/src/migration/template.md) | Guidance for moving between protocol versions |
+| [Benchmarks — Baseline](docs/src/benchmarks/BASELINE.md) | Performance baseline numbers |
+| [Benchmarks — Policy Check p99](docs/src/benchmarks/policy-check-p99.md) | Latency SLA evidence |
 
 ## License
 
