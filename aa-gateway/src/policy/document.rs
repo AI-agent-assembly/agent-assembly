@@ -1,5 +1,7 @@
 //! Validated, strongly-typed policy document types for aa-gateway.
 
+use crate::policy::scope::PolicyScope;
+
 /// Validated network egress policy.
 #[derive(Debug, Clone, PartialEq)]
 pub struct NetworkPolicy {
@@ -77,6 +79,10 @@ pub struct PolicyDocument {
     pub policy_version: Option<String>,
     /// Schema version string.
     pub version: Option<String>,
+    /// Hierarchical scope this policy applies to. Defaults to
+    /// [`PolicyScope::Global`] when the `scope` YAML field is absent so
+    /// pre-F92 policies keep their existing semantics.
+    pub scope: PolicyScope,
     /// Network egress policy.
     pub network: Option<NetworkPolicy>,
     /// Schedule / active-hours policy.
@@ -101,6 +107,7 @@ mod tests {
             name: None,
             policy_version: None,
             version: None,
+            scope: PolicyScope::Global,
             network: None,
             schedule: None,
             budget: None,

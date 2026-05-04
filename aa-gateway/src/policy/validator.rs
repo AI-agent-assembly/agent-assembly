@@ -9,6 +9,7 @@ use crate::policy::{
     },
     error::{ValidationError, ValidationWarning},
     raw::{GovernancePolicyEnvelope, RawPolicyDocument},
+    scope::PolicyScope,
 };
 
 /// Result of a successful parse+validate pass.
@@ -71,6 +72,7 @@ impl PolicyValidator {
                 name: meta_name,
                 policy_version: meta_version,
                 version: raw.version,
+                scope: raw.scope.unwrap_or(PolicyScope::Global),
                 network,
                 schedule,
                 budget,
@@ -723,6 +725,83 @@ data:
         let out = result.unwrap();
         assert!(out.warnings.is_empty());
         assert!(out.document.network.is_none());
+    }
+
+    // ── Scope field (F92) ───────────────────────────────────────────────────
+
+    #[test]
+    fn scope_absent_defaults_to_global_for_backward_compatibility() {
+        let yaml = "{}\n";
+        let out = PolicyValidator::from_yaml(yaml).unwrap();
+        assert_eq!(out.document.scope, PolicyScope::Global);
+    }
+
+    #[test]
+    fn scope_team_field_round_trips_through_validator() {
+        let yaml = "scope: team:platform\n";
+        let out = PolicyValidator::from_yaml(yaml).unwrap();
+        assert_eq!(out.document.scope, PolicyScope::Team("platform".to_owned()));
+    }
+
+    #[test]
+    fn scope_org_field_round_trips_through_validator() {
+        let yaml = "scope: org:acme\n";
+        let out = PolicyValidator::from_yaml(yaml).unwrap();
+        assert_eq!(out.document.scope, PolicyScope::Org("acme".to_owned()));
+    }
+
+    #[test]
+    fn scope_global_field_is_accepted() {
+        let yaml = "scope: global\n";
+        let out = PolicyValidator::from_yaml(yaml).unwrap();
+        assert_eq!(out.document.scope, PolicyScope::Global);
+    }
+
+    #[test]
+    fn malformed_scope_field_is_rejected_at_parse_time() {
+        let yaml = "scope: project:foo\n";
+        let result = PolicyValidator::from_yaml(yaml);
+        assert!(result.is_err(), "expected validation error for unknown scope kind");
+        let errs = result.unwrap_err();
+        assert!(
+            errs.iter().any(|e| e.message.contains("invalid policy scope")),
+            "expected error message mentioning invalid scope, got {:?}",
+            errs,
+        );
+    }
+
+    /// Parameterised coverage for every malformed-scope shape the validator
+    /// must reject. Each row is `(quoted YAML scalar, substring expected in
+    /// the diagnostic)`. The substring lets the test stay robust against
+    /// minor wording changes in `PolicyParseError::Display`.
+    #[test]
+    fn every_malformed_scope_form_is_rejected_with_useful_diagnostic() {
+        let cases: &[(&str, &str)] = &[
+            // Empty quoted string — neither `global` nor `<kind>:<id>`.
+            ("\"\"", "expected `global`"),
+            // No colon and not `global`.
+            ("acme", "expected `global`"),
+            // Empty identifier after the colon.
+            ("\"team:\"", "must not be empty"),
+            // Unknown scope kind.
+            ("project:foo", "unknown scope kind"),
+            // Agent variant with a non-UUID identifier.
+            ("agent:not-a-uuid", "valid UUID"),
+        ];
+
+        for (yaml_scalar, expected_substring) in cases {
+            let yaml = format!("scope: {}\n", yaml_scalar);
+            let result = PolicyValidator::from_yaml(&yaml);
+            assert!(result.is_err(), "expected error for malformed scope {:?}", yaml_scalar,);
+            let errs = result.unwrap_err();
+            assert!(
+                errs.iter().any(|e| e.message.contains(expected_substring)),
+                "for scope {:?} expected diagnostic containing {:?}, got {:?}",
+                yaml_scalar,
+                expected_substring,
+                errs,
+            );
+        }
     }
 
     // ── Approval timeout validation ──────────────────────────────────────────
