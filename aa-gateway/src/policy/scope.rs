@@ -3,7 +3,10 @@
 //! See AAASM-219 (F92) for the design. Subsequent Sub-tasks will extend this
 //! module with the `Tool(...)` variant and a scope index inside `PolicyEngine`.
 
+use std::fmt;
+
 use aa_core::identity::AgentId;
+use uuid::Uuid;
 
 /// String identifier for an organisation. May be promoted to a newtype later.
 pub type OrgId = String;
@@ -26,4 +29,15 @@ pub enum PolicyScope {
     Team(TeamId),
     /// Applies to a single specific agent.
     Agent(AgentId),
+}
+
+impl fmt::Display for PolicyScope {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Global => f.write_str("global"),
+            Self::Org(id) => write!(f, "org:{}", id),
+            Self::Team(id) => write!(f, "team:{}", id),
+            Self::Agent(id) => write!(f, "agent:{}", Uuid::from_bytes(*id.as_bytes())),
+        }
+    }
 }
