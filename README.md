@@ -14,16 +14,22 @@
 
 | Crate | Role |
 |---|---|
-| `aa-core` | Pure logic, `no_std` compatible domain types and traits |
-| `aa-runtime` | Tokio async runtime wrapper and lifecycle management |
-| `aa-ebpf` | eBPF-based kernel-level monitoring hooks |
-| `aa-proxy` | Sidecar traffic interception proxy |
+| `aa-core` | Pure logic, `no_std`-compatible domain types and traits |
+| `aa-proto` | Protobuf message types — single source of truth for the wire format |
+| `aa-runtime` | Tokio async runtime wrapper and agent lifecycle |
+| `aa-ebpf` | eBPF-based kernel-level monitoring hooks (orchestrator crate) |
+| `aa-ebpf-common` | Shared types between user-space and eBPF programs |
+| `aa-ebpf-probes` | Userspace probe loaders (uprobes for SSL libraries) |
+| `aa-ebpf-programs` | eBPF programs compiled to BPF bytecode |
+| `aa-proxy` | Sidecar HTTPS interception proxy (MitM with per-host CA) |
 | `aa-ffi-python` | Python FFI bindings via PyO3 |
 | `aa-ffi-node` | Node.js FFI bindings via napi-rs |
+| `aa-ffi-go` | Go FFI bindings via cgo |
 | `aa-wasm` | WebAssembly target via wasm-bindgen |
-| `aa-gateway` | Control plane — policy enforcement and agent registry |
+| `aa-gateway` | Control plane — policy enforcement, agent registry, budget tracking |
 | `aa-api` | HTTP presentation layer with OpenAPI spec generation (utoipa) |
 | `aa-cli` | `aasm` command-line tool |
+| `conformance` | Cross-SDK protocol conformance test harness |
 
 ## Project Status
 
