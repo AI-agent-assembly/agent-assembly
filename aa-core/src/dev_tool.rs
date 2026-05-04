@@ -98,4 +98,21 @@ mod tests {
         assert!(GovernanceLevel::L2Enforce < GovernanceLevel::L3Native);
         assert!(GovernanceLevel::L0Discover < GovernanceLevel::L3Native);
     }
+
+    #[cfg(all(feature = "serde", feature = "alloc"))]
+    #[test]
+    fn dev_tool_kind_round_trips_via_serde_json() {
+        let cases = [
+            DevToolKind::ClaudeCode,
+            DevToolKind::Codex,
+            DevToolKind::GitHubCopilot,
+            DevToolKind::WindsurfCascade,
+            DevToolKind::Custom(String::from("MyEditor")),
+        ];
+        for original in cases {
+            let json = serde_json::to_string(&original).expect("serialize");
+            let restored: DevToolKind = serde_json::from_str(&json).expect("deserialize");
+            assert_eq!(restored, original);
+        }
+    }
 }
