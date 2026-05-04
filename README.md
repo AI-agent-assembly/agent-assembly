@@ -61,6 +61,36 @@ cargo build --workspace
 cargo nextest run --workspace
 ```
 
+## Quickstart — sidecar + test agent
+
+Run `aa-runtime` as a sidecar against a placeholder agent using the [`examples/docker-compose`](examples/docker-compose/) stack:
+
+```bash
+# 1. Build the workspace (first time only)
+cargo build --workspace --exclude aa-ebpf
+
+# 2. Launch the sidecar + a stub agent container
+cd examples/docker-compose
+AA_API_KEY=dev-local-key docker compose up
+```
+
+The sidecar exposes:
+
+- The agent IPC socket at `/tmp/aa-runtime-my-agent-001.sock`
+- Health and metrics on `http://localhost:8080`
+
+To exercise it without Docker, run the gateway and CLI directly:
+
+```bash
+# Terminal A — start the gateway
+cargo run -p aa-gateway
+
+# Terminal B — confirm registry + topology via the aasm CLI
+cargo run -p aa-cli -- topology
+```
+
+Replace the `agent-stub` service in `examples/docker-compose/docker-compose.yml` with your own SDK-based agent image once `python-sdk`, `node-sdk`, or `go-sdk` is wired into your project.
+
 ## Repository Layout
 
 ```
