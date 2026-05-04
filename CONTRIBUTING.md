@@ -7,7 +7,7 @@ Thank you for your interest in contributing! This guide explains how to set up y
 - **Rust stable** (≥ 1.75) — install via [rustup](https://rustup.rs/)
 - **cargo-nextest** — `cargo install cargo-nextest`
 - **cargo-deny** — `cargo install cargo-deny`
-- **Lefthook** — `brew install lefthook` (macOS) or see [install guide](https://github.com/evilmartians/lefthook/blob/master/docs/install.md)
+- **Lefthook** — `brew install lefthook` (macOS) or see [install guide](https://github.com/evilmartians/lefthook/blob/master/docs/install.md); the hook configuration lives in [`lefthook.toml`](lefthook.toml)
 
 ## Setup
 
@@ -15,7 +15,8 @@ Thank you for your interest in contributing! This guide explains how to set up y
 git clone https://github.com/AI-agent-assembly/agent-assembly.git
 cd agent-assembly
 
-# Install git hooks (runs fmt, clippy, deny on commit)
+# Install git hooks (runs fmt, clippy, deny on commit; doc on push)
+# See lefthook.toml for the full hook list.
 lefthook install
 
 # Verify the workspace builds
