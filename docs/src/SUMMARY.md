@@ -16,7 +16,7 @@
 
 # Protocol
 
-- [Changelog]()
+- [Changelog](protocol/CHANGELOG.md)
 
 # Migration
 
