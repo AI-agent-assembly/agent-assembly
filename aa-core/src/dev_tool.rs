@@ -360,4 +360,38 @@ mod tests {
         let json2 = serde_json::to_string(&restored).expect("re-serialize");
         assert_eq!(json1, json2);
     }
+
+    // ---- Trait conformance (locks DevToolAdapter's shape) -----------------
+    //
+    // These helpers are compile-time checks. The fact that they reference
+    // `&dyn DevToolAdapter` and `Box<dyn DevToolAdapter>` (which require
+    // `Send + Sync` because the trait inherits those bounds) is what
+    // exercises the assertions — if any future change makes the trait
+    // un-object-safe or drops `Send + Sync`, this module fails to compile.
+
+    #[cfg(feature = "std")]
+    fn _assert_object_safe(_: &dyn DevToolAdapter) {}
+
+    #[cfg(feature = "std")]
+    fn _assert_send_sync<T: Send + Sync>() {}
+
+    /// Compile-time conformance check for `DevToolAdapter`.
+    ///
+    /// Locks two invariants every implementor must satisfy:
+    /// 1. The trait is **object-safe** — `&dyn DevToolAdapter` and
+    ///    `Box<dyn DevToolAdapter>` both compile.
+    /// 2. Trait objects are `Send + Sync` — required so adapters can be
+    ///    stored in a global registry and called from the gateway's
+    ///    Tokio task pool.
+    ///
+    /// If either invariant breaks (someone adds a non-dyn-compatible
+    /// method, removes the `Send + Sync` bound on the trait, etc.) this
+    /// test will fail to compile — which is exactly what AAASM-925
+    /// requires it to do.
+    #[cfg(feature = "std")]
+    #[test]
+    fn trait_is_object_safe() {
+        let _: fn(&dyn DevToolAdapter) = _assert_object_safe;
+        _assert_send_sync::<Box<dyn DevToolAdapter>>();
+    }
 }
