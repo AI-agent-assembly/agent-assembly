@@ -54,3 +54,26 @@ jobs:
           name: agent-assembly-book
           path: docs/book/
           retention-days: 7
+
+  verify-commands:
+    name: Verify documented commands (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies (protoc, pkg-config, libssl-dev)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler pkg-config libssl-dev
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+
+      - name: Verify README "Getting Started" build command
+        run: cargo build --workspace --exclude aa-ebpf
+
+      - name: Verify api-reference.md rustdoc command
+        run: cargo doc --workspace --no-deps --exclude aa-ebpf
