@@ -110,6 +110,7 @@ async fn full_lifecycle_register_heartbeat_control_stream_deregister() {
             tool_names: vec!["tool_a".into()],
             public_key: public_key.clone(),
             metadata: Default::default(),
+            ..Default::default()
         })
         .await
         .unwrap()
@@ -175,6 +176,7 @@ async fn register_with_invalid_public_key_returns_error() {
             tool_names: vec![],
             public_key: "not_valid_hex_key".into(),
             metadata: Default::default(),
+            ..Default::default()
         })
         .await
         .unwrap_err();
@@ -202,6 +204,7 @@ async fn heartbeat_with_wrong_token_returns_unauthenticated() {
             tool_names: vec![],
             public_key: test_ed25519_public_key_hex(),
             metadata: Default::default(),
+            ..Default::default()
         })
         .await
         .unwrap();
@@ -255,6 +258,7 @@ async fn duplicate_register_returns_already_exists() {
         tool_names: vec![],
         public_key: test_ed25519_public_key_hex(),
         metadata: Default::default(),
+        ..Default::default()
     };
 
     client.register(req.clone()).await.unwrap();
@@ -287,6 +291,7 @@ async fn heartbeat_returns_should_suspend_true_for_suspended_agent() {
             tool_names: vec![],
             public_key,
             metadata: Default::default(),
+            ..Default::default()
         })
         .await
         .unwrap()
@@ -336,6 +341,7 @@ async fn heartbeat_returns_should_suspend_false_for_active_agent() {
             tool_names: vec![],
             public_key,
             metadata: Default::default(),
+            ..Default::default()
         })
         .await
         .unwrap()
@@ -382,6 +388,7 @@ async fn heartbeat_auto_resumes_budget_suspended_agent_when_budget_reset() {
             tool_names: vec![],
             public_key: test_ed25519_public_key_hex(),
             metadata: Default::default(),
+            ..Default::default()
         })
         .await
         .unwrap()
@@ -436,6 +443,7 @@ async fn heartbeat_does_not_resume_manually_suspended_agent() {
             tool_names: vec![],
             public_key: test_ed25519_public_key_hex(),
             metadata: Default::default(),
+            ..Default::default()
         })
         .await
         .unwrap()
@@ -462,4 +470,73 @@ async fn heartbeat_does_not_resume_manually_suspended_agent() {
 
     let status = registry.agent_status(&agent_key).unwrap();
     assert_eq!(status, AgentStatus::Suspended(SuspendReason::Manual));
+}
+
+// ── Topology echo (AAASM-208 / AAASM-933) ────────────────────────────────
+
+#[tokio::test]
+async fn register_echoes_parent_agent_id_and_team_id() {
+    let (addr, _registry) = start_server().await;
+    let mut client = AgentLifecycleServiceClient::connect(format!("http://{addr}"))
+        .await
+        .unwrap();
+
+    let agent_id = ProtoAgentId {
+        org_id: "org-echo".into(),
+        team_id: "team-echo".into(),
+        agent_id: "agent-echo-1".into(),
+    };
+
+    let reg_resp = client
+        .register(RegisterRequest {
+            agent_id: Some(agent_id),
+            name: "echo-agent".into(),
+            framework: "custom".into(),
+            version: "1.0.0".into(),
+            risk_tier: 0,
+            tool_names: vec![],
+            public_key: test_ed25519_public_key_hex(),
+            metadata: Default::default(),
+            parent_agent_id: Some("parent-echo".into()),
+            ..Default::default()
+        })
+        .await
+        .unwrap()
+        .into_inner();
+
+    assert_eq!(reg_resp.parent_agent_id, Some("parent-echo".into()));
+    assert_eq!(reg_resp.team_id, Some("team-echo".into()));
+}
+
+#[tokio::test]
+async fn register_without_topology_returns_none_echo_fields() {
+    let (addr, _registry) = start_server().await;
+    let mut client = AgentLifecycleServiceClient::connect(format!("http://{addr}"))
+        .await
+        .unwrap();
+
+    let agent_id = ProtoAgentId {
+        org_id: "org-no-topo".into(),
+        team_id: String::new(),
+        agent_id: "agent-no-topo-1".into(),
+    };
+
+    let reg_resp = client
+        .register(RegisterRequest {
+            agent_id: Some(agent_id),
+            name: "no-topo-agent".into(),
+            framework: "custom".into(),
+            version: "1.0.0".into(),
+            risk_tier: 0,
+            tool_names: vec![],
+            public_key: test_ed25519_public_key_hex(),
+            metadata: Default::default(),
+            ..Default::default()
+        })
+        .await
+        .unwrap()
+        .into_inner();
+
+    assert_eq!(reg_resp.parent_agent_id, None);
+    assert_eq!(reg_resp.team_id, None, "empty team_id must normalize to None");
 }

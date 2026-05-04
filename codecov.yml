@@ -8,6 +8,12 @@ coverage:
   round: down
   range: "70..100"
 
+# Paths excluded from all coverage reports (including PR patch coverage).
+# Listed binaries are run manually (not by `cargo test`), so coverage tooling
+# never observes them and they would otherwise drag patch coverage to 0%.
+ignore:
+  - "conformance/src/bin/"
+
 comment:
   layout: "reach,diff,flags,tree"
   behavior: default

@@ -30,30 +30,44 @@ service AgentLifecycleService {
 
 message RegisterRequest {
   // Composite agent identity (org + team + agent_id).
-  assembly.common.v1.AgentId     agent_id   = 1;
+  assembly.common.v1.AgentId     agent_id          = 1;
   // Human-readable agent name.
-  string                         name       = 2;
+  string                         name              = 2;
   // Agent framework name (e.g. "langgraph", "crewai", "custom").
-  string                         framework  = 3;
+  string                         framework         = 3;
   // Semver version of the agent process.
-  string                         version    = 4;
+  string                         version           = 4;
   // Risk tier the agent is registering under.
-  assembly.common.v1.RiskTier    risk_tier  = 5;
+  assembly.common.v1.RiskTier    risk_tier         = 5;
   // Tools the agent declares it intends to use — used for pre-registration policy check.
-  repeated string                tool_names = 6;
+  repeated string                tool_names        = 6;
   // Ed25519 public key for request signing verification by the gateway.
-  string                         public_key = 7;
+  string                         public_key        = 7;
   // Arbitrary key-value metadata (e.g. team, owner, git_commit, environment).
-  map<string, string>            metadata   = 8;
+  map<string, string>            metadata          = 8;
+  // UUID of the parent agent that spawned this one — None for root agents.
+  optional string                parent_agent_id   = 9;
+  // Free-form reason the parent delegated to this agent — recorded for audit/observability.
+  optional string                delegation_reason = 10;
+  // Tool / framework that triggered the spawn (e.g. "langgraph.subgraph", "openai.handoff").
+  optional string                spawned_by_tool   = 11;
+  // Maximum delegation depth this agent is allowed to create — gateway enforces depth caps.
+  optional uint32                max_child_depth   = 12;
+  // next: 13
 }
 
 message RegisterResponse {
   // Short-lived credential token issued by the gateway; must be carried on all subsequent requests.
-  string credential_token       = 1;
+  string          credential_token       = 1;
   // ID of the policy assigned to this agent at registration time.
-  string assigned_policy        = 2;
+  string          assigned_policy        = 2;
   // How often the gateway expects a heartbeat (seconds).
-  int64  heartbeat_interval_sec = 3;
+  int64           heartbeat_interval_sec = 3;
+  // Echo of `parent_agent_id` from the request — confirms the gateway accepted the topology metadata.
+  optional string parent_agent_id        = 4;
+  // Echo of the `team_id` from the request's `AgentId` — confirms the gateway accepted team scoping.
+  optional string team_id                = 5;
+  // next: 6
 }
 
 // ── Heartbeat ─────────────────────────────────────────────────────────────────

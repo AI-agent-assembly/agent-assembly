@@ -100,6 +100,7 @@ fn register_response_round_trips() {
             credential_token: str_field(f, "credential_token").to_string(),
             assigned_policy: str_field(f, "assigned_policy").to_string(),
             heartbeat_interval_sec: i64_field(f, "heartbeat_interval_sec"),
+            ..Default::default()
         };
         let decoded = round_trip(&msg);
         assert_eq!(
