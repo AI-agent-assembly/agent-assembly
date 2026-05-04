@@ -181,6 +181,14 @@ mod tests {
         assert_eq!(parsed, PolicyScope::Agent(AgentId::from_bytes(AGENT_BYTES)));
     }
 
+    #[test]
+    fn parses_tool_with_name() {
+        assert_eq!(
+            "tool:slack-mcp".parse::<PolicyScope>().unwrap(),
+            PolicyScope::Tool("slack-mcp".to_owned()),
+        );
+    }
+
     // ── Display round-trip ──────────────────────────────────────────────────
 
     #[test]
@@ -190,6 +198,7 @@ mod tests {
             PolicyScope::Org("acme".to_owned()),
             PolicyScope::Team("platform".to_owned()),
             PolicyScope::Agent(AgentId::from_bytes(AGENT_BYTES)),
+            PolicyScope::Tool("slack-mcp".to_owned()),
         ];
         for original in cases {
             let rendered = original.to_string();
@@ -207,6 +216,7 @@ mod tests {
             PolicyScope::Org("acme".to_owned()),
             PolicyScope::Team("platform".to_owned()),
             PolicyScope::Agent(AgentId::from_bytes(AGENT_BYTES)),
+            PolicyScope::Tool("slack-mcp".to_owned()),
         ];
         for original in cases {
             let yaml = serde_yaml::to_string(&original).unwrap();
@@ -250,5 +260,12 @@ mod tests {
     #[test]
     fn rejects_agent_with_non_uuid_value() {
         assert_invalid_scope("agent:not-a-uuid", "valid UUID");
+    }
+
+    #[test]
+    fn rejects_empty_tool_name() {
+        // Same empty-identifier guard as `team:` / `org:` / `agent:`,
+        // applied to `tool:`. Verifies the AAASM-1008 AC explicitly.
+        assert_invalid_scope("tool:", "must not be empty");
     }
 }
