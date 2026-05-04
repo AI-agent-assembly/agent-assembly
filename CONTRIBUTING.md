@@ -97,7 +97,7 @@ The easiest way is to pass `-s` (or `--signoff`) to `git commit`:
 git commit -s -m "✨ (aa-core): Add AgentId newtype wrapper"
 ```
 
-PRs whose commits are missing the sign-off trailer will be blocked by the DCO check.
+Sign-off is currently advisory: please include the trailer on every commit so the history is ready when the DCO GitHub App is enabled (tracked as a follow-up under Epic AAASM-13). At that point unsigned commits will block merge.
 
 ## Code Quality
 
