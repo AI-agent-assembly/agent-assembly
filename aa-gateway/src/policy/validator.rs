@@ -770,6 +770,44 @@ data:
         );
     }
 
+    /// Parameterised coverage for every malformed-scope shape the validator
+    /// must reject. Each row is `(quoted YAML scalar, substring expected in
+    /// the diagnostic)`. The substring lets the test stay robust against
+    /// minor wording changes in `PolicyParseError::Display`.
+    #[test]
+    fn every_malformed_scope_form_is_rejected_with_useful_diagnostic() {
+        let cases: &[(&str, &str)] = &[
+            // Empty quoted string — neither `global` nor `<kind>:<id>`.
+            ("\"\"", "expected `global`"),
+            // No colon and not `global`.
+            ("acme", "expected `global`"),
+            // Empty identifier after the colon.
+            ("\"team:\"", "must not be empty"),
+            // Unknown scope kind.
+            ("project:foo", "unknown scope kind"),
+            // Agent variant with a non-UUID identifier.
+            ("agent:not-a-uuid", "valid UUID"),
+        ];
+
+        for (yaml_scalar, expected_substring) in cases {
+            let yaml = format!("scope: {}\n", yaml_scalar);
+            let result = PolicyValidator::from_yaml(&yaml);
+            assert!(
+                result.is_err(),
+                "expected error for malformed scope {:?}",
+                yaml_scalar,
+            );
+            let errs = result.unwrap_err();
+            assert!(
+                errs.iter().any(|e| e.message.contains(expected_substring)),
+                "for scope {:?} expected diagnostic containing {:?}, got {:?}",
+                yaml_scalar,
+                expected_substring,
+                errs,
+            );
+        }
+    }
+
     // ── Approval timeout validation ──────────────────────────────────────────
 
     #[test]
