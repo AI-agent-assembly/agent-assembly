@@ -14,7 +14,7 @@ sha2   = { version = "0.11", default-features = false, optional = true }
 
 [features]
 default    = ["std"]
-std        = ["alloc", "dep:aho-corasick"]
+std        = ["alloc", "dep:aho-corasick", "serde?/std"]
 alloc      = ["dep:sha2"]
 serde      = ["dep:serde"]
 test-utils = []
