@@ -51,7 +51,9 @@ message RegisterRequest {
   optional string                delegation_reason = 10;
   // Tool / framework that triggered the spawn (e.g. "langgraph.subgraph", "openai.handoff").
   optional string                spawned_by_tool   = 11;
-  // next: 12
+  // Maximum delegation depth this agent is allowed to create — gateway enforces depth caps.
+  optional uint32                max_child_depth   = 12;
+  // next: 13
 }
 
 message RegisterResponse {
