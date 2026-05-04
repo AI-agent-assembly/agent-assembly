@@ -3,8 +3,11 @@
 > Governance-native runtime for AI agents — open-source core.
 
 [![CI](https://github.com/AI-agent-assembly/agent-assembly/actions/workflows/ci.yml/badge.svg)](https://github.com/AI-agent-assembly/agent-assembly/actions/workflows/ci.yml)
+[![Docs](https://github.com/AI-agent-assembly/agent-assembly/actions/workflows/docs.yml/badge.svg)](https://github.com/AI-agent-assembly/agent-assembly/actions/workflows/docs.yml)
 [![codecov](https://codecov.io/gh/AI-agent-assembly/agent-assembly/branch/master/graph/badge.svg)](https://codecov.io/gh/AI-agent-assembly/agent-assembly)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+[![crates.io](https://img.shields.io/badge/crates.io-unpublished-lightgrey)](https://crates.io/)
+
 
 ## Overview
 
@@ -12,18 +15,35 @@
 
 ## Crate Map
 
+The Cargo workspace declares **14 members** in the top-level `Cargo.toml`. Two additional eBPF-target crates live alongside but are intentionally outside the workspace because they compile for the `bpfel-unknown-none` target.
+
+### Workspace members
+
 | Crate | Role |
 |---|---|
-| `aa-core` | Pure logic, `no_std` compatible domain types and traits |
-| `aa-runtime` | Tokio async runtime wrapper and lifecycle management |
-| `aa-ebpf` | eBPF-based kernel-level monitoring hooks |
-| `aa-proxy` | Sidecar traffic interception proxy |
+| `aa-core` | Pure logic, `no_std`-compatible domain types and traits |
+| `aa-proto` | Protobuf message types — single source of truth for the wire format |
+| `aa-runtime` | Tokio async runtime wrapper and agent lifecycle |
+| `aa-ebpf` | eBPF orchestrator (loads probes/programs via `aya-build`) |
+| `aa-ebpf-common` | Shared types between user-space and eBPF programs |
+| `aa-proxy` | Sidecar HTTPS interception proxy (MitM with per-host CA) |
 | `aa-ffi-python` | Python FFI bindings via PyO3 |
 | `aa-ffi-node` | Node.js FFI bindings via napi-rs |
+| `aa-ffi-go` | Go FFI bindings via cgo |
 | `aa-wasm` | WebAssembly target via wasm-bindgen |
-| `aa-gateway` | Control plane — policy enforcement and agent registry |
+| `aa-gateway` | Control plane — policy enforcement, agent registry, budget tracking |
 | `aa-api` | HTTP presentation layer with OpenAPI spec generation (utoipa) |
 | `aa-cli` | `aasm` command-line tool |
+| `conformance` | Cross-SDK protocol conformance test harness |
+
+### Out-of-workspace eBPF target crates
+
+These two are built by `aa-ebpf/build.rs` (via `aya-build`) for the BPF target — they are not part of the host workspace and cannot be selected with `cargo -p`:
+
+| Crate | Role |
+|---|---|
+| `aa-ebpf-probes` | Userspace probe loaders (uprobes for SSL libraries) |
+| `aa-ebpf-programs` | eBPF programs compiled to BPF bytecode (`bpfel-unknown-none`) |
 
 ## Project Status
 
@@ -32,9 +52,11 @@
 ## Requirements
 
 - Rust stable (≥ 1.75)
+- `protoc` — Protocol Buffers compiler (`brew install protobuf` on macOS, `apt-get install protobuf-compiler` on Debian/Ubuntu); required by `aa-proto` and `aa-gateway` build scripts
 - [cargo-nextest](https://nexte.st/) for running tests
 - [cargo-deny](https://embarkstudios.github.io/cargo-deny/) for dependency checks
 - [Lefthook](https://github.com/evilmartians/lefthook) for git hooks
+- **Linux only**: `pkg-config` and `libssl-dev` (or `openssl-devel` on RHEL-family) for native TLS in `aa-proxy`; eBPF crates additionally require a recent kernel with BTF and a nightly Rust toolchain (see `aa-ebpf/README.md`)
 
 ## Getting Started
 
@@ -46,31 +68,70 @@ cd agent-assembly
 # Install git hooks
 lefthook install
 
-# Build all crates
-cargo build --workspace
+# Build all crates except aa-ebpf (eBPF crate requires a nightly toolchain;
+# CI excludes it the same way and validates it in a dedicated job).
+cargo build --workspace --exclude aa-ebpf
 
 # Run tests
-cargo nextest run --workspace
+cargo nextest run --workspace --exclude aa-ebpf
 ```
+
+## Quickstart — sidecar + test agent
+
+Run `aa-runtime` as a sidecar against a placeholder agent using the [`examples/docker-compose`](examples/docker-compose/) stack:
+
+```bash
+# 1. Build the workspace (first time only)
+cargo build --workspace --exclude aa-ebpf
+
+# 2. Launch the sidecar + a stub agent container
+cd examples/docker-compose
+AA_API_KEY=dev-local-key docker compose up
+```
+
+The sidecar exposes:
+
+- The agent IPC socket at `/tmp/aa-runtime-my-agent-001.sock`
+- Readiness probe at `http://localhost:8080/ready`
+
+To run only the governance gateway (without Docker), point it at one of the bundled YAML policies:
+
+```bash
+# Start the gateway gRPC server with a sample policy file.
+# Listens on 127.0.0.1:50051 by default; SDK shims and aa-proxy connect over gRPC.
+cargo run -p aa-gateway -- --policy policy-examples/low-risk.yaml
+```
+
+`policy-examples/{low,medium,high}-risk.yaml` are reference policies — pick one or write your own following the same schema.
+
+Replace the `agent-stub` service in `examples/docker-compose/docker-compose.yml` with your own SDK-based agent image once `python-sdk`, `node-sdk`, or `go-sdk` is wired into your project.
 
 ## Repository Layout
 
 ```
 agent-assembly/
-├── aa-core/           # Domain types (no_std)
-├── aa-runtime/        # Async runtime wrapper
-├── aa-ebpf/           # eBPF hooks
-├── aa-proxy/          # Sidecar proxy
-├── aa-ffi-python/     # Python bindings
-├── aa-ffi-node/       # Node bindings
-├── aa-wasm/           # WASM target
-├── aa-gateway/        # Control plane
-├── aa-api/            # HTTP API + OpenAPI
-├── aa-cli/            # CLI tool (aasm)
-├── proto/             # Protobuf definitions
-├── openapi/           # OpenAPI spec
-├── dashboard/         # Community web UI (React + TypeScript)
-└── policy-examples/   # Example governance policies
+├── aa-core/             # Domain types (no_std)
+├── aa-proto/            # Protobuf message types (wire format)
+├── aa-runtime/          # Async runtime + agent lifecycle
+├── aa-ebpf/             # eBPF orchestrator (workspace member)
+├── aa-ebpf-common/      # Shared user/kernel types (workspace member)
+├── aa-ebpf-probes/      # Userspace probe loaders (out-of-workspace, BPF target)
+├── aa-ebpf-programs/    # eBPF programs (out-of-workspace, BPF target)
+├── aa-proxy/            # Sidecar HTTPS proxy
+├── aa-ffi-python/       # Python bindings (PyO3)
+├── aa-ffi-node/         # Node bindings (napi-rs)
+├── aa-ffi-go/           # Go bindings (cgo)
+├── aa-wasm/             # WASM target
+├── aa-gateway/          # Control plane (policy, registry, budget)
+├── aa-api/              # HTTP API + OpenAPI
+├── aa-cli/              # CLI tool (aasm)
+├── conformance/         # Protocol conformance test harness
+├── proto/               # Protobuf source (.proto files)
+├── openapi/             # Generated OpenAPI v1 spec
+├── schemas/             # JSON schemas (compatibility matrix)
+├── dashboard/           # Community web UI (React + TypeScript)
+├── docs/                # mdBook contributor documentation
+└── policy-examples/     # Reference governance policies
 ```
 
 ## Documentation
