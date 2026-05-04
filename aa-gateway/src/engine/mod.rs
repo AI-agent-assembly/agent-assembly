@@ -1068,7 +1068,12 @@ mod tests {
             name: "stub".to_string(),
             rules: vec![],
         };
-        let result = engine.load_policy(&stub);
+        // PolicyEngine now also exposes an inherent `load_policy` that
+        // returns a `PolicyId` (AAASM-951). Use fully-qualified syntax so
+        // method resolution picks the trait stub under test rather than
+        // the inherent method, mirroring the trait-vs-inherent disambiguation
+        // already used for `evaluate` above.
+        let result = <PolicyEngine as PolicyEvaluator>::load_policy(&mut engine, &stub);
         assert_eq!(result, Err(aa_core::PolicyError::InvalidDocument));
     }
 
