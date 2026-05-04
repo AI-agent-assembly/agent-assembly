@@ -11,5 +11,6 @@ pub mod scope;
 pub mod validator;
 
 pub use document::{ActiveHours, BudgetPolicy, DataPolicy, NetworkPolicy, PolicyDocument, SchedulePolicy, ToolPolicy};
-pub use error::{ValidationError, ValidationWarning};
+pub use error::{PolicyParseError, ValidationError, ValidationWarning};
+pub use scope::{OrgId, PolicyScope, TeamId};
 pub use validator::{PolicyValidator, PolicyValidatorOutput};
