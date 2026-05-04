@@ -11,8 +11,8 @@
 
 # Architecture
 
-- [Overview]()
-- [API Reference]()
+- [Overview](architecture.md)
+- [API Reference](api-reference.md)
 
 # Protocol
 
