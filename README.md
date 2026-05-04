@@ -68,11 +68,12 @@ cd agent-assembly
 # Install git hooks
 lefthook install
 
-# Build all crates
-cargo build --workspace
+# Build all crates except aa-ebpf (eBPF crate requires a nightly toolchain;
+# CI excludes it the same way and validates it in a dedicated job).
+cargo build --workspace --exclude aa-ebpf
 
 # Run tests
-cargo nextest run --workspace
+cargo nextest run --workspace --exclude aa-ebpf
 ```
 
 ## Quickstart — sidecar + test agent
@@ -91,17 +92,20 @@ AA_API_KEY=dev-local-key docker compose up
 The sidecar exposes:
 
 - The agent IPC socket at `/tmp/aa-runtime-my-agent-001.sock`
-- Health and metrics on `http://localhost:8080`
+- Readiness probe at `http://localhost:8080/ready`
 
-To exercise it without Docker, run the gateway and CLI directly:
+To exercise the governance gateway directly (without Docker), use one of the bundled YAML policies:
 
 ```bash
-# Terminal A — start the gateway
-cargo run -p aa-gateway
+# Terminal A — start the gateway against a sample policy file
+cargo run -p aa-gateway -- --policy policy-examples/low-risk.yaml
 
-# Terminal B — confirm registry + topology via the aasm CLI
-cargo run -p aa-cli -- topology
+# Terminal B — confirm the aasm CLI builds and reaches the gateway
+cargo run -p aa-cli -- version
+cargo run -p aa-cli -- status
 ```
+
+`policy-examples/{low,medium,high}-risk.yaml` are reference policies — pick one or write your own following the same schema.
 
 Replace the `agent-stub` service in `examples/docker-compose/docker-compose.yml` with your own SDK-based agent image once `python-sdk`, `node-sdk`, or `go-sdk` is wired into your project.
 
