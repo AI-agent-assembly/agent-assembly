@@ -65,20 +65,28 @@ cargo nextest run --workspace
 
 ```
 agent-assembly/
-├── aa-core/           # Domain types (no_std)
-├── aa-runtime/        # Async runtime wrapper
-├── aa-ebpf/           # eBPF hooks
-├── aa-proxy/          # Sidecar proxy
-├── aa-ffi-python/     # Python bindings
-├── aa-ffi-node/       # Node bindings
-├── aa-wasm/           # WASM target
-├── aa-gateway/        # Control plane
-├── aa-api/            # HTTP API + OpenAPI
-├── aa-cli/            # CLI tool (aasm)
-├── proto/             # Protobuf definitions
-├── openapi/           # OpenAPI spec
-├── dashboard/         # Community web UI (React + TypeScript)
-└── policy-examples/   # Example governance policies
+├── aa-core/             # Domain types (no_std)
+├── aa-proto/            # Protobuf message types (wire format)
+├── aa-runtime/          # Async runtime + agent lifecycle
+├── aa-ebpf/             # eBPF orchestrator
+├── aa-ebpf-common/      # Shared user/kernel types
+├── aa-ebpf-probes/      # Userspace probe loaders
+├── aa-ebpf-programs/    # eBPF programs (BPF bytecode)
+├── aa-proxy/            # Sidecar HTTPS proxy
+├── aa-ffi-python/       # Python bindings (PyO3)
+├── aa-ffi-node/         # Node bindings (napi-rs)
+├── aa-ffi-go/           # Go bindings (cgo)
+├── aa-wasm/             # WASM target
+├── aa-gateway/          # Control plane (policy, registry, budget)
+├── aa-api/              # HTTP API + OpenAPI
+├── aa-cli/              # CLI tool (aasm)
+├── conformance/         # Protocol conformance test harness
+├── proto/               # Protobuf source (.proto files)
+├── openapi/             # Generated OpenAPI v1 spec
+├── schemas/             # JSON schemas (compatibility matrix)
+├── dashboard/           # Community web UI (React + TypeScript)
+├── docs/                # mdBook contributor documentation
+└── policy-examples/     # Reference governance policies
 ```
 
 ## Documentation
