@@ -5,6 +5,9 @@
 //! They are intentionally light and free of runtime dependencies so that
 //! adapters can be implemented in `no_std` contexts where applicable.
 
+#[cfg(feature = "alloc")]
+use alloc::string::String;
+
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
@@ -36,4 +39,26 @@ pub enum GovernanceLevel {
     /// L3 — Native. Full SDK-integrated governance with identity,
     /// lineage, and semantic context awareness.
     L3Native,
+}
+
+/// Concrete kind of AI dev tool being governed.
+///
+/// Concrete variants are matched against built-in `DevToolAdapter`
+/// implementations. The [`Custom`][Self::Custom] variant lets out-of-tree
+/// adapters identify themselves by name without requiring a code change
+/// to this enum.
+#[cfg(feature = "alloc")]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub enum DevToolKind {
+    /// Anthropic Claude Code (CLI).
+    ClaudeCode,
+    /// OpenAI Codex CLI.
+    Codex,
+    /// GitHub Copilot operating in agent mode.
+    GitHubCopilot,
+    /// Codeium Windsurf Cascade IDE agent.
+    WindsurfCascade,
+    /// Adapter-defined custom tool identified by an opaque name string.
+    Custom(String),
 }
