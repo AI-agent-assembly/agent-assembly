@@ -23,6 +23,48 @@ pub type TeamId = String;
 /// Resolution order is `Global → Org → Team → Agent`, with most-restrictive-wins
 /// merging performed by [`crate::engine::PolicyEngine`] (wired in F93). The
 /// `Tool` variant for a 5-level chain is added by AAASM-1008.
+///
+/// # Wire format
+///
+/// `PolicyScope` uses a single colon-separated string in YAML and other serde
+/// formats. The forms are:
+///
+/// | Variant         | Wire form                             |
+/// |-----------------|---------------------------------------|
+/// | `Global`        | `global`                              |
+/// | `Org(id)`       | `org:<id>`                            |
+/// | `Team(id)`      | `team:<id>`                           |
+/// | `Agent(uuid)`   | `agent:<hyphenated-uuid>`             |
+///
+/// # Examples
+///
+/// Round-tripping through `Display` and `FromStr`:
+///
+/// ```
+/// use aa_gateway::policy::scope::PolicyScope;
+///
+/// let scope: PolicyScope = "team:platform".parse().unwrap();
+/// assert_eq!(scope.to_string(), "team:platform");
+/// ```
+///
+/// Reading from YAML (`scope:` is the canonical key on a policy document):
+///
+/// ```
+/// use aa_gateway::policy::scope::PolicyScope;
+///
+/// let scope: PolicyScope = serde_yaml::from_str("org:acme").unwrap();
+/// assert_eq!(scope, PolicyScope::Org("acme".to_owned()));
+/// ```
+///
+/// Malformed inputs surface as
+/// [`PolicyParseError::InvalidScope`](crate::policy::error::PolicyParseError::InvalidScope):
+///
+/// ```
+/// use aa_gateway::policy::scope::PolicyScope;
+///
+/// assert!("project:foo".parse::<PolicyScope>().is_err());
+/// assert!("team:".parse::<PolicyScope>().is_err());
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum PolicyScope {
     /// Applies to every agent — the default for backward compatibility.
