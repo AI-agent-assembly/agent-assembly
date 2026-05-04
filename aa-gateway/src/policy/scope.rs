@@ -1,7 +1,12 @@
-//! Policy scope hierarchy types (`global` / `org:<id>` / `team:<id>` / `agent:<uuid>`).
+//! Policy scope hierarchy types
+//! (`global` / `org:<id>` / `team:<id>` / `agent:<uuid>` / `tool:<name>`).
 //!
-//! See AAASM-219 (F92) for the design. Subsequent Sub-tasks will extend this
-//! module with the `Tool(...)` variant and a scope index inside `PolicyEngine`.
+//! See AAASM-219 (F92) for the design. The 5-level chain is the
+//! complete scope vocabulary; the `ScopeIndex` in
+//! [`crate::engine::scope_index`] indexes loaded policies by these
+//! variants, and the cascading evaluator in F93 (AAASM-220) consults
+//! them in `Global → Org → Team → Agent → Tool` order
+//! (most-restrictive-wins).
 
 use std::fmt;
 use std::str::FromStr;
@@ -20,9 +25,12 @@ pub type TeamId = String;
 
 /// Hierarchical scope a policy applies to.
 ///
-/// Resolution order is `Global → Org → Team → Agent`, with most-restrictive-wins
-/// merging performed by [`crate::engine::PolicyEngine`] (wired in F93). The
-/// `Tool` variant for a 5-level chain is added by AAASM-1008.
+/// Resolution order is `Global → Org → Team → Agent → Tool`, with
+/// most-restrictive-wins merging performed by
+/// [`crate::engine::PolicyEngine`] (wired in F93, AAASM-220). `Tool`
+/// sits at the most-restrictive end of the chain so a policy can,
+/// for example, deny `slack-mcp` for every agent in `team-x` even
+/// when team- and agent-level policies would otherwise allow it.
 ///
 /// # Wire format
 ///
@@ -35,6 +43,7 @@ pub type TeamId = String;
 /// | `Org(id)`       | `org:<id>`                            |
 /// | `Team(id)`      | `team:<id>`                           |
 /// | `Agent(uuid)`   | `agent:<hyphenated-uuid>`             |
+/// | `Tool(name)`    | `tool:<tool-name>`                    |
 ///
 /// # Examples
 ///
@@ -75,6 +84,10 @@ pub enum PolicyScope {
     Team(TeamId),
     /// Applies to a single specific agent.
     Agent(AgentId),
+    /// Applies to a specific tool / MCP server, across every agent
+    /// otherwise admitted by higher scopes. Sits at the most-restrictive
+    /// end of the cascading chain (`Global → Org → Team → Agent → Tool`).
+    Tool(String),
 }
 
 impl fmt::Display for PolicyScope {
@@ -84,6 +97,7 @@ impl fmt::Display for PolicyScope {
             Self::Org(id) => write!(f, "org:{}", id),
             Self::Team(id) => write!(f, "team:{}", id),
             Self::Agent(id) => write!(f, "agent:{}", Uuid::from_bytes(*id.as_bytes())),
+            Self::Tool(name) => write!(f, "tool:{}", name),
         }
     }
 }
@@ -118,6 +132,7 @@ impl FromStr for PolicyScope {
                     Uuid::parse_str(value).map_err(|e| invalid(&format!("agent id is not a valid UUID: {}", e)))?;
                 Ok(Self::Agent(AgentId::from_bytes(*uuid.as_bytes())))
             }
+            "tool" => Ok(Self::Tool(value.to_owned())),
             other => Err(invalid(&format!("unknown scope kind {:?}", other))),
         }
     }
@@ -175,6 +190,14 @@ mod tests {
         assert_eq!(parsed, PolicyScope::Agent(AgentId::from_bytes(AGENT_BYTES)));
     }
 
+    #[test]
+    fn parses_tool_with_name() {
+        assert_eq!(
+            "tool:slack-mcp".parse::<PolicyScope>().unwrap(),
+            PolicyScope::Tool("slack-mcp".to_owned()),
+        );
+    }
+
     // ── Display round-trip ──────────────────────────────────────────────────
 
     #[test]
@@ -184,6 +207,7 @@ mod tests {
             PolicyScope::Org("acme".to_owned()),
             PolicyScope::Team("platform".to_owned()),
             PolicyScope::Agent(AgentId::from_bytes(AGENT_BYTES)),
+            PolicyScope::Tool("slack-mcp".to_owned()),
         ];
         for original in cases {
             let rendered = original.to_string();
@@ -201,6 +225,7 @@ mod tests {
             PolicyScope::Org("acme".to_owned()),
             PolicyScope::Team("platform".to_owned()),
             PolicyScope::Agent(AgentId::from_bytes(AGENT_BYTES)),
+            PolicyScope::Tool("slack-mcp".to_owned()),
         ];
         for original in cases {
             let yaml = serde_yaml::to_string(&original).unwrap();
@@ -244,5 +269,12 @@ mod tests {
     #[test]
     fn rejects_agent_with_non_uuid_value() {
         assert_invalid_scope("agent:not-a-uuid", "valid UUID");
+    }
+
+    #[test]
+    fn rejects_empty_tool_name() {
+        // Same empty-identifier guard as `team:` / `org:` / `agent:`,
+        // applied to `tool:`. Verifies the AAASM-1008 AC explicitly.
+        assert_invalid_scope("tool:", "must not be empty");
     }
 }

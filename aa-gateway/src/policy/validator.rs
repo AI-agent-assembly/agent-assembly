@@ -817,6 +817,8 @@ data:
             ("acme", "expected `global`"),
             // Empty identifier after the colon.
             ("\"team:\"", "must not be empty"),
+            // Empty identifier on the Tool variant (AAASM-1008 AC).
+            ("\"tool:\"", "must not be empty"),
             // Unknown scope kind.
             ("project:foo", "unknown scope kind"),
             // Agent variant with a non-UUID identifier.
