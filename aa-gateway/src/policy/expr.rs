@@ -483,4 +483,23 @@ mod tests {
         // `tool` field is "" for ProcessExec → should NOT match "foo"
         assert!(!evaluate(r#"tool == "foo""#, &process("ls"), None));
     }
+
+    #[test]
+    fn parser_accepts_l0_through_l3() {
+        // Each named level parses and compares equal against an agent of the
+        // same level — covering all four members of the `GovernanceLevel`
+        // enum in a single test.
+        for (literal, level) in [
+            ("L0", GovernanceLevel::L0Discover),
+            ("L1", GovernanceLevel::L1Observe),
+            ("L2", GovernanceLevel::L2Enforce),
+            ("L3", GovernanceLevel::L3Native),
+        ] {
+            let expr = format!("governance_level == {literal}");
+            assert!(
+                evaluate(&expr, &tool("any"), Some(level)),
+                "{literal} did not parse / compare equal for matching agent level"
+            );
+        }
+    }
 }
