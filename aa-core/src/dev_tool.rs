@@ -95,20 +95,73 @@ pub struct McpServerInfo {
     pub args: Vec<String>,
 }
 
-/// Error type for [`DevToolAdapter`] method failures.
+/// Error type returned from [`DevToolAdapter`] method failures.
 ///
-/// This is an intentional minimal stub introduced together with the
-/// `DevToolAdapter` trait so the trait signatures resolve. AAASM-925 will
-/// populate the concrete error variants (`ToolNotFound`,
-/// `DetectionFailed`, `SettingsGenerationFailed`, etc.) and add a
-/// `thiserror::Error` derive. Marked `#[non_exhaustive]` so that addition
-/// is not a breaking change for downstream callers.
+/// Variants are kept narrow so the gateway and the `aa run` launcher can
+/// match on them and respond differently (e.g. `ToolNotFound` is
+/// surfaced as a friendly CLI error, while `Io` is logged and
+/// retried). The `#[from]` attribute on `Io` lets adapter implementations
+/// use the `?` operator with `std::io::Error` without manual
+/// `.map_err(...)` plumbing.
 ///
-/// [`DevToolAdapter`]: <not yet defined; introduced in this same Subtask>
-#[cfg(feature = "alloc")]
-#[derive(Debug)]
+/// Gated on `feature = "std"` because [`AdapterError::SettingsApplyFailed`]
+/// and [`AdapterError::Io`] wrap [`std::io::Error`].
+///
+/// `#[non_exhaustive]` is kept so future variants can be added without
+/// breaking downstream callers that match on this enum.
+#[cfg(feature = "std")]
+#[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum AdapterError {}
+pub enum AdapterError {
+    /// The tool's binary or installation marker could not be located on
+    /// the host.
+    #[error("dev tool not found on this host")]
+    ToolNotFound,
+
+    /// Detection failed for a reason other than the tool simply not being
+    /// installed (e.g. permission denied reading the install directory,
+    /// version probe failed).
+    #[error("dev tool detection failed: {0}")]
+    DetectionFailed(String),
+
+    /// The policy contained constructs the tool's native managed-settings
+    /// format cannot express. Returned by
+    /// [`DevToolAdapter::generate_managed_settings`].
+    #[error("managed-settings generation failed: {0}")]
+    SettingsGenerationFailed(String),
+
+    /// Writing rendered managed settings to the tool's configuration
+    /// surface failed. Returned by [`DevToolAdapter::apply_settings`].
+    #[error("managed-settings apply failed: {0}")]
+    SettingsApplyFailed(std::io::Error),
+
+    /// The tool's binary could not be located, or its argument format
+    /// cannot accommodate the launcher's governance wiring. Returned by
+    /// [`DevToolAdapter::build_launch_command`].
+    #[error("launch command construction failed: {0}")]
+    LaunchFailed(String),
+
+    /// The tool's MCP configuration surface could not be read or written
+    /// (malformed file, permission denied, schema mismatch). Returned
+    /// by [`DevToolAdapter::list_mcp_servers`] and
+    /// [`DevToolAdapter::apply_mcp_governance`].
+    #[error("MCP configuration failed: {0}")]
+    McpConfigFailed(String),
+
+    /// Generic I/O failure not covered by a more specific variant. The
+    /// `#[from]` attribute lets adapter implementations use `?` to
+    /// propagate `std::io::Error` directly.
+    #[error("I/O error: {0}")]
+    Io(#[from] std::io::Error),
+
+    /// Serialization or deserialization failure during managed-settings
+    /// or MCP-config rendering. Adapter implementations stringify their
+    /// underlying serde error (e.g. `serde_json::Error::to_string()`)
+    /// and pass the message in. Keeps `aa-core` free of a runtime
+    /// `serde_json` dependency.
+    #[error("serialization error: {0}")]
+    Serde(String),
+}
 
 /// Static metadata describing a detected AI dev tool installation.
 ///
