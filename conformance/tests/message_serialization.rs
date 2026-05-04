@@ -211,3 +211,31 @@ fn check_action_response_allow_round_trips() {
     assert_eq!(decoded.decision_latency_us, 312);
     assert!(decoded.redact.is_none());
 }
+
+#[test]
+fn register_request_topology_fields_round_trip() {
+    let original = RegisterRequest {
+        agent_id: Some(AgentId {
+            org_id: "acme-corp".into(),
+            team_id: "platform".into(),
+            agent_id: "did:key:child".into(),
+        }),
+        name: "child-agent".into(),
+        framework: "langgraph".into(),
+        version: "1.0.0".into(),
+        risk_tier: RiskTier::Low as i32,
+        tool_names: vec![],
+        public_key: "ed25519:abcd".into(),
+        metadata: Default::default(),
+        parent_agent_id: Some("did:key:parent".into()),
+        delegation_reason: Some("research subtask".into()),
+        spawned_by_tool: Some("langgraph.subgraph".into()),
+        max_child_depth: Some(3),
+    };
+    let bytes = original.encode_to_vec();
+    let decoded = RegisterRequest::decode(bytes.as_slice()).expect("decode RegisterRequest");
+    assert_eq!(decoded.parent_agent_id, original.parent_agent_id);
+    assert_eq!(decoded.delegation_reason, original.delegation_reason);
+    assert_eq!(decoded.spawned_by_tool, original.spawned_by_tool);
+    assert_eq!(decoded.max_child_depth, original.max_child_depth);
+}
