@@ -6,6 +6,8 @@ pub(crate) mod rate_limit;
 pub mod scope_index;
 pub(crate) mod watcher;
 
+pub use scope_index::PolicyId;
+
 use arc_swap::ArcSwap;
 use dashmap::DashMap;
 use std::{
