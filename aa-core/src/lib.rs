@@ -42,9 +42,9 @@ pub use agent::AgentContext;
 #[cfg(feature = "alloc")]
 pub use dev_tool::DevToolKind;
 #[cfg(feature = "alloc")]
-pub use dev_tool::{AdapterError, McpServerInfo};
+pub use dev_tool::McpServerInfo;
 #[cfg(feature = "std")]
-pub use dev_tool::{DevToolAdapter, DevToolInfo};
+pub use dev_tool::{AdapterError, DevToolAdapter, DevToolInfo};
 
 #[cfg(feature = "alloc")]
 pub use policy::{ArgsJson, GovernanceAction, PolicyDocument, PolicyEvaluator, PolicyResult, PolicyRule};

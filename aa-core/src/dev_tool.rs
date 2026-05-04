@@ -95,20 +95,73 @@ pub struct McpServerInfo {
     pub args: Vec<String>,
 }
 
-/// Error type for [`DevToolAdapter`] method failures.
+/// Error type returned from [`DevToolAdapter`] method failures.
 ///
-/// This is an intentional minimal stub introduced together with the
-/// `DevToolAdapter` trait so the trait signatures resolve. AAASM-925 will
-/// populate the concrete error variants (`ToolNotFound`,
-/// `DetectionFailed`, `SettingsGenerationFailed`, etc.) and add a
-/// `thiserror::Error` derive. Marked `#[non_exhaustive]` so that addition
-/// is not a breaking change for downstream callers.
+/// Variants are kept narrow so the gateway and the `aa run` launcher can
+/// match on them and respond differently (e.g. `ToolNotFound` is
+/// surfaced as a friendly CLI error, while `Io` is logged and
+/// retried). The `#[from]` attribute on `Io` lets adapter implementations
+/// use the `?` operator with `std::io::Error` without manual
+/// `.map_err(...)` plumbing.
 ///
-/// [`DevToolAdapter`]: <not yet defined; introduced in this same Subtask>
-#[cfg(feature = "alloc")]
-#[derive(Debug)]
+/// Gated on `feature = "std"` because [`AdapterError::SettingsApplyFailed`]
+/// and [`AdapterError::Io`] wrap [`std::io::Error`].
+///
+/// `#[non_exhaustive]` is kept so future variants can be added without
+/// breaking downstream callers that match on this enum.
+#[cfg(feature = "std")]
+#[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum AdapterError {}
+pub enum AdapterError {
+    /// The tool's binary or installation marker could not be located on
+    /// the host.
+    #[error("dev tool not found on this host")]
+    ToolNotFound,
+
+    /// Detection failed for a reason other than the tool simply not being
+    /// installed (e.g. permission denied reading the install directory,
+    /// version probe failed).
+    #[error("dev tool detection failed: {0}")]
+    DetectionFailed(String),
+
+    /// The policy contained constructs the tool's native managed-settings
+    /// format cannot express. Returned by
+    /// [`DevToolAdapter::generate_managed_settings`].
+    #[error("managed-settings generation failed: {0}")]
+    SettingsGenerationFailed(String),
+
+    /// Writing rendered managed settings to the tool's configuration
+    /// surface failed. Returned by [`DevToolAdapter::apply_settings`].
+    #[error("managed-settings apply failed: {0}")]
+    SettingsApplyFailed(std::io::Error),
+
+    /// The tool's binary could not be located, or its argument format
+    /// cannot accommodate the launcher's governance wiring. Returned by
+    /// [`DevToolAdapter::build_launch_command`].
+    #[error("launch command construction failed: {0}")]
+    LaunchFailed(String),
+
+    /// The tool's MCP configuration surface could not be read or written
+    /// (malformed file, permission denied, schema mismatch). Returned
+    /// by [`DevToolAdapter::list_mcp_servers`] and
+    /// [`DevToolAdapter::apply_mcp_governance`].
+    #[error("MCP configuration failed: {0}")]
+    McpConfigFailed(String),
+
+    /// Generic I/O failure not covered by a more specific variant. The
+    /// `#[from]` attribute lets adapter implementations use `?` to
+    /// propagate `std::io::Error` directly.
+    #[error("I/O error: {0}")]
+    Io(#[from] std::io::Error),
+
+    /// Serialization or deserialization failure during managed-settings
+    /// or MCP-config rendering. Adapter implementations stringify their
+    /// underlying serde error (e.g. `serde_json::Error::to_string()`)
+    /// and pass the message in. Keeps `aa-core` free of a runtime
+    /// `serde_json` dependency.
+    #[error("serialization error: {0}")]
+    Serde(String),
+}
 
 /// Static metadata describing a detected AI dev tool installation.
 ///
@@ -173,9 +226,9 @@ pub trait DevToolAdapter: Send + Sync {
     /// ### Contract
     /// * On success, returns the rendered settings document as a UTF-8
     ///   string ready to be written by [`apply_settings`].
-    /// * Returns `AdapterError::SettingsGenerationFailed` (added in
-    ///   AAASM-925) when the policy contains constructs the tool's
-    ///   native config cannot express.
+    /// * Returns [`AdapterError::SettingsGenerationFailed`] when the
+    ///   policy contains constructs the tool's native config cannot
+    ///   express.
     /// * Pure: must not touch the filesystem.
     ///
     /// [`PolicyDocument`]: crate::policy::PolicyDocument
@@ -189,8 +242,7 @@ pub trait DevToolAdapter: Send + Sync {
     /// * On success, the tool will pick up the new policy on its next
     ///   launch (some tools require a restart; the adapter is expected
     ///   to document that in its own crate-level docs).
-    /// * Returns `AdapterError::SettingsApplyFailed` (added in
-    ///   AAASM-925) on filesystem error.
+    /// * Returns [`AdapterError::SettingsApplyFailed`] on filesystem error.
     /// * Idempotent: applying the same `settings` twice is a no-op.
     async fn apply_settings(&self, settings: &str) -> Result<(), AdapterError>;
 
@@ -205,9 +257,9 @@ pub trait DevToolAdapter: Send + Sync {
     ///   proxy; the adapter must inject the appropriate
     ///   `HTTPS_PROXY` / `OPENAI_BASE_URL` / similar env var so the
     ///   tool routes traffic through it.
-    /// * Returns `AdapterError::LaunchFailed` (added in AAASM-925)
-    ///   when the tool's binary cannot be located or its argument
-    ///   format cannot accommodate the wiring.
+    /// * Returns [`AdapterError::LaunchFailed`] when the tool's binary
+    ///   cannot be located or its argument format cannot accommodate
+    ///   the wiring.
     /// * Sync (no I/O performed) — the returned `Command` is *built*,
     ///   not spawned. Spawning is the launcher's job.
     fn build_launch_command(
@@ -226,8 +278,8 @@ pub trait DevToolAdapter: Send + Sync {
     ///   surface (e.g. `~/.claude/mcp_servers.json`).
     /// * Returns an empty `Vec` (not an error) when the tool supports
     ///   MCP but has no servers configured.
-    /// * Returns `AdapterError::McpConfigFailed` (added in
-    ///   AAASM-925) when the config exists but is malformed.
+    /// * Returns [`AdapterError::McpConfigFailed`] when the config
+    ///   exists but is malformed.
     /// * Tools whose `DevToolInfo::supports_mcp == false` should
     ///   instead return an empty `Vec`.
     async fn list_mcp_servers(&self) -> Result<Vec<McpServerInfo>, AdapterError>;
@@ -242,8 +294,8 @@ pub trait DevToolAdapter: Send + Sync {
     /// * `denied` is an explicit blocklist applied even if a server
     ///   appears in `allowed` — `denied` wins on conflict (matches
     ///   policy-engine evaluation order).
-    /// * Returns `AdapterError::McpConfigFailed` (added in
-    ///   AAASM-925) on filesystem write failure.
+    /// * Returns [`AdapterError::McpConfigFailed`] on filesystem write
+    ///   failure.
     /// * Tools without MCP support should return `Ok(())` without
     ///   performing any work.
     async fn apply_mcp_governance(&self, allowed: &[String], denied: &[String]) -> Result<(), AdapterError>;
@@ -307,5 +359,39 @@ mod tests {
         let restored: DevToolInfo = serde_json::from_str(&json1).expect("deserialize");
         let json2 = serde_json::to_string(&restored).expect("re-serialize");
         assert_eq!(json1, json2);
+    }
+
+    // ---- Trait conformance (locks DevToolAdapter's shape) -----------------
+    //
+    // These helpers are compile-time checks. The fact that they reference
+    // `&dyn DevToolAdapter` and `Box<dyn DevToolAdapter>` (which require
+    // `Send + Sync` because the trait inherits those bounds) is what
+    // exercises the assertions — if any future change makes the trait
+    // un-object-safe or drops `Send + Sync`, this module fails to compile.
+
+    #[cfg(feature = "std")]
+    fn _assert_object_safe(_: &dyn DevToolAdapter) {}
+
+    #[cfg(feature = "std")]
+    fn _assert_send_sync<T: Send + Sync>() {}
+
+    /// Compile-time conformance check for `DevToolAdapter`.
+    ///
+    /// Locks two invariants every implementor must satisfy:
+    /// 1. The trait is **object-safe** — `&dyn DevToolAdapter` and
+    ///    `Box<dyn DevToolAdapter>` both compile.
+    /// 2. Trait objects are `Send + Sync` — required so adapters can be
+    ///    stored in a global registry and called from the gateway's
+    ///    Tokio task pool.
+    ///
+    /// If either invariant breaks (someone adds a non-dyn-compatible
+    /// method, removes the `Send + Sync` bound on the trait, etc.) this
+    /// test will fail to compile — which is exactly what AAASM-925
+    /// requires it to do.
+    #[cfg(feature = "std")]
+    #[test]
+    fn trait_is_object_safe() {
+        let _: fn(&dyn DevToolAdapter) = _assert_object_safe;
+        _assert_send_sync::<Box<dyn DevToolAdapter>>();
     }
 }
