@@ -73,6 +73,7 @@ name = "aa-core"
 version = "0.0.1"
 dependencies = [
  "aho-corasick",
+ "async-trait",
  "cfg-if",
  "criterion",
  "serde",
