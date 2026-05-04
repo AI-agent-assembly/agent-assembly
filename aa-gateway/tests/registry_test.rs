@@ -359,3 +359,22 @@ fn active_sessions_and_recent_events_survive_retrieval() {
     assert_eq!(retrieved.recent_events[0].event_type, "violation");
     assert_eq!(retrieved.recent_events[0].summary, "unauthorized tool call");
 }
+
+#[test]
+fn agent_record_defaults_governance_level_to_l0_discover() {
+    // Records constructed via the standard test builder (which mirrors the
+    // production lifecycle path) start at the safest level — discover-only.
+    let record = make_record(key(0));
+    assert_eq!(record.governance_level, aa_core::GovernanceLevel::L0Discover);
+}
+
+#[test]
+fn agent_record_governance_level_round_trips_through_registry() {
+    let reg = AgentRegistry::new();
+    let mut record = make_record(key(1));
+    record.governance_level = aa_core::GovernanceLevel::L2Enforce;
+    reg.register(record).unwrap();
+
+    let retrieved = reg.get(&key(1)).unwrap();
+    assert_eq!(retrieved.governance_level, aa_core::GovernanceLevel::L2Enforce);
+}
