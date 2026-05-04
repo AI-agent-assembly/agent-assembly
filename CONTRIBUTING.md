@@ -48,6 +48,28 @@ Examples:
 - `🐛 (aa-gateway): Fix policy evaluation order for overlapping rules`
 - `🔧 (ci): Add matrix build for MSRV check`
 
+## Adding a new crate
+
+To add a new crate to the workspace:
+
+1. Scaffold the crate with `cargo new --lib aa-<name>` from the repo root.
+2. Add `aa-<name>` to the `members` array in the top-level [`Cargo.toml`](Cargo.toml).
+3. In the new crate's `Cargo.toml`, inherit workspace metadata:
+
+   ```toml
+   [package]
+   name = "aa-<name>"
+   version.workspace = true
+   edition.workspace = true
+   license.workspace = true
+   repository.workspace = true
+   ```
+
+4. Use `[workspace.lints.clippy]` from the top-level `Cargo.toml` — do **not** redefine clippy lints per-crate.
+5. If the crate exposes a binary, declare it explicitly under `[[bin]]` (see [`aa-cli/Cargo.toml`](aa-cli/Cargo.toml) for the canonical example).
+6. Run `cargo build --workspace`, `cargo clippy --workspace --all-targets -- -D warnings`, and `cargo doc --workspace --no-deps` to confirm the new crate integrates cleanly.
+7. Add the crate to the **Crate Map** table and **Repository Layout** tree in [`README.md`](README.md).
+
 ## Pull Requests
 
 - Open a PR against `master`.
