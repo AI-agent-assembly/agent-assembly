@@ -226,9 +226,9 @@ pub trait DevToolAdapter: Send + Sync {
     /// ### Contract
     /// * On success, returns the rendered settings document as a UTF-8
     ///   string ready to be written by [`apply_settings`].
-    /// * Returns `AdapterError::SettingsGenerationFailed` (added in
-    ///   AAASM-925) when the policy contains constructs the tool's
-    ///   native config cannot express.
+    /// * Returns [`AdapterError::SettingsGenerationFailed`] when the
+    ///   policy contains constructs the tool's native config cannot
+    ///   express.
     /// * Pure: must not touch the filesystem.
     ///
     /// [`PolicyDocument`]: crate::policy::PolicyDocument
@@ -242,8 +242,7 @@ pub trait DevToolAdapter: Send + Sync {
     /// * On success, the tool will pick up the new policy on its next
     ///   launch (some tools require a restart; the adapter is expected
     ///   to document that in its own crate-level docs).
-    /// * Returns `AdapterError::SettingsApplyFailed` (added in
-    ///   AAASM-925) on filesystem error.
+    /// * Returns [`AdapterError::SettingsApplyFailed`] on filesystem error.
     /// * Idempotent: applying the same `settings` twice is a no-op.
     async fn apply_settings(&self, settings: &str) -> Result<(), AdapterError>;
 
@@ -258,9 +257,9 @@ pub trait DevToolAdapter: Send + Sync {
     ///   proxy; the adapter must inject the appropriate
     ///   `HTTPS_PROXY` / `OPENAI_BASE_URL` / similar env var so the
     ///   tool routes traffic through it.
-    /// * Returns `AdapterError::LaunchFailed` (added in AAASM-925)
-    ///   when the tool's binary cannot be located or its argument
-    ///   format cannot accommodate the wiring.
+    /// * Returns [`AdapterError::LaunchFailed`] when the tool's binary
+    ///   cannot be located or its argument format cannot accommodate
+    ///   the wiring.
     /// * Sync (no I/O performed) — the returned `Command` is *built*,
     ///   not spawned. Spawning is the launcher's job.
     fn build_launch_command(
@@ -279,8 +278,8 @@ pub trait DevToolAdapter: Send + Sync {
     ///   surface (e.g. `~/.claude/mcp_servers.json`).
     /// * Returns an empty `Vec` (not an error) when the tool supports
     ///   MCP but has no servers configured.
-    /// * Returns `AdapterError::McpConfigFailed` (added in
-    ///   AAASM-925) when the config exists but is malformed.
+    /// * Returns [`AdapterError::McpConfigFailed`] when the config
+    ///   exists but is malformed.
     /// * Tools whose `DevToolInfo::supports_mcp == false` should
     ///   instead return an empty `Vec`.
     async fn list_mcp_servers(&self) -> Result<Vec<McpServerInfo>, AdapterError>;
@@ -295,8 +294,8 @@ pub trait DevToolAdapter: Send + Sync {
     /// * `denied` is an explicit blocklist applied even if a server
     ///   appears in `allowed` — `denied` wins on conflict (matches
     ///   policy-engine evaluation order).
-    /// * Returns `AdapterError::McpConfigFailed` (added in
-    ///   AAASM-925) on filesystem write failure.
+    /// * Returns [`AdapterError::McpConfigFailed`] on filesystem write
+    ///   failure.
     /// * Tools without MCP support should return `Ok(())` without
     ///   performing any work.
     async fn apply_mcp_governance(&self, allowed: &[String], denied: &[String]) -> Result<(), AdapterError>;
