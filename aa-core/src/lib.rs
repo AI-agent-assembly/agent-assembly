@@ -33,11 +33,16 @@ pub mod policy;
 pub mod scanner;
 pub mod time;
 
+pub use dev_tool::GovernanceLevel;
 pub use identity::{AgentId, SessionId};
 pub use policy::{FileMode, PolicyDecision, PolicyError};
 
 #[cfg(feature = "alloc")]
 pub use agent::AgentContext;
+#[cfg(feature = "alloc")]
+pub use dev_tool::DevToolKind;
+#[cfg(feature = "std")]
+pub use dev_tool::DevToolInfo;
 
 #[cfg(feature = "alloc")]
 pub use policy::{ArgsJson, GovernanceAction, PolicyDocument, PolicyEvaluator, PolicyResult, PolicyRule};
