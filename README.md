@@ -86,6 +86,8 @@ mdbook serve docs --open
 | Chapter | Description |
 |---|---|
 | [Introduction](docs/src/README.md) | Book overview and audience |
+| [Architecture Overview](docs/src/architecture.md) | Crate dependency graph, three-layer interception, IPC, sidecar lifecycle, policy evaluation |
+| [API Reference](docs/src/api-reference.md) | rustdoc generation flow and per-crate API surface map |
 | [Compatibility Matrix](docs/src/compatibility.md) | Which `aa-runtime` versions work with which SDK versions |
 | [Versioning Policy](docs/src/versioning.md) | Protocol semver rules, breaking-change classification, deprecation lifecycle |
 | [Protocol Changelog](docs/src/protocol/CHANGELOG.md) | Wire-protocol change log |
