@@ -114,8 +114,8 @@ impl FromStr for PolicyScope {
             "org" => Ok(Self::Org(value.to_owned())),
             "team" => Ok(Self::Team(value.to_owned())),
             "agent" => {
-                let uuid = Uuid::parse_str(value)
-                    .map_err(|e| invalid(&format!("agent id is not a valid UUID: {}", e)))?;
+                let uuid =
+                    Uuid::parse_str(value).map_err(|e| invalid(&format!("agent id is not a valid UUID: {}", e)))?;
                 Ok(Self::Agent(AgentId::from_bytes(*uuid.as_bytes())))
             }
             other => Err(invalid(&format!("unknown scope kind {:?}", other))),
