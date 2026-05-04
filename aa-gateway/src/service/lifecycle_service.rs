@@ -115,6 +115,7 @@ impl AgentLifecycleService for AgentLifecycleServiceImpl {
             credential_token,
             assigned_policy: String::new(),
             heartbeat_interval_sec: DEFAULT_HEARTBEAT_INTERVAL_SEC,
+            ..Default::default()
         }))
     }
 

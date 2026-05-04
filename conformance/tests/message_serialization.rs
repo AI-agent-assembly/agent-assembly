@@ -141,6 +141,7 @@ fn register_response_matches_golden() {
         credential_token: "eyJhbGciOiJFZERTQSJ9.tok.sig".into(),
         assigned_policy: "policy:acme-standard-v2".into(),
         heartbeat_interval_sec: 30,
+        ..Default::default()
     };
     assert_eq!(msg.encode_to_vec(), load_golden_bin("register_response"));
 }

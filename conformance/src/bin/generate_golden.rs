@@ -144,6 +144,7 @@ fn main() {
             credential_token: "eyJhbGciOiJFZERTQSJ9.tok.sig".into(),
             assigned_policy: "policy:acme-standard-v2".into(),
             heartbeat_interval_sec: 30,
+            ..Default::default()
         },
     );
 

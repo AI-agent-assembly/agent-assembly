@@ -58,11 +58,14 @@ message RegisterRequest {
 
 message RegisterResponse {
   // Short-lived credential token issued by the gateway; must be carried on all subsequent requests.
-  string credential_token       = 1;
+  string          credential_token       = 1;
   // ID of the policy assigned to this agent at registration time.
-  string assigned_policy        = 2;
+  string          assigned_policy        = 2;
   // How often the gateway expects a heartbeat (seconds).
-  int64  heartbeat_interval_sec = 3;
+  int64           heartbeat_interval_sec = 3;
+  // Echo of `parent_agent_id` from the request — confirms the gateway accepted the topology metadata.
+  optional string parent_agent_id        = 4;
+  // next: 5
 }
 
 // ── Heartbeat ─────────────────────────────────────────────────────────────────
