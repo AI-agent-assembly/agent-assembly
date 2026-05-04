@@ -7,6 +7,7 @@ pub mod error;
 pub(crate) mod expr;
 pub mod history;
 pub mod raw;
+pub mod scope;
 pub mod validator;
 
 pub use document::{ActiveHours, BudgetPolicy, DataPolicy, NetworkPolicy, PolicyDocument, SchedulePolicy, ToolPolicy};
