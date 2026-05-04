@@ -15,15 +15,17 @@
 
 ## Crate Map
 
+The Cargo workspace declares **14 members** in the top-level `Cargo.toml`. Two additional eBPF-target crates live alongside but are intentionally outside the workspace because they compile for the `bpfel-unknown-none` target.
+
+### Workspace members
+
 | Crate | Role |
 |---|---|
 | `aa-core` | Pure logic, `no_std`-compatible domain types and traits |
 | `aa-proto` | Protobuf message types — single source of truth for the wire format |
 | `aa-runtime` | Tokio async runtime wrapper and agent lifecycle |
-| `aa-ebpf` | eBPF-based kernel-level monitoring hooks (orchestrator crate) |
+| `aa-ebpf` | eBPF orchestrator (loads probes/programs via `aya-build`) |
 | `aa-ebpf-common` | Shared types between user-space and eBPF programs |
-| `aa-ebpf-probes` | Userspace probe loaders (uprobes for SSL libraries) |
-| `aa-ebpf-programs` | eBPF programs compiled to BPF bytecode |
 | `aa-proxy` | Sidecar HTTPS interception proxy (MitM with per-host CA) |
 | `aa-ffi-python` | Python FFI bindings via PyO3 |
 | `aa-ffi-node` | Node.js FFI bindings via napi-rs |
@@ -33,6 +35,15 @@
 | `aa-api` | HTTP presentation layer with OpenAPI spec generation (utoipa) |
 | `aa-cli` | `aasm` command-line tool |
 | `conformance` | Cross-SDK protocol conformance test harness |
+
+### Out-of-workspace eBPF target crates
+
+These two are built by `aa-ebpf/build.rs` (via `aya-build`) for the BPF target — they are not part of the host workspace and cannot be selected with `cargo -p`:
+
+| Crate | Role |
+|---|---|
+| `aa-ebpf-probes` | Userspace probe loaders (uprobes for SSL libraries) |
+| `aa-ebpf-programs` | eBPF programs compiled to BPF bytecode (`bpfel-unknown-none`) |
 
 ## Project Status
 
@@ -101,10 +112,10 @@ agent-assembly/
 ├── aa-core/             # Domain types (no_std)
 ├── aa-proto/            # Protobuf message types (wire format)
 ├── aa-runtime/          # Async runtime + agent lifecycle
-├── aa-ebpf/             # eBPF orchestrator
-├── aa-ebpf-common/      # Shared user/kernel types
-├── aa-ebpf-probes/      # Userspace probe loaders
-├── aa-ebpf-programs/    # eBPF programs (BPF bytecode)
+├── aa-ebpf/             # eBPF orchestrator (workspace member)
+├── aa-ebpf-common/      # Shared user/kernel types (workspace member)
+├── aa-ebpf-probes/      # Userspace probe loaders (out-of-workspace, BPF target)
+├── aa-ebpf-programs/    # eBPF programs (out-of-workspace, BPF target)
 ├── aa-proxy/            # Sidecar HTTPS proxy
 ├── aa-ffi-python/       # Python bindings (PyO3)
 ├── aa-ffi-node/         # Node bindings (napi-rs)
