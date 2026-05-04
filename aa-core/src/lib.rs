@@ -25,6 +25,8 @@ cfg_if::cfg_if! {
 pub mod agent;
 #[cfg(feature = "alloc")]
 pub mod audit;
+#[cfg(feature = "std")]
+pub mod dev_tool;
 pub mod evaluators;
 pub mod identity;
 pub mod policy;
@@ -49,3 +51,6 @@ pub use audit::{AuditEntry, AuditEventType, AuditLog, AuditLogError};
 
 #[cfg(feature = "std")]
 pub use scanner::{CredentialFinding, CredentialKind, CredentialScanner, ScanResult, ScannerConfig};
+
+#[cfg(feature = "std")]
+pub use dev_tool::{DevToolInfo, DevToolKind, GovernanceLevel};
