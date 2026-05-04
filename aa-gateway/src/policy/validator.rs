@@ -727,6 +727,49 @@ data:
         assert!(out.document.network.is_none());
     }
 
+    // ── Scope field (F92) ───────────────────────────────────────────────────
+
+    #[test]
+    fn scope_absent_defaults_to_global_for_backward_compatibility() {
+        let yaml = "{}\n";
+        let out = PolicyValidator::from_yaml(yaml).unwrap();
+        assert_eq!(out.document.scope, PolicyScope::Global);
+    }
+
+    #[test]
+    fn scope_team_field_round_trips_through_validator() {
+        let yaml = "scope: team:platform\n";
+        let out = PolicyValidator::from_yaml(yaml).unwrap();
+        assert_eq!(out.document.scope, PolicyScope::Team("platform".to_owned()));
+    }
+
+    #[test]
+    fn scope_org_field_round_trips_through_validator() {
+        let yaml = "scope: org:acme\n";
+        let out = PolicyValidator::from_yaml(yaml).unwrap();
+        assert_eq!(out.document.scope, PolicyScope::Org("acme".to_owned()));
+    }
+
+    #[test]
+    fn scope_global_field_is_accepted() {
+        let yaml = "scope: global\n";
+        let out = PolicyValidator::from_yaml(yaml).unwrap();
+        assert_eq!(out.document.scope, PolicyScope::Global);
+    }
+
+    #[test]
+    fn malformed_scope_field_is_rejected_at_parse_time() {
+        let yaml = "scope: project:foo\n";
+        let result = PolicyValidator::from_yaml(yaml);
+        assert!(result.is_err(), "expected validation error for unknown scope kind");
+        let errs = result.unwrap_err();
+        assert!(
+            errs.iter().any(|e| e.message.contains("invalid policy scope")),
+            "expected error message mentioning invalid scope, got {:?}",
+            errs,
+        );
+    }
+
     // ── Approval timeout validation ──────────────────────────────────────────
 
     #[test]

@@ -93,3 +93,114 @@ impl<'de> Deserialize<'de> for PolicyScope {
         s.parse().map_err(serde::de::Error::custom)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::policy::error::PolicyParseError;
+
+    const AGENT_UUID: &str = "01234567-89ab-cdef-0123-456789abcdef";
+    const AGENT_BYTES: [u8; 16] = [
+        0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef,
+    ];
+
+    // ── FromStr happy paths ─────────────────────────────────────────────────
+
+    #[test]
+    fn parses_global() {
+        assert_eq!("global".parse::<PolicyScope>().unwrap(), PolicyScope::Global);
+    }
+
+    #[test]
+    fn parses_org_with_identifier() {
+        assert_eq!(
+            "org:acme".parse::<PolicyScope>().unwrap(),
+            PolicyScope::Org("acme".to_owned()),
+        );
+    }
+
+    #[test]
+    fn parses_team_with_identifier() {
+        assert_eq!(
+            "team:platform".parse::<PolicyScope>().unwrap(),
+            PolicyScope::Team("platform".to_owned()),
+        );
+    }
+
+    #[test]
+    fn parses_agent_with_uuid() {
+        let parsed = format!("agent:{}", AGENT_UUID).parse::<PolicyScope>().unwrap();
+        assert_eq!(parsed, PolicyScope::Agent(AgentId::from_bytes(AGENT_BYTES)));
+    }
+
+    // ── Display round-trip ──────────────────────────────────────────────────
+
+    #[test]
+    fn display_round_trips_for_each_variant() {
+        let cases = [
+            PolicyScope::Global,
+            PolicyScope::Org("acme".to_owned()),
+            PolicyScope::Team("platform".to_owned()),
+            PolicyScope::Agent(AgentId::from_bytes(AGENT_BYTES)),
+        ];
+        for original in cases {
+            let rendered = original.to_string();
+            let reparsed: PolicyScope = rendered.parse().unwrap();
+            assert_eq!(reparsed, original, "round-trip failed for {}", rendered);
+        }
+    }
+
+    // ── serde YAML round-trip ───────────────────────────────────────────────
+
+    #[test]
+    fn serde_yaml_round_trips_for_each_variant() {
+        let cases = [
+            PolicyScope::Global,
+            PolicyScope::Org("acme".to_owned()),
+            PolicyScope::Team("platform".to_owned()),
+            PolicyScope::Agent(AgentId::from_bytes(AGENT_BYTES)),
+        ];
+        for original in cases {
+            let yaml = serde_yaml::to_string(&original).unwrap();
+            let reparsed: PolicyScope = serde_yaml::from_str(&yaml).unwrap();
+            assert_eq!(reparsed, original, "serde round-trip failed for {}", yaml);
+        }
+    }
+
+    // ── FromStr error paths ─────────────────────────────────────────────────
+
+    fn assert_invalid_scope(raw: &str, expected_substring: &str) {
+        let err = raw.parse::<PolicyScope>().unwrap_err();
+        match err {
+            PolicyParseError::InvalidScope { raw: got_raw, reason } => {
+                assert_eq!(got_raw, raw);
+                assert!(
+                    reason.contains(expected_substring),
+                    "reason {:?} did not contain {:?}",
+                    reason,
+                    expected_substring
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn rejects_string_without_colon_or_global() {
+        assert_invalid_scope("acme", "expected `global`");
+    }
+
+    #[test]
+    fn rejects_unknown_scope_kind() {
+        assert_invalid_scope("project:foo", "unknown scope kind");
+    }
+
+    #[test]
+    fn rejects_empty_identifier_after_kind() {
+        assert_invalid_scope("team:", "must not be empty");
+    }
+
+    #[test]
+    fn rejects_agent_with_non_uuid_value() {
+        assert_invalid_scope("agent:not-a-uuid", "valid UUID");
+    }
+}
