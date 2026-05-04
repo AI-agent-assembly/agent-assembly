@@ -420,6 +420,36 @@ mod tests {
     }
 
     #[test]
+    fn parser_rejects_unknown_governance_level() {
+        // A condition referencing `L4` (or any non-L0..L3 level) must be
+        // rejected at validation time with the spec-mandated message.
+        let yaml = "tools:\n  bash:\n    allow: true\n    requires_approval_if: \"governance_level >= L4\"\n";
+        let errs = PolicyValidator::from_yaml(yaml).unwrap_err();
+        let err = errs
+            .iter()
+            .find(|e| e.field == "tools.bash.requires_approval_if")
+            .expect("validator should flag the unknown level on the requires_approval_if field");
+        assert_eq!(
+            err.message,
+            "unknown governance level: L4; valid values: L0, L1, L2, L3"
+        );
+    }
+
+    #[test]
+    fn validator_accepts_all_known_governance_levels() {
+        // Backward-compat sanity: valid L0..L3 conditions pass validation.
+        for lvl in ["L0", "L1", "L2", "L3"] {
+            let yaml = format!(
+                "tools:\n  bash:\n    allow: true\n    requires_approval_if: \"governance_level == {lvl}\"\n",
+            );
+            assert!(
+                PolicyValidator::from_yaml(&yaml).is_ok(),
+                "validator unexpectedly rejected condition with {lvl}",
+            );
+        }
+    }
+
+    #[test]
     fn tool_allow_defaults_to_true_when_absent() {
         let yaml = "tools:\n  bash:\n    limit_per_hour: 5\n";
         let out = PolicyValidator::from_yaml(yaml).unwrap();
