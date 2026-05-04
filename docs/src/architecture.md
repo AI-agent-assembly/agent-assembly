@@ -113,3 +113,29 @@ sequenceDiagram
 - **Proxy ↔ Gateway**: same gRPC client surface as the SDK; the proxy adapts inbound HTTPS into `PolicyDecisionRequest` calls.
 - **eBPF ↔ Gateway**: one-way audit events; eBPF cannot block in-kernel for bypass-detection use cases — it observes and forwards.
 - **API ↔ Gateway**: in-process — `aa-api` depends on `aa-gateway` directly and exposes its read APIs over HTTP via `utoipa`.
+
+## Sidecar lifecycle
+
+`aa-proxy` runs as a sidecar adjacent to the agent. Its lifecycle has five phases:
+
+```mermaid
+stateDiagram-v2
+    [*] --> Boot
+    Boot --> CASetup: Read AA_API_KEY,<br/>load policy file
+    CASetup --> PolicyFetch: Generate per-host CA<br/>via mkcert-style trust store
+    PolicyFetch --> Ready: Pull policy bundle<br/>from gateway over gRPC
+    Ready --> Enforcing: Begin proxying<br/>HTTPS traffic
+    Enforcing --> Enforcing: Periodic policy refresh<br/>(default 30s)
+    Enforcing --> Draining: SIGTERM
+    Draining --> [*]: Flush audit batch,<br/>close sockets
+```
+
+| Phase | What happens |
+|---|---|
+| **Boot** | Read environment (`AA_API_KEY`, `AA_GATEWAY_ADDR`, `AA_AGENT_ID`) and the policy file at `/etc/aa/policy.toml` (or `AA_POLICY_PATH`). |
+| **CA Setup** | Generate or load a per-host CA used to MitM HTTPS for governed destinations. The agent must trust this CA — the docker-compose example mounts it from a shared volume. |
+| **Policy Fetch** | Open a gRPC stream to `aa-gateway`; receive the active policy bundle. Cache locally for offline survivability. |
+| **Enforcing** | Forward outbound HTTPS, calling `PolicyDecisionRequest` on the gateway for governed action types. Allowed traffic is re-encrypted with the upstream certificate the proxy verified itself. |
+| **Draining** | On `SIGTERM`, stop accepting new connections, finish in-flight requests, flush the audit batch, then exit. |
+
+Health and metrics are exposed at `http://localhost:8080/healthz` and `/metrics` (Prometheus format) throughout the Enforcing phase.
