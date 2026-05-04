@@ -86,3 +86,16 @@ pub struct DevToolInfo {
     /// Whether the tool reads governance config from a managed-settings file.
     pub supports_managed_settings: bool,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn governance_level_orders_l0_through_l3() {
+        assert!(GovernanceLevel::L0Discover < GovernanceLevel::L1Observe);
+        assert!(GovernanceLevel::L1Observe < GovernanceLevel::L2Enforce);
+        assert!(GovernanceLevel::L2Enforce < GovernanceLevel::L3Native);
+        assert!(GovernanceLevel::L0Discover < GovernanceLevel::L3Native);
+    }
+}
