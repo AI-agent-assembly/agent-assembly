@@ -14,6 +14,7 @@ members = [
     "aa-api",
     "aa-cli",
     "conformance",
+    "examples/aa-devtool-sample-myeditor",
 ]
 resolver = "2"
 
