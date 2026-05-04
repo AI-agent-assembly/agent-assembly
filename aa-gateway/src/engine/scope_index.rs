@@ -114,3 +114,115 @@ impl ScopeIndex {
         self.by_scope.get(scope).map(Vec::as_slice).unwrap_or(&[])
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    /// Build an empty `PolicyDocument` carrying just the requested scope.
+    /// Keeps tests focused on the index, not on policy validation.
+    fn doc_with_scope(scope: PolicyScope) -> PolicyDocument {
+        PolicyDocument {
+            name: None,
+            policy_version: None,
+            version: None,
+            scope,
+            network: None,
+            schedule: None,
+            budget: None,
+            data: None,
+            approval_timeout_secs: 300,
+            tools: HashMap::new(),
+        }
+    }
+
+    #[test]
+    fn empty_index_reports_no_policies() {
+        let idx = ScopeIndex::new();
+        assert_eq!(idx.len(), 0);
+        assert!(idx.is_empty());
+        assert!(idx.policies_for_scope(&PolicyScope::Global).is_empty());
+    }
+
+    #[test]
+    fn insert_returns_distinct_ids_in_order() {
+        let mut idx = ScopeIndex::new();
+        let id_a = idx.insert(doc_with_scope(PolicyScope::Global));
+        let id_b = idx.insert(doc_with_scope(PolicyScope::Global));
+        assert_ne!(id_a, id_b, "ids must be unique within an index");
+        assert!(id_b.as_raw() > id_a.as_raw(), "ids must be monotonic");
+    }
+
+    #[test]
+    fn policies_for_scope_returns_load_order() {
+        let mut idx = ScopeIndex::new();
+        let team = PolicyScope::Team("platform".to_owned());
+        let id1 = idx.insert(doc_with_scope(team.clone()));
+        idx.insert(doc_with_scope(PolicyScope::Global));
+        let id3 = idx.insert(doc_with_scope(team.clone()));
+
+        assert_eq!(
+            idx.policies_for_scope(&team),
+            &[id1, id3],
+            "team bucket must hold ids in insertion order, with the global \
+             policy that landed in between excluded",
+        );
+    }
+
+    #[test]
+    fn policies_for_scope_groups_by_distinct_scopes() {
+        let mut idx = ScopeIndex::new();
+        let id_g = idx.insert(doc_with_scope(PolicyScope::Global));
+        let id_org = idx.insert(doc_with_scope(PolicyScope::Org("acme".to_owned())));
+        let id_team = idx.insert(doc_with_scope(PolicyScope::Team("platform".to_owned())));
+
+        assert_eq!(idx.policies_for_scope(&PolicyScope::Global), &[id_g]);
+        assert_eq!(idx.policies_for_scope(&PolicyScope::Org("acme".to_owned())), &[id_org]);
+        assert_eq!(
+            idx.policies_for_scope(&PolicyScope::Team("platform".to_owned())),
+            &[id_team],
+        );
+    }
+
+    #[test]
+    fn remove_drops_doc_and_strips_id_from_scope_bucket() {
+        let mut idx = ScopeIndex::new();
+        let team = PolicyScope::Team("platform".to_owned());
+        let id_a = idx.insert(doc_with_scope(team.clone()));
+        let id_b = idx.insert(doc_with_scope(team.clone()));
+
+        let removed = idx.remove(id_a);
+        assert!(removed.is_some(), "remove returns the dropped doc");
+        assert_eq!(idx.policies_for_scope(&team), &[id_b]);
+        assert!(idx.policy(id_a).is_none(), "doc lookup must miss after removal");
+    }
+
+    #[test]
+    fn remove_drops_empty_scope_bucket_entirely() {
+        let mut idx = ScopeIndex::new();
+        let team = PolicyScope::Team("platform".to_owned());
+        let id = idx.insert(doc_with_scope(team.clone()));
+
+        idx.remove(id);
+        assert!(
+            idx.policies_for_scope(&team).is_empty(),
+            "lookup must report empty for a fully-emptied bucket",
+        );
+    }
+
+    #[test]
+    fn remove_unknown_id_returns_none() {
+        let mut idx = ScopeIndex::new();
+        let bogus = PolicyId::from_raw(9_999);
+        assert!(idx.remove(bogus).is_none());
+    }
+
+    #[test]
+    fn policy_lookup_returns_inserted_document() {
+        let mut idx = ScopeIndex::new();
+        let id = idx.insert(doc_with_scope(PolicyScope::Org("acme".to_owned())));
+        let stored = idx.policy(id).expect("inserted doc must be retrievable");
+        assert_eq!(stored.scope, PolicyScope::Org("acme".to_owned()));
+    }
+}
