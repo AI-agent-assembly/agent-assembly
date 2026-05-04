@@ -82,6 +82,14 @@ impl AgentLifecycleService for AgentLifecycleServiceImpl {
         let credential_token = generate_credential_token();
         let now = Utc::now();
 
+        // Capture topology echo values before `req` is partially moved into `AgentRecord` below.
+        let echo_parent_agent_id = req.parent_agent_id.clone();
+        let echo_team_id = if proto_id.team_id.is_empty() {
+            None
+        } else {
+            Some(proto_id.team_id.clone())
+        };
+
         let record = AgentRecord {
             agent_id: agent_key,
             name: req.name,
@@ -115,7 +123,8 @@ impl AgentLifecycleService for AgentLifecycleServiceImpl {
             credential_token,
             assigned_policy: String::new(),
             heartbeat_interval_sec: DEFAULT_HEARTBEAT_INTERVAL_SEC,
-            ..Default::default()
+            parent_agent_id: echo_parent_agent_id,
+            team_id: echo_team_id,
         }))
     }
 
