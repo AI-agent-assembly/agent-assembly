@@ -2,6 +2,34 @@
 
 use std::fmt;
 
+/// An error produced while parsing a policy fragment from its string form.
+///
+/// Distinct from [`ValidationError`] because it is raised during low-level
+/// `FromStr` parsing (e.g. of [`super::scope::PolicyScope`]) before any
+/// document-level validation runs.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PolicyParseError {
+    /// The raw scope string did not match any recognised form.
+    InvalidScope {
+        /// The original string that failed to parse.
+        raw: String,
+        /// Human-readable explanation of the failure.
+        reason: String,
+    },
+}
+
+impl fmt::Display for PolicyParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::InvalidScope { raw, reason } => {
+                write!(f, "invalid policy scope {:?}: {}", raw, reason)
+            }
+        }
+    }
+}
+
+impl std::error::Error for PolicyParseError {}
+
 /// An error produced during policy document validation.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ValidationError {
