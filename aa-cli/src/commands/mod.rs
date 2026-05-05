@@ -17,6 +17,7 @@ pub mod cost;
 pub mod dashboard;
 pub mod logs;
 pub mod policy;
+pub mod run;
 pub mod status;
 pub mod trace;
 pub mod version;
@@ -50,6 +51,8 @@ pub enum Commands {
     Cost(cost::CostArgs),
     /// Open an interactive TUI dashboard for real-time governance monitoring.
     Dashboard(dashboard::DashboardArgs),
+    /// Launch an AI dev tool (claude, codex, copilot, windsurf) with governance wiring.
+    Run(run::RunArgs),
 }
 
 /// Dispatch the parsed CLI command to the appropriate handler.
@@ -68,5 +71,6 @@ pub fn dispatch(cmd: Commands, ctx: &ResolvedContext, output: OutputFormat) -> E
         Commands::Approvals(args) => approvals::dispatch(args, ctx, output),
         Commands::Cost(args) => cost::dispatch(args, ctx, output),
         Commands::Dashboard(args) => dashboard::dispatch(args, ctx),
+        Commands::Run(args) => run::dispatch(args, ctx, output),
     }
 }
