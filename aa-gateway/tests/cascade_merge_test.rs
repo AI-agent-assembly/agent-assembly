@@ -4,11 +4,11 @@ use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use aa_core::identity::{AgentId, SessionId};
+use aa_core::{AgentContext, GovernanceAction, GovernanceLevel};
 use aa_gateway::engine::decision::{merge_decisions, PolicyDecision};
 use aa_gateway::policy::document::PolicyDocument;
 use aa_gateway::policy::scope::PolicyScope;
-use aa_core::{AgentContext, GovernanceAction, GovernanceLevel};
-use aa_core::identity::{AgentId, SessionId};
 
 fn allow_doc(scope: PolicyScope) -> Arc<PolicyDocument> {
     Arc::new(PolicyDocument {

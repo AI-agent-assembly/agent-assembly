@@ -4,11 +4,11 @@ use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::io::Write;
 
+use aa_core::identity::{AgentId, SessionId};
+use aa_core::{AgentContext, GovernanceAction, GovernanceLevel};
 use aa_gateway::engine::PolicyEngine;
 use aa_gateway::policy::document::PolicyDocument;
 use aa_gateway::policy::scope::PolicyScope;
-use aa_core::identity::{AgentId, SessionId};
-use aa_core::{AgentContext, GovernanceAction, GovernanceLevel};
 
 fn make_engine() -> PolicyEngine {
     let mut tmp = tempfile::NamedTempFile::new().unwrap();
@@ -69,8 +69,16 @@ fn repeated_evaluate_with_cascade_produces_cache_hit() {
 
     // Second call — same epoch → cache hit.
     let _ = engine.evaluate(&ctx, &action);
-    assert_eq!(engine.cache_hits(), hits_after_first + 1, "second call should hit cache");
-    assert_eq!(engine.cache_misses(), misses_after_first, "miss count must not change on hit");
+    assert_eq!(
+        engine.cache_hits(),
+        hits_after_first + 1,
+        "second call should hit cache"
+    );
+    assert_eq!(
+        engine.cache_misses(),
+        misses_after_first,
+        "miss count must not change on hit"
+    );
 }
 
 // 2. Loading a new policy bumps the epoch, so the next call is a miss even for same action.

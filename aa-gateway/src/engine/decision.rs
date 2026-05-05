@@ -19,15 +19,9 @@ pub enum PolicyDecision {
     /// Action is allowed by this policy.
     Allow,
     /// Action requires human approval. Carries the policy's configured timeout.
-    RequireApproval {
-        reason: String,
-        timeout_secs: u32,
-    },
+    RequireApproval { reason: String, timeout_secs: u32 },
     /// Action is denied. `source_scope` identifies which scope triggered the deny.
-    Deny {
-        reason: String,
-        source_scope: PolicyScope,
-    },
+    Deny { reason: String, source_scope: PolicyScope },
 }
 
 impl PolicyDecision {
@@ -111,9 +105,7 @@ pub(crate) fn evaluate_single_doc(
     if let aa_core::GovernanceAction::ToolCall { name, .. } = action {
         if let Some(tp) = doc.tools.get(name) {
             if let Some(expr) = &tp.requires_approval_if {
-                if !expr.is_empty()
-                    && crate::policy::expr::evaluate(expr, action, Some(ctx.governance_level))
-                {
+                if !expr.is_empty() && crate::policy::expr::evaluate(expr, action, Some(ctx.governance_level)) {
                     return PolicyDecision::RequireApproval {
                         reason: format!("approval required for tool '{name}'"),
                         timeout_secs: doc.approval_timeout_secs,

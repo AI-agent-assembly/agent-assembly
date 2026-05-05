@@ -28,11 +28,7 @@ pub struct CacheKey {
 
 impl CacheKey {
     /// Build a cache key from an agent ID, epoch, and governance action.
-    pub fn new(
-        agent_id: &[u8; 16],
-        policy_epoch: u64,
-        action: &aa_core::GovernanceAction,
-    ) -> Self {
+    pub fn new(agent_id: &[u8; 16], policy_epoch: u64, action: &aa_core::GovernanceAction) -> Self {
         Self {
             agent_id: *agent_id,
             policy_epoch,

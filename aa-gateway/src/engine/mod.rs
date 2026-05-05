@@ -545,8 +545,7 @@ impl PolicyEngine {
                 for pattern in &dp.sensitive_patterns {
                     if let Ok(re) = regex::Regex::new(pattern) {
                         for m in re.find_iter(text) {
-                            all_findings
-                                .push(aa_core::CredentialFinding::from_regex_match(m.start(), m.end()));
+                            all_findings.push(aa_core::CredentialFinding::from_regex_match(m.start(), m.end()));
                         }
                     }
                 }

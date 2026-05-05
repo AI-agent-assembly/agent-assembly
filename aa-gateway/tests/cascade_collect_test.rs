@@ -4,11 +4,11 @@ use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use aa_core::identity::AgentId;
 use aa_gateway::engine::PolicyEngine;
 use aa_gateway::policy::document::PolicyDocument;
 use aa_gateway::policy::scope::PolicyScope;
 use aa_gateway::registry::{AgentRecord, AgentRegistry, AgentStatus};
-use aa_core::identity::AgentId;
 use chrono::Utc;
 
 fn make_registry() -> Arc<AgentRegistry> {
