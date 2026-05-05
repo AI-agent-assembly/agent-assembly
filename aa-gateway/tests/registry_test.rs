@@ -388,3 +388,37 @@ fn agent_record_governance_level_round_trips_through_registry() {
     let retrieved = reg.get(&key(1)).unwrap();
     assert_eq!(retrieved.governance_level, aa_core::GovernanceLevel::L2Enforce);
 }
+
+// ── Topology fields ──────────────────────────────────────────────────────────
+
+#[test]
+fn sub_agent_topology_fields_survive_registration() {
+    let reg = AgentRegistry::new();
+    let mut record = make_record(key(1));
+    record.parent_agent_id = Some("parent-agent-uuid".into());
+    record.team_id = Some("team-alpha".into());
+    record.depth = 2;
+    record.delegation_reason = Some("handle data extraction".into());
+    record.spawned_by_tool = Some("langgraph.subgraph".into());
+    reg.register(record).unwrap();
+
+    let retrieved = reg.get(&key(1)).unwrap();
+    assert_eq!(retrieved.parent_agent_id.as_deref(), Some("parent-agent-uuid"));
+    assert_eq!(retrieved.team_id.as_deref(), Some("team-alpha"));
+    assert_eq!(retrieved.depth, 2);
+    assert_eq!(retrieved.delegation_reason.as_deref(), Some("handle data extraction"));
+    assert_eq!(retrieved.spawned_by_tool.as_deref(), Some("langgraph.subgraph"));
+}
+
+#[test]
+fn root_agent_topology_fields_default_to_none_and_zero() {
+    let reg = AgentRegistry::new();
+    reg.register(make_record(key(2))).unwrap();
+
+    let retrieved = reg.get(&key(2)).unwrap();
+    assert!(retrieved.parent_agent_id.is_none());
+    assert!(retrieved.team_id.is_none());
+    assert_eq!(retrieved.depth, 0);
+    assert!(retrieved.delegation_reason.is_none());
+    assert!(retrieved.spawned_by_tool.is_none());
+}
