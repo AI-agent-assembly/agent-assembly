@@ -49,6 +49,33 @@ pub enum GovernanceLevel {
     L3Native,
 }
 
+impl core::fmt::Display for GovernanceLevel {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            GovernanceLevel::L0Discover => write!(f, "L0Discover"),
+            GovernanceLevel::L1Observe => write!(f, "L1Observe"),
+            GovernanceLevel::L2Enforce => write!(f, "L2Enforce"),
+            GovernanceLevel::L3Native => write!(f, "L3Native"),
+        }
+    }
+}
+
+impl core::str::FromStr for GovernanceLevel {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "L0" | "L0Discover" => Ok(GovernanceLevel::L0Discover),
+            "L1" | "L1Observe" => Ok(GovernanceLevel::L1Observe),
+            "L2" | "L2Enforce" => Ok(GovernanceLevel::L2Enforce),
+            "L3" | "L3Native" => Ok(GovernanceLevel::L3Native),
+            _ => Err(format!(
+                "unknown governance level '{s}'; expected L0, L1, L2, or L3"
+            )),
+        }
+    }
+}
+
 /// Concrete kind of AI dev tool being governed.
 ///
 /// Concrete variants are matched against built-in `DevToolAdapter`
