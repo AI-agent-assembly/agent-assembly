@@ -293,6 +293,47 @@ mod tests {
 
     #[cfg(feature = "serde")]
     #[test]
+    fn serde_round_trip_with_topology_fields() {
+        let original = AgentContext {
+            agent_id: AgentId::from_bytes(AGENT_BYTES),
+            session_id: SessionId::from_bytes(SESSION_BYTES),
+            pid: 42,
+            started_at: Timestamp::from_nanos(1_000_000),
+            metadata: BTreeMap::new(),
+            governance_level: GovernanceLevel::default(),
+            parent_agent_id: Some(AgentId::from_bytes([9u8; 16])),
+            team_id: Some("team-alpha".into()),
+            depth: 2,
+            delegation_reason: Some("summarise results".into()),
+            spawned_by_tool: Some("langgraph.subgraph".into()),
+        };
+        let json = serde_json::to_string(&original).expect("serialize");
+        let restored: AgentContext = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(original, restored);
+    }
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn serde_backward_compat_missing_topology_fields() {
+        // Contexts serialised before topology fields were added must still
+        // deserialise — new fields must default to their zero values.
+        let json = r#"{
+            "agent_id":[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+            "session_id":[2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2],
+            "pid":42,
+            "started_at":1000000,
+            "metadata":{}
+        }"#;
+        let restored: AgentContext = serde_json::from_str(json).expect("deserialize");
+        assert_eq!(restored.depth, 0);
+        assert!(restored.parent_agent_id.is_none());
+        assert!(restored.team_id.is_none());
+        assert!(restored.delegation_reason.is_none());
+        assert!(restored.spawned_by_tool.is_none());
+    }
+
+    #[cfg(feature = "serde")]
+    #[test]
     fn agent_context_defaults_to_l0_when_governance_level_missing() {
         // Old serialised contexts written before `governance_level` was
         // added must still deserialise — the field must default to
