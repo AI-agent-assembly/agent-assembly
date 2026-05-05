@@ -98,6 +98,16 @@ pub struct AgentRecord {
     /// existing agents registered before this field was introduced retain
     /// the discover-only default.
     pub governance_level: GovernanceLevel,
+    /// Agent ID string of the parent that spawned this agent; `None` for root agents.
+    pub parent_agent_id: Option<String>,
+    /// Team this agent belongs to; `None` if not provided at registration.
+    pub team_id: Option<String>,
+    /// Delegation depth in the agent hierarchy — 0 for root agents.
+    pub depth: u32,
+    /// Human-readable reason the parent delegated to this agent.
+    pub delegation_reason: Option<String>,
+    /// Tool or framework that triggered the spawn (e.g. `"langgraph.subgraph"`).
+    pub spawned_by_tool: Option<String>,
 }
 
 /// Channel sender type for pushing [`ControlCommand`]s to an agent's control stream.
