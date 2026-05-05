@@ -537,6 +537,62 @@ impl PolicyEngine {
     pub fn policy(&self, id: scope_index::PolicyId) -> Option<&Arc<PolicyDocument>> {
         self.scope_index.policy(id)
     }
+
+    /// Collect all policies applicable to `agent_id` in cascade walk order:
+    /// `Global → Org → Team → Agent`.
+    ///
+    /// Lineage (org, team) is resolved from the attached `AgentRegistry`.
+    /// If no registry is wired, or the agent is not registered, only `Global`
+    /// and `Agent`-scoped policies are collected.
+    ///
+    /// Returns a `Vec<Arc<PolicyDocument>>` ordered from broadest scope to
+    /// narrowest. Policies within the same scope appear in their load order
+    /// (insertion order in `ScopeIndex`).
+    pub fn collect_cascade(&self, agent_id: &aa_core::identity::AgentId) -> Vec<Arc<PolicyDocument>> {
+        use crate::policy::scope::PolicyScope;
+
+        let lineage = self
+            .registry
+            .as_ref()
+            .and_then(|r| r.lineage(agent_id.as_bytes()))
+            .unwrap_or_default();
+
+        let mut cascade = Vec::new();
+
+        // Global — broadest scope
+        for &id in self.scope_index.policies_for_scope(&PolicyScope::Global) {
+            if let Some(doc) = self.scope_index.policy(id) {
+                cascade.push(Arc::clone(doc));
+            }
+        }
+
+        // Org — if agent has an org
+        if let Some(ref org_id) = lineage.org_id {
+            for &id in self.scope_index.policies_for_scope(&PolicyScope::Org(org_id.clone())) {
+                if let Some(doc) = self.scope_index.policy(id) {
+                    cascade.push(Arc::clone(doc));
+                }
+            }
+        }
+
+        // Team — if agent has a team
+        if let Some(ref team_id) = lineage.team_id {
+            for &id in self.scope_index.policies_for_scope(&PolicyScope::Team(team_id.clone())) {
+                if let Some(doc) = self.scope_index.policy(id) {
+                    cascade.push(Arc::clone(doc));
+                }
+            }
+        }
+
+        // Agent — narrowest scope
+        for &id in self.scope_index.policies_for_scope(&PolicyScope::Agent(*agent_id)) {
+            if let Some(doc) = self.scope_index.policy(id) {
+                cascade.push(Arc::clone(doc));
+            }
+        }
+
+        cascade
+    }
 }
 
 /// Implement the `aa_core::PolicyEvaluator` trait so `PolicyEngine` can be used
