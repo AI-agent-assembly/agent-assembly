@@ -112,11 +112,11 @@ impl AgentLifecycleService for AgentLifecycleServiceImpl {
             recent_traces: Vec::new(),
             layer: None,
             governance_level: aa_core::GovernanceLevel::default(),
-            parent_agent_id: None,
-            team_id: None,
+            parent_agent_id: req.parent_agent_id,
+            team_id: echo_team_id.clone(),
             depth: 0,
-            delegation_reason: None,
-            spawned_by_tool: None,
+            delegation_reason: req.delegation_reason,
+            spawned_by_tool: req.spawned_by_tool,
         };
 
         self.registry
