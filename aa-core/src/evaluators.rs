@@ -82,6 +82,11 @@ mod tests {
             started_at: crate::time::Timestamp::from_nanos(0),
             metadata: alloc::collections::BTreeMap::new(),
             governance_level: crate::GovernanceLevel::default(),
+            parent_agent_id: None,
+            team_id: None,
+            depth: 0,
+            delegation_reason: None,
+            spawned_by_tool: None,
         }
     }
 

@@ -75,6 +75,11 @@ pub fn request_to_core(req: &CheckActionRequest) -> Result<(AgentContext, Govern
         // Provisional default — overwritten by the gateway service layer
         // with the agent's registered level before the engine sees it.
         governance_level: aa_core::GovernanceLevel::default(),
+        parent_agent_id: None,
+        team_id: None,
+        depth: 0,
+        delegation_reason: None,
+        spawned_by_tool: None,
     };
 
     // --- Governance action ---
