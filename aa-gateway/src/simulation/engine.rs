@@ -65,6 +65,7 @@ impl SimulationEngine {
             depth: 0,
             delegation_reason: None,
             spawned_by_tool: None,
+            root_agent_id: None,
         };
 
         let result = self.engine.evaluate(&ctx, &action);

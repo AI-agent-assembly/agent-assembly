@@ -80,6 +80,7 @@ pub fn request_to_core(req: &CheckActionRequest) -> Result<(AgentContext, Govern
         depth: 0,
         delegation_reason: None,
         spawned_by_tool: None,
+        root_agent_id: None,
     };
 
     // --- Governance action ---

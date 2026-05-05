@@ -286,6 +286,7 @@ budget:
         depth: 0,
         delegation_reason: None,
         spawned_by_tool: None,
+        root_agent_id: None,
     };
     registry.register(record).unwrap();
 
@@ -303,6 +304,7 @@ budget:
         depth: 0,
         delegation_reason: None,
         spawned_by_tool: None,
+        root_agent_id: None,
     };
     engine.record_spend(&agent_ctx, 2.0); // exceeds $1.0 daily limit
 
@@ -373,6 +375,7 @@ budget:
         depth: 0,
         delegation_reason: None,
         spawned_by_tool: None,
+        root_agent_id: None,
     };
     registry.register(record).unwrap();
 
@@ -388,6 +391,7 @@ budget:
         depth: 0,
         delegation_reason: None,
         spawned_by_tool: None,
+        root_agent_id: None,
     };
     engine.record_spend(&agent_ctx, 2.0);
 
@@ -478,6 +482,7 @@ fn level_test_record(
         depth: 0,
         delegation_reason: None,
         spawned_by_tool: None,
+        root_agent_id: None,
     }
 }
 

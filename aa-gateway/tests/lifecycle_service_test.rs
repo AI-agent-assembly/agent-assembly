@@ -481,6 +481,27 @@ async fn register_echoes_parent_agent_id_and_team_id() {
         .await
         .unwrap();
 
+    // Register the parent first so the sub-agent can be accepted.
+    let parent_id = ProtoAgentId {
+        org_id: "org-echo".into(),
+        team_id: "team-echo".into(),
+        agent_id: "parent-echo".into(),
+    };
+    client
+        .register(RegisterRequest {
+            agent_id: Some(parent_id),
+            name: "parent-agent".into(),
+            framework: "custom".into(),
+            version: "1.0.0".into(),
+            risk_tier: 0,
+            tool_names: vec![],
+            public_key: test_ed25519_public_key_hex(),
+            metadata: Default::default(),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
     let agent_id = ProtoAgentId {
         org_id: "org-echo".into(),
         team_id: "team-echo".into(),
@@ -506,6 +527,9 @@ async fn register_echoes_parent_agent_id_and_team_id() {
 
     assert_eq!(reg_resp.parent_agent_id, Some("parent-echo".into()));
     assert_eq!(reg_resp.team_id, Some("team-echo".into()));
+    // root_agent_id must be echoed back — parent is root so root = parent's key
+    assert!(reg_resp.root_agent_id.is_some());
+    assert_eq!(reg_resp.root_agent_id.as_deref().unwrap().len(), 16);
 }
 
 #[tokio::test]
@@ -539,4 +563,164 @@ async fn register_without_topology_returns_none_echo_fields() {
 
     assert_eq!(reg_resp.parent_agent_id, None);
     assert_eq!(reg_resp.team_id, None, "empty team_id must normalize to None");
+}
+
+// ── root_agent_id computation (AAASM-1005) ────────────────────────────────
+
+#[tokio::test]
+async fn root_agent_id_for_root_agent_is_set_to_self() {
+    let (addr, _registry) = start_server().await;
+    let mut client = AgentLifecycleServiceClient::connect(format!("http://{addr}"))
+        .await
+        .unwrap();
+
+    let agent_proto_id = ProtoAgentId {
+        org_id: "root-org".into(),
+        team_id: "root-team".into(),
+        agent_id: "root-agent-A".into(),
+    };
+    let expected_key = aa_gateway::registry::convert::proto_agent_id_to_key(&agent_proto_id);
+
+    let resp = client
+        .register(RegisterRequest {
+            agent_id: Some(agent_proto_id),
+            name: "root-A".into(),
+            framework: "custom".into(),
+            version: "1.0.0".into(),
+            risk_tier: 0,
+            tool_names: vec![],
+            public_key: test_ed25519_public_key_hex(),
+            metadata: Default::default(),
+            ..Default::default()
+        })
+        .await
+        .unwrap()
+        .into_inner();
+
+    let echoed = resp.root_agent_id.expect("root agent must receive root_agent_id");
+    assert_eq!(
+        echoed.as_slice(),
+        expected_key.as_slice(),
+        "root agent's root_agent_id must equal its own key"
+    );
+}
+
+#[tokio::test]
+async fn root_agent_id_chains_3_levels() {
+    let (addr, _registry) = start_server().await;
+    let mut client = AgentLifecycleServiceClient::connect(format!("http://{addr}"))
+        .await
+        .unwrap();
+
+    let org = "chain-org";
+    let team = "chain-team";
+
+    // Register A (root).
+    let proto_a = ProtoAgentId {
+        org_id: org.into(),
+        team_id: team.into(),
+        agent_id: "agent-A".into(),
+    };
+    let key_a = aa_gateway::registry::convert::proto_agent_id_to_key(&proto_a);
+    client
+        .register(RegisterRequest {
+            agent_id: Some(proto_a),
+            name: "A".into(),
+            framework: "custom".into(),
+            version: "1.0.0".into(),
+            risk_tier: 0,
+            tool_names: vec![],
+            public_key: test_ed25519_public_key_hex(),
+            metadata: Default::default(),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+    // Register B (parent = A).
+    let proto_b = ProtoAgentId {
+        org_id: org.into(),
+        team_id: team.into(),
+        agent_id: "agent-B".into(),
+    };
+    client
+        .register(RegisterRequest {
+            agent_id: Some(proto_b),
+            name: "B".into(),
+            framework: "custom".into(),
+            version: "1.0.0".into(),
+            risk_tier: 0,
+            tool_names: vec![],
+            public_key: test_ed25519_public_key_hex(),
+            metadata: Default::default(),
+            parent_agent_id: Some("agent-A".into()),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+    // Register C (parent = B). C's root_agent_id must equal A's key.
+    let proto_c = ProtoAgentId {
+        org_id: org.into(),
+        team_id: team.into(),
+        agent_id: "agent-C".into(),
+    };
+    let resp_c = client
+        .register(RegisterRequest {
+            agent_id: Some(proto_c),
+            name: "C".into(),
+            framework: "custom".into(),
+            version: "1.0.0".into(),
+            risk_tier: 0,
+            tool_names: vec![],
+            public_key: test_ed25519_public_key_hex(),
+            metadata: Default::default(),
+            parent_agent_id: Some("agent-B".into()),
+            ..Default::default()
+        })
+        .await
+        .unwrap()
+        .into_inner();
+
+    let c_root = resp_c.root_agent_id.expect("C must receive root_agent_id");
+    assert_eq!(
+        c_root.as_slice(),
+        key_a.as_slice(),
+        "C's root_agent_id must chain back to A"
+    );
+}
+
+#[tokio::test]
+async fn root_agent_id_when_parent_unknown_returns_invalid_argument() {
+    let (addr, _registry) = start_server().await;
+    let mut client = AgentLifecycleServiceClient::connect(format!("http://{addr}"))
+        .await
+        .unwrap();
+
+    let err = client
+        .register(RegisterRequest {
+            agent_id: Some(ProtoAgentId {
+                org_id: "unknown-org".into(),
+                team_id: "unknown-team".into(),
+                agent_id: "orphan-B".into(),
+            }),
+            name: "orphan".into(),
+            framework: "custom".into(),
+            version: "1.0.0".into(),
+            risk_tier: 0,
+            tool_names: vec![],
+            public_key: test_ed25519_public_key_hex(),
+            metadata: Default::default(),
+            parent_agent_id: Some("does-not-exist".into()),
+            ..Default::default()
+        })
+        .await
+        .unwrap_err();
+
+    assert_eq!(err.code(), tonic::Code::InvalidArgument);
+    assert!(
+        err.message().contains("parent_agent_id not found"),
+        "error must name the problem: {}",
+        err.message()
+    );
 }

@@ -36,6 +36,7 @@ fn make_record(key: [u8; 16]) -> AgentRecord {
         depth: 0,
         delegation_reason: None,
         spawned_by_tool: None,
+        root_agent_id: None,
     }
 }
 
@@ -237,6 +238,7 @@ async fn concurrent_registration_of_100_agents() {
                 depth: 0,
                 delegation_reason: None,
                 spawned_by_tool: None,
+                root_agent_id: None,
             };
             reg.register(record).unwrap();
         }));
@@ -421,4 +423,15 @@ fn root_agent_topology_fields_default_to_none_and_zero() {
     assert_eq!(retrieved.depth, 0);
     assert!(retrieved.delegation_reason.is_none());
     assert!(retrieved.spawned_by_tool.is_none());
+}
+
+#[test]
+fn root_agent_id_field_round_trips_through_registry() {
+    let reg = AgentRegistry::new();
+    let mut record = make_record(key(5));
+    record.root_agent_id = Some([0xAA; 16]);
+    reg.register(record).unwrap();
+
+    let retrieved = reg.get(&key(5)).unwrap();
+    assert_eq!(retrieved.root_agent_id, Some([0xAA; 16]));
 }

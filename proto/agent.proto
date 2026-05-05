@@ -67,7 +67,11 @@ message RegisterResponse {
   optional string parent_agent_id        = 4;
   // Echo of the `team_id` from the request's `AgentId` — confirms the gateway accepted team scoping.
   optional string team_id                = 5;
-  // next: 6
+  // Computed root of the delegation chain — server-side authoritative value.
+  // For root agents equals the registering agent's own UUID bytes.
+  // For sub-agents equals parent.root_agent_id (propagated transitively).
+  optional bytes  root_agent_id          = 6;
+  // next: 7
 }
 
 // ── Heartbeat ─────────────────────────────────────────────────────────────────

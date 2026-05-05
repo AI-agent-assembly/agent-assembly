@@ -38,6 +38,7 @@ fn test_agent(id_byte: u8) -> AgentRecord {
         depth: 0,
         delegation_reason: None,
         spawned_by_tool: None,
+        root_agent_id: None,
     }
 }
 
