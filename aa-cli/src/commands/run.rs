@@ -96,8 +96,11 @@ mod tests {
     #[test]
     fn parse_with_flags() {
         let cli = TestCli::try_parse_from([
-            "aasm", "run", "claude",
-            "--agent-id", "a1",
+            "aasm",
+            "run",
+            "claude",
+            "--agent-id",
+            "a1",
             "--dry-run",
             "--",
             "--some-flag",
@@ -121,11 +124,7 @@ mod tests {
             ("L2", GovernanceLevel::L2Enforce),
             ("L3", GovernanceLevel::L3Native),
         ] {
-            let cli = TestCli::try_parse_from([
-                "aasm", "run", "codex",
-                "--governance-level", input,
-            ])
-            .unwrap();
+            let cli = TestCli::try_parse_from(["aasm", "run", "codex", "--governance-level", input]).unwrap();
             match cli.command {
                 TestCommands::Run(args) => {
                     assert_eq!(args.governance_level, Some(expected), "input={input}");

@@ -69,9 +69,7 @@ impl core::str::FromStr for GovernanceLevel {
             "L1" | "L1Observe" => Ok(GovernanceLevel::L1Observe),
             "L2" | "L2Enforce" => Ok(GovernanceLevel::L2Enforce),
             "L3" | "L3Native" => Ok(GovernanceLevel::L3Native),
-            _ => Err(format!(
-                "unknown governance level '{s}'; expected L0, L1, L2, or L3"
-            )),
+            _ => Err(format!("unknown governance level '{s}'; expected L0, L1, L2, or L3")),
         }
     }
 }
