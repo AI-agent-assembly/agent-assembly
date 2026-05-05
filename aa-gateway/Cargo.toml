@@ -41,6 +41,7 @@ ahash        = "0.8"
 
 [dev-dependencies]
 criterion    = { version = "0.5", features = ["async_tokio"] }
+proptest     = "1"
 tempfile     = "3"
 tokio-stream = "0.1"
 
@@ -50,6 +51,10 @@ path = "src/main.rs"
 
 [[bench]]
 name    = "policy_check"
+harness = false
+
+[[bench]]
+name    = "policy_cascade"
 harness = false
 
 [lints]
