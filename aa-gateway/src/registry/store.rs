@@ -212,6 +212,19 @@ impl AgentRegistry {
         self.agents.iter().map(|r| r.value().clone()).collect()
     }
 
+    /// Return the scope lineage (org, team) for `agent_id` by reading the
+    /// `"org_id"` and `"team_id"` metadata keys written at registration.
+    ///
+    /// Returns `None` if the agent is not in the registry. Both inner fields
+    /// may also be `None` if the agent was registered without org/team metadata.
+    pub fn lineage(&self, agent_id: &[u8; 16]) -> Option<crate::registry::Lineage> {
+        let record = self.agents.get(agent_id)?;
+        Some(crate::registry::Lineage {
+            org_id: record.metadata.get("org_id").cloned(),
+            team_id: record.metadata.get("team_id").cloned(),
+        })
+    }
+
     /// Suspend an agent with the given reason.
     pub fn suspend_agent(&self, agent_id: &[u8; 16], reason: super::SuspendReason) -> Result<(), RegistryError> {
         let mut entry = self

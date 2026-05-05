@@ -2,6 +2,8 @@
 //!
 //! Core rate limiting and enforcement mechanisms for the Agent Assembly policy engine.
 
+pub mod cache;
+pub mod decision;
 pub(crate) mod rate_limit;
 pub mod scope_index;
 pub(crate) mod watcher;
@@ -12,14 +14,21 @@ use arc_swap::ArcSwap;
 use dashmap::DashMap;
 use std::{
     path::Path,
-    sync::{Arc, Mutex},
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc, Mutex,
+    },
 };
+
+use crate::engine::cache::{CacheKey, DecisionCache};
 
 use crate::budget::BudgetTracker;
 
+use crate::engine::decision::{merge_decisions, PolicyDecision};
 use crate::engine::scope_index::ScopeIndex;
 use crate::policy::document::ActionOnExceed;
 use crate::policy::{PolicyDocument, PolicyValidator};
+use crate::registry::AgentRegistry;
 
 /// Side-effect action the service layer should take when a request is denied.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -88,6 +97,16 @@ pub struct PolicyEngine {
     /// most-restrictive-wins resolution.
     scope_index: ScopeIndex,
     _watcher: Option<notify::RecommendedWatcher>,
+    /// Optional registry for resolving agent lineage during cascade evaluation.
+    /// When `None`, `collect_cascade` walks only Global and Agent scopes.
+    registry: Option<Arc<AgentRegistry>>,
+    /// Monotonic policy epoch — incremented on every `load_policy` or `apply_yaml`
+    /// call. Embedded in `CacheKey` so stale cache entries are automatically
+    /// invalidated when policy changes without any active eviction step.
+    policy_epoch: Arc<AtomicU64>,
+    /// Bounded LRU cache for cascade evaluation results.
+    /// Only the cascade path (`evaluate_with_cascade`) consults this cache.
+    decision_cache: DecisionCache,
 }
 
 /// Error returned when loading a policy from a file fails.
@@ -160,6 +179,9 @@ impl PolicyEngine {
             budget,
             scope_index: ScopeIndex::new(),
             _watcher: watcher,
+            registry: None,
+            policy_epoch: Arc::new(AtomicU64::new(0)),
+            decision_cache: DecisionCache::new(100_000),
         })
     }
 
@@ -191,7 +213,19 @@ impl PolicyEngine {
             budget,
             scope_index: ScopeIndex::new(),
             _watcher: watcher,
+            registry: None,
+            policy_epoch: Arc::new(AtomicU64::new(0)),
+            decision_cache: DecisionCache::new(100_000),
         })
+    }
+
+    /// Attach an `AgentRegistry` so `collect_cascade` can resolve org/team lineage.
+    ///
+    /// Consumes `self` and returns a new `PolicyEngine` with the registry set.
+    /// Call this after `load_from_file` in the server startup path.
+    pub fn with_registry(mut self, registry: Arc<AgentRegistry>) -> Self {
+        self.registry = Some(registry);
+        self
     }
 
     /// Apply a raw YAML policy string: validate, swap into the live slot, and
@@ -214,15 +248,34 @@ impl PolicyEngine {
         // Hot-swap the live policy
         self.policy.store(Arc::new(output.document));
 
+        // Invalidate cached decisions — stale entries with the old epoch will be ignored.
+        self.policy_epoch.fetch_add(1, Ordering::Relaxed);
+
         Ok(meta)
     }
 
     /// Evaluate a governance action through the 7-step pipeline.
     ///
-    /// Stages are evaluated in order; the first `Deny` short-circuits the pipeline.
-    /// Stage 6 (credential scan) does not deny — it redacts the payload in-memory
-    /// and records findings in the returned [`EvaluationResult`].
+    /// When scoped policies are loaded in the `scope_index`, delegates to the
+    /// cascade path (`evaluate_with_cascade`). Falls back to the original
+    /// single-policy pipeline (`evaluate_primary`) when no scoped policies are
+    /// present, preserving full backward compatibility.
     pub fn evaluate(&self, ctx: &aa_core::AgentContext, action: &aa_core::GovernanceAction) -> EvaluationResult {
+        let cascade = self.collect_cascade(&ctx.agent_id);
+
+        // Backward-compat: no scoped policies loaded → use primary policy only.
+        if cascade.is_empty() {
+            return self.evaluate_primary(ctx, action);
+        }
+
+        self.evaluate_with_cascade(cascade, ctx, action)
+    }
+
+    /// Single-policy evaluation path: used when no scoped policies are registered.
+    ///
+    /// This is the original 7-stage pipeline from before AAASM-220. When the
+    /// `scope_index` is empty, `evaluate` delegates here for full backward compat.
+    fn evaluate_primary(&self, ctx: &aa_core::AgentContext, action: &aa_core::GovernanceAction) -> EvaluationResult {
         let policy = self.policy.load();
 
         // Stage 1 — Schedule: check active hours window.
@@ -419,6 +472,150 @@ impl PolicyEngine {
         }
     }
 
+    /// Cascade evaluation path: runs `merge_decisions` across all scoped policies,
+    /// then applies rate-limit (stage 4), budget (stage 7), and credential scan
+    /// (stage 6) at the engine level.
+    fn evaluate_with_cascade(
+        &self,
+        cascade: Vec<Arc<PolicyDocument>>,
+        ctx: &aa_core::AgentContext,
+        action: &aa_core::GovernanceAction,
+    ) -> EvaluationResult {
+        // Cache lookup: stateless stages only (1–3, 5). Stateful stages (4, 7) always run.
+        let epoch = self.policy_epoch.load(Ordering::Relaxed);
+        let cache_key = CacheKey::new(ctx.agent_id.as_bytes(), epoch, action);
+        let verdict = if let Some(cached) = self.decision_cache.get(&cache_key) {
+            cached
+        } else {
+            // Stages 1–3 and 5: stateless per-doc rules merged across cascade.
+            let v = merge_decisions(&cascade, ctx, action);
+            self.decision_cache.insert(cache_key, v.clone());
+            v
+        };
+
+        // If already denied, return immediately — no need for scan or budget check.
+        if let PolicyDecision::Deny { reason, .. } = verdict {
+            return EvaluationResult {
+                decision: aa_core::PolicyResult::Deny { reason },
+                redacted_payload: None,
+                credential_findings: vec![],
+                deny_action: None,
+            };
+        }
+
+        // Stage 4 — Rate limiting: use the most restrictive (minimum) limit_per_hour
+        // found across all cascade policies for the requested tool.
+        if let aa_core::GovernanceAction::ToolCall { name, .. } = action {
+            let min_limit = cascade
+                .iter()
+                .filter_map(|doc| doc.tools.get(name))
+                .filter_map(|tp| tp.limit_per_hour)
+                .min();
+
+            if let Some(limit) = min_limit {
+                let entry = self
+                    .rate_state
+                    .entry(name.clone())
+                    .or_insert_with(|| Mutex::new(rate_limit::TokenBucket::new(limit)));
+                let mut bucket = entry.lock().unwrap_or_else(|e| e.into_inner());
+                if !bucket.try_consume() {
+                    return EvaluationResult {
+                        decision: aa_core::PolicyResult::Deny {
+                            reason: "rate limit exceeded".into(),
+                        },
+                        redacted_payload: None,
+                        credential_findings: vec![],
+                        deny_action: None,
+                    };
+                }
+            }
+        }
+
+        // Stage 6 — Credential scan: accumulate custom patterns from all cascade docs.
+        let text = match action {
+            aa_core::GovernanceAction::ToolCall { args, .. } => args.as_str(),
+            aa_core::GovernanceAction::FileAccess { path, .. } => path.as_str(),
+            aa_core::GovernanceAction::NetworkRequest { url, .. } => url.as_str(),
+            aa_core::GovernanceAction::ProcessExec { command } => command.as_str(),
+        };
+        let scan = self.scanner.scan(text);
+        let mut all_findings = scan.findings;
+        for doc in &cascade {
+            if let Some(dp) = &doc.data {
+                for pattern in &dp.sensitive_patterns {
+                    if let Ok(re) = regex::Regex::new(pattern) {
+                        for m in re.find_iter(text) {
+                            all_findings.push(aa_core::CredentialFinding::from_regex_match(m.start(), m.end()));
+                        }
+                    }
+                }
+            }
+        }
+        let (redacted_payload, credential_findings) = if all_findings.is_empty() {
+            (None, vec![])
+        } else {
+            all_findings.sort_by_key(|f| f.offset);
+            let merged = aa_core::ScanResult {
+                findings: all_findings.clone(),
+            };
+            let redacted = merged.redact(text);
+            tracing::warn!(
+                finding_count = all_findings.len(),
+                "DataLeakEvent emission pending AAASM-31 EnrichedEvent::DataLeak variant"
+            );
+            (Some(redacted), all_findings)
+        };
+
+        // Stage 7 — Budget: check against all cascade docs' budget configs.
+        // Take the most restrictive (lowest) limit across all policies.
+        let mut deny_action = None;
+        for doc in &cascade {
+            if let Some(bp) = &doc.budget {
+                let da = match bp.action_on_exceed {
+                    ActionOnExceed::Suspend => Some(DenyAction::SuspendAgent),
+                    ActionOnExceed::Deny => None,
+                };
+                if let Some(limit) = bp.monthly_limit_usd {
+                    if let Ok(limit_dec) = rust_decimal::Decimal::try_from(limit) {
+                        if self.budget.check_monthly(&ctx.agent_id, limit_dec) {
+                            return EvaluationResult {
+                                decision: aa_core::PolicyResult::Deny {
+                                    reason: "monthly budget exceeded".into(),
+                                },
+                                redacted_payload,
+                                credential_findings,
+                                deny_action: da,
+                            };
+                        }
+                    }
+                }
+                if let Some(limit) = bp.daily_limit_usd {
+                    if let Ok(limit_dec) = rust_decimal::Decimal::try_from(limit) {
+                        if self.budget.check_daily(&ctx.agent_id, limit_dec) {
+                            return EvaluationResult {
+                                decision: aa_core::PolicyResult::Deny {
+                                    reason: "daily budget exceeded".into(),
+                                },
+                                redacted_payload,
+                                credential_findings,
+                                deny_action: da,
+                            };
+                        }
+                    }
+                }
+                deny_action = da;
+            }
+        }
+
+        // Convert the merge verdict to PolicyResult.
+        EvaluationResult {
+            decision: verdict.into_policy_result(),
+            redacted_payload,
+            credential_findings,
+            deny_action,
+        }
+    }
+
     /// Record a spend amount for an agent after an action completes.
     ///
     /// Converts the `f64` amount to `Decimal` and delegates to the advanced
@@ -476,6 +673,16 @@ impl PolicyEngine {
         Arc::clone(&self.budget)
     }
 
+    /// Cumulative cascade decision cache hits since engine construction.
+    pub fn cache_hits(&self) -> u64 {
+        self.decision_cache.cache_hits()
+    }
+
+    /// Cumulative cascade decision cache misses since engine construction.
+    pub fn cache_misses(&self) -> u64 {
+        self.decision_cache.cache_misses()
+    }
+
     // ── F92 Phase B (AAASM-951): scope-keyed policy index ──────────────────
 
     /// Register `doc` in the scope-keyed index and return the freshly
@@ -491,6 +698,7 @@ impl PolicyEngine {
     /// is purely about populating the index for backward-compat tests
     /// and so consumers can prepare scoped policies in advance.
     pub fn load_policy(&mut self, doc: PolicyDocument) -> scope_index::PolicyId {
+        self.policy_epoch.fetch_add(1, Ordering::Relaxed);
         self.scope_index.insert(doc)
     }
 
@@ -521,6 +729,62 @@ impl PolicyEngine {
     /// [`Self::policies_for_scope`].
     pub fn policy(&self, id: scope_index::PolicyId) -> Option<&Arc<PolicyDocument>> {
         self.scope_index.policy(id)
+    }
+
+    /// Collect all policies applicable to `agent_id` in cascade walk order:
+    /// `Global → Org → Team → Agent`.
+    ///
+    /// Lineage (org, team) is resolved from the attached `AgentRegistry`.
+    /// If no registry is wired, or the agent is not registered, only `Global`
+    /// and `Agent`-scoped policies are collected.
+    ///
+    /// Returns a `Vec<Arc<PolicyDocument>>` ordered from broadest scope to
+    /// narrowest. Policies within the same scope appear in their load order
+    /// (insertion order in `ScopeIndex`).
+    pub fn collect_cascade(&self, agent_id: &aa_core::identity::AgentId) -> Vec<Arc<PolicyDocument>> {
+        use crate::policy::scope::PolicyScope;
+
+        let lineage = self
+            .registry
+            .as_ref()
+            .and_then(|r| r.lineage(agent_id.as_bytes()))
+            .unwrap_or_default();
+
+        let mut cascade = Vec::new();
+
+        // Global — broadest scope
+        for &id in self.scope_index.policies_for_scope(&PolicyScope::Global) {
+            if let Some(doc) = self.scope_index.policy(id) {
+                cascade.push(Arc::clone(doc));
+            }
+        }
+
+        // Org — if agent has an org
+        if let Some(ref org_id) = lineage.org_id {
+            for &id in self.scope_index.policies_for_scope(&PolicyScope::Org(org_id.clone())) {
+                if let Some(doc) = self.scope_index.policy(id) {
+                    cascade.push(Arc::clone(doc));
+                }
+            }
+        }
+
+        // Team — if agent has a team
+        if let Some(ref team_id) = lineage.team_id {
+            for &id in self.scope_index.policies_for_scope(&PolicyScope::Team(team_id.clone())) {
+                if let Some(doc) = self.scope_index.policy(id) {
+                    cascade.push(Arc::clone(doc));
+                }
+            }
+        }
+
+        // Agent — narrowest scope
+        for &id in self.scope_index.policies_for_scope(&PolicyScope::Agent(*agent_id)) {
+            if let Some(doc) = self.scope_index.policy(id) {
+                cascade.push(Arc::clone(doc));
+            }
+        }
+
+        cascade
     }
 }
 
@@ -627,6 +891,9 @@ mod tests {
             )),
             scope_index: ScopeIndex::new(),
             _watcher: None,
+            registry: None,
+            policy_epoch: Arc::new(AtomicU64::new(0)),
+            decision_cache: DecisionCache::new(1_024),
         }
     }
 
@@ -1303,6 +1570,9 @@ mod tests {
             )),
             scope_index: ScopeIndex::new(),
             _watcher: None,
+            registry: None,
+            policy_epoch: Arc::new(AtomicU64::new(0)),
+            decision_cache: DecisionCache::new(1_024),
         }
     }
 

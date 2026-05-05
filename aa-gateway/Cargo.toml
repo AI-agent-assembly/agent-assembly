@@ -36,9 +36,13 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 reqwest      = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
 uuid         = { version = "1", features = ["v4", "v7"] }
 clap         = { version = "4", features = ["derive"] }
+moka         = { version = "0.12", features = ["sync"] }
+ahash        = "0.8"
+metrics      = "0.24"
 
 [dev-dependencies]
 criterion    = { version = "0.5", features = ["async_tokio"] }
+proptest     = "1"
 tempfile     = "3"
 tokio-stream = "0.1"
 
@@ -48,6 +52,10 @@ path = "src/main.rs"
 
 [[bench]]
 name    = "policy_check"
+harness = false
+
+[[bench]]
+name    = "policy_cascade"
 harness = false
 
 [lints]

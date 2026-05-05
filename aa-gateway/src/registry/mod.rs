@@ -5,9 +5,11 @@
 //! for the `AgentLifecycleService` gRPC service defined in `proto/agent.proto`.
 
 pub mod convert;
+pub mod lineage;
 pub mod store;
 pub mod token;
 
+pub use lineage::Lineage;
 pub use store::{ActiveSession, AgentRecord, AgentRegistry, RecentEvent};
 
 /// Errors returned by [`AgentRegistry`](store::AgentRegistry) operations.
