@@ -33,6 +33,11 @@ fn test_agent(id_byte: u8) -> AgentRecord {
         recent_traces: Vec::new(),
         layer: None,
         governance_level: aa_core::GovernanceLevel::default(),
+        parent_agent_id: None,
+        team_id: None,
+        depth: 0,
+        delegation_reason: None,
+        spawned_by_tool: None,
     }
 }
 
