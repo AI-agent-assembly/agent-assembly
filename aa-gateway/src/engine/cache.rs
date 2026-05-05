@@ -78,11 +78,11 @@ pub struct DecisionCache {
 }
 
 impl DecisionCache {
-    /// Create a cache bounded to `capacity` entries with a 5-second TTL.
+    /// Create a cache bounded to `capacity` entries with a 60-second TTL.
     pub fn new(capacity: u64) -> Self {
         let inner = Cache::builder()
             .max_capacity(capacity)
-            .time_to_live(std::time::Duration::from_secs(5))
+            .time_to_live(std::time::Duration::from_secs(60))
             .build();
         Self {
             inner,
@@ -105,6 +105,23 @@ impl DecisionCache {
     /// Insert a decision. `PolicyDecision` is `Clone` so callers can keep a copy.
     pub fn insert(&self, key: CacheKey, value: PolicyDecision) {
         self.inner.insert(key, value);
+    }
+
+    /// Evict all cached decisions immediately.
+    ///
+    /// TODO(F93-Phase-B): hook to PolicyVersion bump so callers don't need to
+    /// call this explicitly — epoch advance already invalidates stale entries
+    /// via the key, but this method allows eager eviction when needed.
+    pub fn invalidate_all(&self) {
+        self.inner.invalidate_all();
+    }
+
+    /// Evict all cached decisions for a specific agent.
+    ///
+    /// TODO(F93-Phase-B): hook to PolicyVersion bump for agent-scoped eviction.
+    /// Uses full cache invalidation since moka sync::Cache has no partial-key scan.
+    pub fn invalidate_for_agent(&self, _agent_id: &[u8; 16]) {
+        self.inner.invalidate_all();
     }
 
     /// Return cumulative cache hits since construction.
