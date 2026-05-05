@@ -17,7 +17,8 @@ use crate::{
 ///
 /// `AgentContext` flows through every governance event in the system.
 /// It captures the stable agent identity, per-session identity, process ID,
-/// start time, and any additional runtime metadata.
+/// start time, any additional runtime metadata, and optional topology/lineage
+/// fields that describe the agent's position in a delegation hierarchy.
 ///
 /// Requires the `alloc` feature.
 #[cfg(feature = "alloc")]
@@ -46,6 +47,21 @@ pub struct AgentContext {
     /// or construct without churn.
     #[cfg_attr(feature = "serde", serde(default))]
     pub governance_level: GovernanceLevel,
+    /// The agent that spawned this one; `None` for root agents.
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none", default))]
+    pub parent_agent_id: Option<AgentId>,
+    /// Team this agent belongs to; `None` if no team is assigned.
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none", default))]
+    pub team_id: Option<String>,
+    /// Delegation depth — 0 for root agents, incremented by 1 per delegation level.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub depth: u32,
+    /// Human-readable reason the parent delegated to this agent.
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none", default))]
+    pub delegation_reason: Option<String>,
+    /// Tool or framework that triggered the spawn (e.g. `"langgraph.subgraph"`).
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none", default))]
+    pub spawned_by_tool: Option<String>,
 }
 
 #[cfg(all(feature = "alloc", feature = "std"))]
@@ -61,6 +77,11 @@ impl AgentContext {
             pid,
             metadata: BTreeMap::new(),
             governance_level: GovernanceLevel::default(),
+            parent_agent_id: None,
+            team_id: None,
+            depth: 0,
+            delegation_reason: None,
+            spawned_by_tool: None,
         }
     }
 }
@@ -80,6 +101,11 @@ mod tests {
             started_at: Timestamp::from_nanos(1_000_000),
             metadata: BTreeMap::new(),
             governance_level: GovernanceLevel::default(),
+            parent_agent_id: None,
+            team_id: None,
+            depth: 0,
+            delegation_reason: None,
+            spawned_by_tool: None,
         }
     }
 

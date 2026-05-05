@@ -569,6 +569,11 @@ mod tests {
             started_at: Timestamp::from_nanos(0),
             metadata: BTreeMap::new(),
             governance_level: aa_core::GovernanceLevel::default(),
+            parent_agent_id: None,
+            team_id: None,
+            depth: 0,
+            delegation_reason: None,
+            spawned_by_tool: None,
         }
     }
 

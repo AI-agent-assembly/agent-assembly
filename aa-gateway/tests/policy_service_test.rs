@@ -293,6 +293,11 @@ budget:
         started_at: aa_core::time::Timestamp::from_nanos(0),
         metadata: std::collections::BTreeMap::new(),
         governance_level: aa_core::GovernanceLevel::default(),
+        parent_agent_id: None,
+        team_id: None,
+        depth: 0,
+        delegation_reason: None,
+        spawned_by_tool: None,
     };
     engine.record_spend(&agent_ctx, 2.0); // exceeds $1.0 daily limit
 
@@ -368,6 +373,11 @@ budget:
         started_at: aa_core::time::Timestamp::from_nanos(0),
         metadata: std::collections::BTreeMap::new(),
         governance_level: aa_core::GovernanceLevel::default(),
+        parent_agent_id: None,
+        team_id: None,
+        depth: 0,
+        delegation_reason: None,
+        spawned_by_tool: None,
     };
     engine.record_spend(&agent_ctx, 2.0);
 
