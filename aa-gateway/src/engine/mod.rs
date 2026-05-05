@@ -2,6 +2,7 @@
 //!
 //! Core rate limiting and enforcement mechanisms for the Agent Assembly policy engine.
 
+pub mod cache;
 pub mod decision;
 pub(crate) mod rate_limit;
 pub mod scope_index;
@@ -13,8 +14,13 @@ use arc_swap::ArcSwap;
 use dashmap::DashMap;
 use std::{
     path::Path,
-    sync::{Arc, Mutex},
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc, Mutex,
+    },
 };
+
+use crate::engine::cache::{CacheKey, DecisionCache};
 
 use crate::budget::BudgetTracker;
 
@@ -94,6 +100,13 @@ pub struct PolicyEngine {
     /// Optional registry for resolving agent lineage during cascade evaluation.
     /// When `None`, `collect_cascade` walks only Global and Agent scopes.
     registry: Option<Arc<AgentRegistry>>,
+    /// Monotonic policy epoch — incremented on every `load_policy` or `apply_yaml`
+    /// call. Embedded in `CacheKey` so stale cache entries are automatically
+    /// invalidated when policy changes without any active eviction step.
+    policy_epoch: Arc<AtomicU64>,
+    /// Bounded LRU cache for cascade evaluation results.
+    /// Only the cascade path (`evaluate_with_cascade`) consults this cache.
+    decision_cache: DecisionCache,
 }
 
 /// Error returned when loading a policy from a file fails.
@@ -167,6 +180,8 @@ impl PolicyEngine {
             scope_index: ScopeIndex::new(),
             _watcher: watcher,
             registry: None,
+            policy_epoch: Arc::new(AtomicU64::new(0)),
+            decision_cache: DecisionCache::new(1_024),
         })
     }
 
@@ -199,6 +214,8 @@ impl PolicyEngine {
             scope_index: ScopeIndex::new(),
             _watcher: watcher,
             registry: None,
+            policy_epoch: Arc::new(AtomicU64::new(0)),
+            decision_cache: DecisionCache::new(1_024),
         })
     }
 
@@ -230,6 +247,9 @@ impl PolicyEngine {
 
         // Hot-swap the live policy
         self.policy.store(Arc::new(output.document));
+
+        // Invalidate cached decisions — stale entries with the old epoch will be ignored.
+        self.policy_epoch.fetch_add(1, Ordering::Relaxed);
 
         Ok(meta)
     }
@@ -461,8 +481,17 @@ impl PolicyEngine {
         ctx: &aa_core::AgentContext,
         action: &aa_core::GovernanceAction,
     ) -> EvaluationResult {
-        // Stages 1–3 and 5: stateless per-doc rules merged across cascade.
-        let verdict = merge_decisions(&cascade, ctx, action);
+        // Cache lookup: stateless stages only (1–3, 5). Stateful stages (4, 7) always run.
+        let epoch = self.policy_epoch.load(Ordering::Relaxed);
+        let cache_key = CacheKey::new(ctx.agent_id.as_bytes(), epoch, action);
+        let verdict = if let Some(cached) = self.decision_cache.get(&cache_key) {
+            cached
+        } else {
+            // Stages 1–3 and 5: stateless per-doc rules merged across cascade.
+            let v = merge_decisions(&cascade, ctx, action);
+            self.decision_cache.insert(cache_key, v.clone());
+            v
+        };
 
         // If already denied, return immediately — no need for scan or budget check.
         if let PolicyDecision::Deny { reason, .. } = verdict {
@@ -645,6 +674,16 @@ impl PolicyEngine {
         Arc::clone(&self.budget)
     }
 
+    /// Cumulative cascade decision cache hits since engine construction.
+    pub fn cache_hits(&self) -> u64 {
+        self.decision_cache.cache_hits()
+    }
+
+    /// Cumulative cascade decision cache misses since engine construction.
+    pub fn cache_misses(&self) -> u64 {
+        self.decision_cache.cache_misses()
+    }
+
     // ── F92 Phase B (AAASM-951): scope-keyed policy index ──────────────────
 
     /// Register `doc` in the scope-keyed index and return the freshly
@@ -660,6 +699,7 @@ impl PolicyEngine {
     /// is purely about populating the index for backward-compat tests
     /// and so consumers can prepare scoped policies in advance.
     pub fn load_policy(&mut self, doc: PolicyDocument) -> scope_index::PolicyId {
+        self.policy_epoch.fetch_add(1, Ordering::Relaxed);
         self.scope_index.insert(doc)
     }
 
@@ -853,6 +893,8 @@ mod tests {
             scope_index: ScopeIndex::new(),
             _watcher: None,
             registry: None,
+            policy_epoch: Arc::new(AtomicU64::new(0)),
+            decision_cache: DecisionCache::new(1_024),
         }
     }
 
@@ -1530,6 +1572,8 @@ mod tests {
             scope_index: ScopeIndex::new(),
             _watcher: None,
             registry: None,
+            policy_epoch: Arc::new(AtomicU64::new(0)),
+            decision_cache: DecisionCache::new(1_024),
         }
     }
 
