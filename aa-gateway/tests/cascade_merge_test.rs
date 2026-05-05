@@ -170,3 +170,27 @@ fn deny_overrides_require_approval() {
         "Deny must beat RequireApproval"
     );
 }
+
+// 6. source_scope on Deny identifies which scope produced the verdict.
+// AC: "Global allow + Team deny -> Deny(source_scope=Team)"
+#[test]
+fn deny_source_scope_identifies_denying_scope() {
+    let ctx = make_ctx();
+    let action = tool_action("bash");
+    let cascade = vec![
+        allow_doc(PolicyScope::Global),
+        deny_tool_doc(PolicyScope::Team("platform".into()), "bash"),
+        allow_doc(PolicyScope::Agent(AgentId::from_bytes([1u8; 16]))),
+    ];
+    let result = merge_decisions(&cascade, &ctx, &action);
+    match result {
+        PolicyDecision::Deny { source_scope, .. } => {
+            assert_eq!(
+                source_scope,
+                PolicyScope::Team("platform".into()),
+                "source_scope must identify the Team scope that produced the Deny"
+            );
+        }
+        other => panic!("expected Deny, got {other:?}"),
+    }
+}
