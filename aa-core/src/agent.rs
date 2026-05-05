@@ -84,6 +84,88 @@ impl AgentContext {
             spawned_by_tool: None,
         }
     }
+
+    /// Return a fresh [`AgentContextBuilder`] for topology-aware construction.
+    pub fn builder() -> AgentContextBuilder {
+        AgentContextBuilder::new()
+    }
+}
+
+/// Fluent builder for [`AgentContext`] that allows populating optional topology
+/// and lineage fields before stamping the context at construction time.
+///
+/// Obtain one via [`AgentContext::builder()`].
+#[cfg(feature = "alloc")]
+pub struct AgentContextBuilder {
+    parent_agent_id: Option<AgentId>,
+    team_id: Option<String>,
+    depth: u32,
+    delegation_reason: Option<String>,
+    spawned_by_tool: Option<String>,
+}
+
+#[cfg(feature = "alloc")]
+impl AgentContextBuilder {
+    fn new() -> Self {
+        Self {
+            parent_agent_id: None,
+            team_id: None,
+            depth: 0,
+            delegation_reason: None,
+            spawned_by_tool: None,
+        }
+    }
+
+    /// Set the agent that spawned this one.
+    pub fn parent_agent_id(mut self, id: AgentId) -> Self {
+        self.parent_agent_id = Some(id);
+        self
+    }
+
+    /// Set the team this agent belongs to.
+    pub fn team_id(mut self, id: String) -> Self {
+        self.team_id = Some(id);
+        self
+    }
+
+    /// Set the delegation depth (0 = root).
+    pub fn depth(mut self, d: u32) -> Self {
+        self.depth = d;
+        self
+    }
+
+    /// Set the human-readable reason the parent delegated to this agent.
+    pub fn delegation_reason(mut self, r: String) -> Self {
+        self.delegation_reason = Some(r);
+        self
+    }
+
+    /// Set the tool or framework that triggered the spawn.
+    pub fn spawned_by_tool(mut self, t: String) -> Self {
+        self.spawned_by_tool = Some(t);
+        self
+    }
+}
+
+#[cfg(all(feature = "alloc", feature = "std"))]
+impl AgentContextBuilder {
+    /// Consume the builder and construct an [`AgentContext`] stamped at the
+    /// current wall-clock time. `metadata` is initialised empty.
+    pub fn build(self, agent_id: AgentId, session_id: SessionId, pid: u32) -> AgentContext {
+        AgentContext {
+            started_at: Timestamp::from(std::time::SystemTime::now()),
+            agent_id,
+            session_id,
+            pid,
+            metadata: BTreeMap::new(),
+            governance_level: GovernanceLevel::default(),
+            parent_agent_id: self.parent_agent_id,
+            team_id: self.team_id,
+            depth: self.depth,
+            delegation_reason: self.delegation_reason,
+            spawned_by_tool: self.spawned_by_tool,
+        }
+    }
 }
 
 #[cfg(all(test, feature = "alloc"))]

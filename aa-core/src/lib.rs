@@ -38,7 +38,7 @@ pub use identity::{AgentId, SessionId};
 pub use policy::{FileMode, PolicyDecision, PolicyError};
 
 #[cfg(feature = "alloc")]
-pub use agent::AgentContext;
+pub use agent::{AgentContext, AgentContextBuilder};
 #[cfg(feature = "alloc")]
 pub use dev_tool::DevToolKind;
 #[cfg(feature = "alloc")]
