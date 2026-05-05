@@ -181,7 +181,7 @@ impl PolicyEngine {
             _watcher: watcher,
             registry: None,
             policy_epoch: Arc::new(AtomicU64::new(0)),
-            decision_cache: DecisionCache::new(1_024),
+            decision_cache: DecisionCache::new(100_000),
         })
     }
 
@@ -215,7 +215,7 @@ impl PolicyEngine {
             _watcher: watcher,
             registry: None,
             policy_epoch: Arc::new(AtomicU64::new(0)),
-            decision_cache: DecisionCache::new(1_024),
+            decision_cache: DecisionCache::new(100_000),
         })
     }
 
