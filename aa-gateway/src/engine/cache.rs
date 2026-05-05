@@ -96,8 +96,10 @@ impl DecisionCache {
         let result = self.inner.get(key);
         if result.is_some() {
             self.hits.fetch_add(1, Ordering::Relaxed);
+            metrics::counter!("policy_decision_cache_hits_total").increment(1);
         } else {
             self.misses.fetch_add(1, Ordering::Relaxed);
+            metrics::counter!("policy_decision_cache_misses_total").increment(1);
         }
         result
     }

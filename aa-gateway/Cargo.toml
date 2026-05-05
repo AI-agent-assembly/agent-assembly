@@ -38,6 +38,7 @@ uuid         = { version = "1", features = ["v4", "v7"] }
 clap         = { version = "4", features = ["derive"] }
 moka         = { version = "0.12", features = ["sync"] }
 ahash        = "0.8"
+metrics      = "0.24"
 
 [dev-dependencies]
 criterion    = { version = "0.5", features = ["async_tokio"] }

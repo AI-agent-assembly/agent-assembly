@@ -164,6 +164,7 @@ dependencies = [
  "dirs",
  "ed25519-dalek",
  "hex",
+ "metrics",
  "moka",
  "notify",
  "proptest",
