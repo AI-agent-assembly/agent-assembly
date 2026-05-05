@@ -333,7 +333,7 @@ jobs:
         # Cache the compiled bpf-linker binary so subsequent CI runs skip the
         # slow bundled-LLVM compile (~5-10 min). Key includes the version so a
         # version bump automatically invalidates the cache.
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         id: cache-bpf-linker
         with:
           path: ~/.cargo/bin/bpf-linker
