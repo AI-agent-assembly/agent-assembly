@@ -62,6 +62,13 @@ pub struct AgentContext {
     /// Tool or framework that triggered the spawn (e.g. `"langgraph.subgraph"`).
     #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none", default))]
     pub spawned_by_tool: Option<String>,
+    /// Root of the delegation chain — the top-level agent that ultimately spawned this one.
+    ///
+    /// For root agents this equals `Some(agent_id)`.  For sub-agents it is set
+    /// server-side to `parent.root_agent_id.unwrap_or(parent.agent_id)` so that
+    /// any node in a delegation chain can resolve its root in O(1).
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none", default))]
+    pub root_agent_id: Option<AgentId>,
 }
 
 #[cfg(all(feature = "alloc", feature = "std"))]
@@ -82,6 +89,7 @@ impl AgentContext {
             depth: 0,
             delegation_reason: None,
             spawned_by_tool: None,
+            root_agent_id: None,
         }
     }
 
@@ -102,6 +110,7 @@ pub struct AgentContextBuilder {
     depth: u32,
     delegation_reason: Option<String>,
     spawned_by_tool: Option<String>,
+    root_agent_id: Option<AgentId>,
 }
 
 #[cfg(feature = "alloc")]
@@ -113,6 +122,7 @@ impl AgentContextBuilder {
             depth: 0,
             delegation_reason: None,
             spawned_by_tool: None,
+            root_agent_id: None,
         }
     }
 
@@ -145,6 +155,12 @@ impl AgentContextBuilder {
         self.spawned_by_tool = Some(t);
         self
     }
+
+    /// Set the root agent of the delegation chain.
+    pub fn root_agent_id(mut self, id: AgentId) -> Self {
+        self.root_agent_id = Some(id);
+        self
+    }
 }
 
 #[cfg(all(feature = "alloc", feature = "std"))]
@@ -164,6 +180,7 @@ impl AgentContextBuilder {
             depth: self.depth,
             delegation_reason: self.delegation_reason,
             spawned_by_tool: self.spawned_by_tool,
+            root_agent_id: self.root_agent_id,
         }
     }
 }
@@ -188,6 +205,7 @@ mod tests {
             depth: 0,
             delegation_reason: None,
             spawned_by_tool: None,
+            root_agent_id: None,
         }
     }
 
@@ -247,6 +265,7 @@ mod tests {
         assert!(ctx.team_id.is_none());
         assert!(ctx.delegation_reason.is_none());
         assert!(ctx.spawned_by_tool.is_none());
+        assert!(ctx.root_agent_id.is_none());
     }
 
     #[cfg(feature = "std")]
@@ -294,6 +313,7 @@ mod tests {
     #[cfg(feature = "serde")]
     #[test]
     fn serde_round_trip_with_topology_fields() {
+        let root = AgentId::from_bytes([7u8; 16]);
         let original = AgentContext {
             agent_id: AgentId::from_bytes(AGENT_BYTES),
             session_id: SessionId::from_bytes(SESSION_BYTES),
@@ -306,6 +326,7 @@ mod tests {
             depth: 2,
             delegation_reason: Some("summarise results".into()),
             spawned_by_tool: Some("langgraph.subgraph".into()),
+            root_agent_id: Some(root),
         };
         let json = serde_json::to_string(&original).expect("serialize");
         let restored: AgentContext = serde_json::from_str(&json).expect("deserialize");
@@ -330,6 +351,7 @@ mod tests {
         assert!(restored.team_id.is_none());
         assert!(restored.delegation_reason.is_none());
         assert!(restored.spawned_by_tool.is_none());
+        assert!(restored.root_agent_id.is_none());
     }
 
     #[cfg(feature = "serde")]
