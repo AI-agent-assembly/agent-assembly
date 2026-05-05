@@ -234,6 +234,54 @@ mod tests {
         assert!(ctx.metadata.is_empty());
     }
 
+    #[cfg(feature = "std")]
+    #[test]
+    fn builder_defaults_give_root_agent() {
+        let ctx = AgentContext::builder().build(
+            AgentId::from_bytes(AGENT_BYTES),
+            SessionId::from_bytes(SESSION_BYTES),
+            42,
+        );
+        assert_eq!(ctx.depth, 0);
+        assert!(ctx.parent_agent_id.is_none());
+        assert!(ctx.team_id.is_none());
+        assert!(ctx.delegation_reason.is_none());
+        assert!(ctx.spawned_by_tool.is_none());
+    }
+
+    #[cfg(feature = "std")]
+    #[test]
+    fn builder_sets_parent_and_team() {
+        let parent = AgentId::from_bytes([9u8; 16]);
+        let ctx = AgentContext::builder()
+            .parent_agent_id(parent)
+            .team_id("team-alpha".into())
+            .depth(1)
+            .build(
+                AgentId::from_bytes(AGENT_BYTES),
+                SessionId::from_bytes(SESSION_BYTES),
+                42,
+            );
+        assert_eq!(ctx.parent_agent_id, Some(parent));
+        assert_eq!(ctx.team_id.as_deref(), Some("team-alpha"));
+        assert_eq!(ctx.depth, 1);
+    }
+
+    #[cfg(feature = "std")]
+    #[test]
+    fn builder_sets_delegation_fields() {
+        let ctx = AgentContext::builder()
+            .delegation_reason("summarise results".into())
+            .spawned_by_tool("langgraph.subgraph".into())
+            .build(
+                AgentId::from_bytes(AGENT_BYTES),
+                SessionId::from_bytes(SESSION_BYTES),
+                42,
+            );
+        assert_eq!(ctx.delegation_reason.as_deref(), Some("summarise results"));
+        assert_eq!(ctx.spawned_by_tool.as_deref(), Some("langgraph.subgraph"));
+    }
+
     #[cfg(feature = "serde")]
     #[test]
     fn serde_round_trip() {
