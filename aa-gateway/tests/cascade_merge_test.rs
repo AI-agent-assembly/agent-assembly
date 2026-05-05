@@ -138,9 +138,9 @@ fn deny_in_any_scope_wins_over_allow() {
     );
 }
 
-// 4. RequireApproval upgrades Allow; first (broadest-scope) RequireApproval is kept.
+// 4. RequireApproval upgrades Allow; most-specific (narrowest) scope wins.
 #[test]
-fn require_approval_upgrades_allow_first_approval_kept() {
+fn require_approval_most_specific_scope_wins() {
     let ctx = make_ctx();
     let action = tool_action("deploy");
     let cascade = vec![
@@ -152,8 +152,8 @@ fn require_approval_upgrades_allow_first_approval_kept() {
     match result {
         PolicyDecision::RequireApproval { timeout_secs, .. } => {
             assert_eq!(
-                timeout_secs, 600,
-                "first RequireApproval (broadest scope, 600s) must be kept"
+                timeout_secs, 120,
+                "most-specific RequireApproval (Team scope, 120s) must win over broader scope"
             );
         }
         other => panic!("expected RequireApproval, got {other:?}"),
@@ -199,4 +199,39 @@ fn deny_source_scope_identifies_denying_scope() {
         }
         other => panic!("expected Deny, got {other:?}"),
     }
+}
+
+// 7. Agent-level Allow must not override a broader-scope RequireApproval.
+// AC: "Org require_approval + Agent allow → RequireApproval"
+#[test]
+fn agent_allow_does_not_override_org_require_approval() {
+    let ctx = make_ctx();
+    let action = tool_action("deploy");
+    let cascade = vec![
+        allow_doc(PolicyScope::Global),
+        approval_tool_doc(PolicyScope::Org("acme".into()), "deploy", 300),
+        allow_doc(PolicyScope::Agent(AgentId::from_bytes([1u8; 16]))),
+    ];
+    let result = merge_decisions(&cascade, &ctx, &action);
+    assert!(
+        matches!(result, PolicyDecision::RequireApproval { .. }),
+        "Agent Allow must not downgrade Org's RequireApproval; got {result:?}"
+    );
+}
+
+// 8. Deny at Global scope short-circuits regardless of Agent-level Allow.
+// AC: "Deny at Global beats Allow at Agent"
+#[test]
+fn deny_at_global_beats_allow_at_agent() {
+    let ctx = make_ctx();
+    let action = tool_action("bash");
+    let cascade = vec![
+        deny_tool_doc(PolicyScope::Global, "bash"),
+        allow_doc(PolicyScope::Agent(AgentId::from_bytes([1u8; 16]))),
+    ];
+    let result = merge_decisions(&cascade, &ctx, &action);
+    assert!(
+        matches!(result, PolicyDecision::Deny { .. }),
+        "Global Deny must win over Agent Allow; got {result:?}"
+    );
 }

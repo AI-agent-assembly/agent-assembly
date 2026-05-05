@@ -123,8 +123,9 @@ pub(crate) fn evaluate_single_doc(
 ///
 /// Rules:
 /// - Any `Deny` from any scope short-circuits immediately and is returned.
-/// - If no `Deny` and any `RequireApproval` exists, return the first
-///   `RequireApproval` encountered (broadest-scope wins for approval reason).
+/// - If no `Deny` and any `RequireApproval` exists, return the most-specific
+///   scope's `RequireApproval` (last one encountered wins — narrower scope
+///   overrides broader scope).
 /// - If all policies say `Allow`, return `Allow`.
 /// - An empty cascade returns a fail-closed `Deny` — never silently allow.
 ///
@@ -149,11 +150,9 @@ pub fn merge_decisions(
         match verdict {
             // Short-circuit: Deny always wins.
             PolicyDecision::Deny { .. } => return verdict,
-            // Upgrade from Allow to RequireApproval, but don't downgrade RequireApproval.
+            // Most-specific scope wins: always overwrite with the narrower scope's decision.
             PolicyDecision::RequireApproval { .. } => {
-                if matches!(running, PolicyDecision::Allow) {
-                    running = verdict;
-                }
+                running = verdict;
             }
             PolicyDecision::Allow => {}
         }
