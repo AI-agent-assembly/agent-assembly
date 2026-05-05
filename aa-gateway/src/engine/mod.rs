@@ -2,6 +2,7 @@
 //!
 //! Core rate limiting and enforcement mechanisms for the Agent Assembly policy engine.
 
+pub mod decision;
 pub(crate) mod rate_limit;
 pub mod scope_index;
 pub(crate) mod watcher;
