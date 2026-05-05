@@ -36,6 +36,8 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 reqwest      = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
 uuid         = { version = "1", features = ["v4", "v7"] }
 clap         = { version = "4", features = ["derive"] }
+moka         = { version = "0.12", features = ["sync"] }
+ahash        = "0.8"
 
 [dev-dependencies]
 criterion    = { version = "0.5", features = ["async_tokio"] }
