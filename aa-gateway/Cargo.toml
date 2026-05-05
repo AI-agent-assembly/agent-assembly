@@ -28,7 +28,7 @@ dirs         = "6"
 async-stream = "0.3"
 async-trait  = "0.1"
 sha2         = "0.11"
-similar      = "2"
+similar      = "3"
 tokio-stream = "0.1"
 tonic        = { version = "0.14", features = ["transport"] }
 tracing      = "0.1"
