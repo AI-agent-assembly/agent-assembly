@@ -108,6 +108,12 @@ pub struct AgentRecord {
     pub delegation_reason: Option<String>,
     /// Tool or framework that triggered the spawn (e.g. `"langgraph.subgraph"`).
     pub spawned_by_tool: Option<String>,
+    /// Root of the delegation chain — computed server-side at registration.
+    ///
+    /// For root agents equals `Some(agent_id)`. For sub-agents set to
+    /// `parent.root_agent_id.unwrap_or(parent.agent_id)` so any node can
+    /// resolve its root in O(1) without walking the parent chain.
+    pub root_agent_id: Option<[u8; 16]>,
 }
 
 /// Channel sender type for pushing [`ControlCommand`]s to an agent's control stream.

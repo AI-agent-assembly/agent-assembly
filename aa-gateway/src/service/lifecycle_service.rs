@@ -117,6 +117,7 @@ impl AgentLifecycleService for AgentLifecycleServiceImpl {
             depth: 0,
             delegation_reason: req.delegation_reason,
             spawned_by_tool: req.spawned_by_tool,
+            root_agent_id: None, // computed and overwritten below
         };
 
         self.registry

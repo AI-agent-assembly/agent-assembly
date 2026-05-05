@@ -36,6 +36,7 @@ fn make_record(key: [u8; 16]) -> AgentRecord {
         depth: 0,
         delegation_reason: None,
         spawned_by_tool: None,
+        root_agent_id: None,
     }
 }
 
@@ -237,6 +238,7 @@ async fn concurrent_registration_of_100_agents() {
                 depth: 0,
                 delegation_reason: None,
                 spawned_by_tool: None,
+                root_agent_id: None,
             };
             reg.register(record).unwrap();
         }));
