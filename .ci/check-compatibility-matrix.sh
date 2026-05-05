@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # check-compatibility-matrix.sh
 #
-# Enforces that docs/compatibility.md is updated whenever a version-carrying
+# Enforces that docs/src/compatibility.md is updated whenever a version-carrying
 # file is modified in a pull request.
 #
 # Usage: run from the repository root on a PR branch.
@@ -25,7 +25,7 @@ CHANGED=$(git diff --name-only "${MERGE_BASE}"...HEAD)
 #   sdk/node/package.json
 #   sdk/go/go.mod
 VERSION_FILES=$(echo "${CHANGED}" | grep -E "^(Cargo\.toml|crates/[^/]+/Cargo\.toml)$" || true)
-COMPAT_CHANGED=$(echo "${CHANGED}" | grep -E "^docs/compatibility\.md$" || true)
+COMPAT_CHANGED=$(echo "${CHANGED}" | grep -E "^docs/src/compatibility\.md$" || true)
 
 if [ -n "${VERSION_FILES}" ] && [ -z "${COMPAT_CHANGED}" ]; then
   echo "──────────────────────────────────────────────────────"
@@ -36,10 +36,10 @@ if [ -n "${VERSION_FILES}" ] && [ -z "${COMPAT_CHANGED}" ]; then
   echo ""
   echo "${VERSION_FILES}" | sed 's/^/  /'
   echo ""
-  echo "But docs/compatibility.md was NOT updated."
+  echo "But docs/src/compatibility.md was NOT updated."
   echo ""
-  echo "Please update docs/compatibility.md to reflect the version change."
-  echo "See docs/versioning.md for instructions."
+  echo "Please update docs/src/compatibility.md to reflect the version change."
+  echo "See docs/src/versioning.md for instructions."
   echo "──────────────────────────────────────────────────────"
   exit 1
 fi

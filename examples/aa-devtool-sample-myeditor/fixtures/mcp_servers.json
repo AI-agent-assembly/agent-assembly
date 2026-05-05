@@ -1,0 +1,17 @@
+{
+  "_comment": "Hand-rolled MCP server fixture for the MyEditor sample adapter. Mirrors the shape MyEditor uses to record connected MCP servers (mcpServers map keyed by server name). Real per-tool adapters will read the tool's actual config file; this fixture exists so the sample's tests have a deterministic input without needing a real binary.",
+  "mcpServers": {
+    "filesystem": {
+      "command": "myeditor-mcp-fs",
+      "args": ["--root", "/workspace"]
+    },
+    "github": {
+      "command": "myeditor-mcp-github",
+      "args": ["--token-env", "GITHUB_TOKEN"]
+    },
+    "internal-search": {
+      "command": "myeditor-mcp-search",
+      "args": []
+    }
+  }
+}
