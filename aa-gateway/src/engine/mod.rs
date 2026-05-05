@@ -20,6 +20,7 @@ use crate::budget::BudgetTracker;
 use crate::engine::scope_index::ScopeIndex;
 use crate::policy::document::ActionOnExceed;
 use crate::policy::{PolicyDocument, PolicyValidator};
+use crate::registry::AgentRegistry;
 
 /// Side-effect action the service layer should take when a request is denied.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -88,6 +89,9 @@ pub struct PolicyEngine {
     /// most-restrictive-wins resolution.
     scope_index: ScopeIndex,
     _watcher: Option<notify::RecommendedWatcher>,
+    /// Optional registry for resolving agent lineage during cascade evaluation.
+    /// When `None`, `collect_cascade` walks only Global and Agent scopes.
+    registry: Option<Arc<AgentRegistry>>,
 }
 
 /// Error returned when loading a policy from a file fails.
@@ -160,6 +164,7 @@ impl PolicyEngine {
             budget,
             scope_index: ScopeIndex::new(),
             _watcher: watcher,
+            registry: None,
         })
     }
 
@@ -191,7 +196,17 @@ impl PolicyEngine {
             budget,
             scope_index: ScopeIndex::new(),
             _watcher: watcher,
+            registry: None,
         })
+    }
+
+    /// Attach an `AgentRegistry` so `collect_cascade` can resolve org/team lineage.
+    ///
+    /// Consumes `self` and returns a new `PolicyEngine` with the registry set.
+    /// Call this after `load_from_file` in the server startup path.
+    pub fn with_registry(mut self, registry: Arc<AgentRegistry>) -> Self {
+        self.registry = Some(registry);
+        self
     }
 
     /// Apply a raw YAML policy string: validate, swap into the live slot, and
@@ -627,6 +642,7 @@ mod tests {
             )),
             scope_index: ScopeIndex::new(),
             _watcher: None,
+            registry: None,
         }
     }
 
@@ -1303,6 +1319,7 @@ mod tests {
             )),
             scope_index: ScopeIndex::new(),
             _watcher: None,
+            registry: None,
         }
     }
 
