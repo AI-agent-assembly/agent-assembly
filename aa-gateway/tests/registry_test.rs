@@ -424,3 +424,14 @@ fn root_agent_topology_fields_default_to_none_and_zero() {
     assert!(retrieved.delegation_reason.is_none());
     assert!(retrieved.spawned_by_tool.is_none());
 }
+
+#[test]
+fn root_agent_id_field_round_trips_through_registry() {
+    let reg = AgentRegistry::new();
+    let mut record = make_record(key(5));
+    record.root_agent_id = Some([0xAA; 16]);
+    reg.register(record).unwrap();
+
+    let retrieved = reg.get(&key(5)).unwrap();
+    assert_eq!(retrieved.root_agent_id, Some([0xAA; 16]));
+}
