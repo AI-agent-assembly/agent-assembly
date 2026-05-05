@@ -481,6 +481,27 @@ async fn register_echoes_parent_agent_id_and_team_id() {
         .await
         .unwrap();
 
+    // Register the parent first so the sub-agent can be accepted.
+    let parent_id = ProtoAgentId {
+        org_id: "org-echo".into(),
+        team_id: "team-echo".into(),
+        agent_id: "parent-echo".into(),
+    };
+    client
+        .register(RegisterRequest {
+            agent_id: Some(parent_id),
+            name: "parent-agent".into(),
+            framework: "custom".into(),
+            version: "1.0.0".into(),
+            risk_tier: 0,
+            tool_names: vec![],
+            public_key: test_ed25519_public_key_hex(),
+            metadata: Default::default(),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
     let agent_id = ProtoAgentId {
         org_id: "org-echo".into(),
         team_id: "team-echo".into(),
@@ -506,6 +527,9 @@ async fn register_echoes_parent_agent_id_and_team_id() {
 
     assert_eq!(reg_resp.parent_agent_id, Some("parent-echo".into()));
     assert_eq!(reg_resp.team_id, Some("team-echo".into()));
+    // root_agent_id must be echoed back — parent is root so root = parent's key
+    assert!(reg_resp.root_agent_id.is_some());
+    assert_eq!(reg_resp.root_agent_id.as_deref().unwrap().len(), 16);
 }
 
 #[tokio::test]

@@ -12,6 +12,7 @@ use aa_proto::assembly::agent::v1::{
     ControlCommand, ControlStreamRequest, DeregisterRequest, DeregisterResponse, HeartbeatRequest, HeartbeatResponse,
     RegisterRequest, RegisterResponse,
 };
+use aa_proto::assembly::common::v1::AgentId as ProtoAgentId;
 
 use crate::engine::PolicyEngine;
 use crate::registry::convert::{proto_agent_id_to_key, validate_proto_agent_id};
@@ -90,6 +91,25 @@ impl AgentLifecycleService for AgentLifecycleServiceImpl {
             Some(proto_id.team_id.clone())
         };
 
+        // Compute root_agent_id server-side before building the record.
+        // Root agents: root = self. Sub-agents: inherit parent's root (or parent itself).
+        // Fail with INVALID_ARGUMENT if the declared parent is not registered.
+        let root_agent_id: Option<[u8; 16]> = if let Some(ref parent_str) = echo_parent_agent_id {
+            let parent_proto_id = ProtoAgentId {
+                org_id: proto_id.org_id.clone(),
+                team_id: proto_id.team_id.clone(),
+                agent_id: parent_str.clone(),
+            };
+            let parent_key = proto_agent_id_to_key(&parent_proto_id);
+            let parent = self
+                .registry
+                .get(&parent_key)
+                .ok_or_else(|| Status::invalid_argument("parent_agent_id not found in registry"))?;
+            Some(parent.root_agent_id.unwrap_or(parent.agent_id))
+        } else {
+            Some(agent_key)
+        };
+
         let record = AgentRecord {
             agent_id: agent_key,
             name: req.name,
@@ -117,7 +137,7 @@ impl AgentLifecycleService for AgentLifecycleServiceImpl {
             depth: 0,
             delegation_reason: req.delegation_reason,
             spawned_by_tool: req.spawned_by_tool,
-            root_agent_id: None, // computed and overwritten below
+            root_agent_id,
         };
 
         self.registry
@@ -126,12 +146,16 @@ impl AgentLifecycleService for AgentLifecycleServiceImpl {
 
         tracing::info!(agent_id = ?proto_id.agent_id, "agent registered");
 
+        // root_agent_id is Copy ([u8;16]) so we can use it after moving into record above.
+        let echo_root = root_agent_id.map(|b| b.to_vec());
+
         Ok(Response::new(RegisterResponse {
             credential_token,
             assigned_policy: String::new(),
             heartbeat_interval_sec: DEFAULT_HEARTBEAT_INTERVAL_SEC,
             parent_agent_id: echo_parent_agent_id,
             team_id: echo_team_id,
+            root_agent_id: echo_root,
         }))
     }
 
