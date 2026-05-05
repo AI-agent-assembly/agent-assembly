@@ -41,6 +41,12 @@ fn make_ctx(id: u8) -> AgentContext {
         started_at: aa_core::time::Timestamp::from_nanos(0),
         metadata: BTreeMap::new(),
         governance_level: GovernanceLevel::default(),
+        parent_agent_id: None,
+        team_id: None,
+        depth: 0,
+        delegation_reason: None,
+        spawned_by_tool: None,
+        root_agent_id: None,
     }
 }
 

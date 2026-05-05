@@ -70,6 +70,12 @@ fn register_agent(registry: &AgentRegistry, agent_id: AgentId, org_id: Option<&s
             recent_traces: vec![],
             layer: None,
             governance_level: Default::default(),
+            parent_agent_id: None,
+            team_id: None,
+            depth: 0,
+            delegation_reason: None,
+            spawned_by_tool: None,
+            root_agent_id: None,
         })
         .unwrap();
 }
