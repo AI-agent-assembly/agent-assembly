@@ -78,3 +78,4 @@ See [versioning.md](versioning.md) for the full versioning and deprecation polic
 | AAASM-37  | Added `aa-ebpf-common` workspace crate (no_std shared eBPF event types, not shipped as a public API) | None — internal kernel/userspace bridge only |
 | AAASM-39 (impl) | Added exec tracepoint BPF programs, ProcessLineageTracker, ShellDetector, ExecLoader in `aa-ebpf` | None — kernel-level monitoring, not a public API |
 | AAASM-64 | Added `aa-ffi-go` workspace crate (Go C-ABI staticlib bindings) | None — new FFI crate, no existing API changes |
+| AAASM-936 | Added `examples/aa-devtool-sample-myeditor` workspace crate (sample `DevToolAdapter` impl + plugin authoring reference; `publish = false`) | None — example only, not shipped, depends on existing `aa-core` API surface |
