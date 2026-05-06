@@ -6,6 +6,7 @@
 //!
 //! Target: < 5 ms P99  (AAASM-36 AC #5).
 
+use std::hint::black_box;
 use std::time::SystemTime;
 
 use bytes::Bytes;
@@ -47,7 +48,7 @@ fn bench_intercept_openai(c: &mut Criterion) {
     group.bench_function("openai_response", |b| {
         b.to_async(&rt).iter(|| async {
             let result = interceptor.intercept(&event).await;
-            criterion::black_box(result)
+            black_box(result)
         });
     });
 
@@ -66,7 +67,7 @@ fn bench_intercept_with_credential_scan(c: &mut Criterion) {
     group.bench_function("openai_with_credential_redaction", |b| {
         b.to_async(&rt).iter(|| async {
             let result = interceptor.intercept(&event).await;
-            criterion::black_box(result)
+            black_box(result)
         });
     });
 

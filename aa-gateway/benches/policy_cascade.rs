@@ -6,6 +6,7 @@
 //! exercises the cache-miss path.
 
 use std::collections::HashMap;
+use std::hint::black_box;
 use std::io::Write;
 use std::sync::Arc;
 
@@ -92,7 +93,7 @@ fn bench_evaluate_cached(c: &mut Criterion) {
     group.bench_function("cache_hit_1000_policies", |b| {
         b.iter(|| {
             let result = engine.evaluate(&ctx, &action);
-            criterion::black_box(result)
+            black_box(result)
         })
     });
 
@@ -107,7 +108,7 @@ fn bench_evaluate_cached(c: &mut Criterion) {
                 let start = std::time::Instant::now();
                 let result = e.evaluate(&ctx, &action);
                 total += start.elapsed();
-                criterion::black_box(result);
+                black_box(result);
             }
             total
         })

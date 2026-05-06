@@ -1,5 +1,6 @@
 use aa_core::CredentialScanner;
 use criterion::{criterion_group, criterion_main, Criterion, Throughput};
+use std::hint::black_box;
 
 /// Generates a ~1 MB synthetic payload that contains realistic benign text
 /// interspersed with a small number of credential patterns.
@@ -42,7 +43,7 @@ fn bench_scan_1mb(c: &mut Criterion) {
         b.iter(|| {
             let result = scanner.scan(&payload);
             // Prevent the compiler from optimising away the scan
-            criterion::black_box(result.findings.len())
+            black_box(result.findings.len())
         });
     });
 
