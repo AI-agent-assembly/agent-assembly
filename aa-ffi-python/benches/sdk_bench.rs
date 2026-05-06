@@ -7,6 +7,7 @@
 //!
 //! Target: < 2 ms P99  (AAASM-34 AC #6).
 
+use std::hint::black_box;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -73,7 +74,7 @@ fn bench_report_llm_call_channel(c: &mut Criterion) {
         b.iter(|| {
             let event = build_llm_event();
             let result = cmd_tx.blocking_send(event);
-            criterion::black_box(result)
+            black_box(result)
         });
     });
 
