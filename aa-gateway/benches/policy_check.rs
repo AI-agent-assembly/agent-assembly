@@ -6,6 +6,7 @@
 //! - Full: ToolCallContext with ~1KB args_json
 //! - Worst-case: NetworkCallContext with long target_url
 
+use std::hint::black_box;
 use std::io::Write;
 use std::net::SocketAddr;
 use std::sync::atomic::AtomicU64;
@@ -169,7 +170,7 @@ fn bench_check_action(c: &mut Criterion) {
                 let c = client.clone();
                 async move {
                     let resp = c.lock().await.check_action(r).await.unwrap();
-                    criterion::black_box(resp);
+                    black_box(resp);
                 }
             });
         });

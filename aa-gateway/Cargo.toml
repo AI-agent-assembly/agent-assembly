@@ -19,7 +19,7 @@ arc-swap     = "1"
 dashmap      = "6"
 ed25519-dalek = { version = "2", features = ["std"] }
 hex          = "0.4"
-notify       = { version = "6", features = [] }
+notify       = { version = "8", features = [] }
 chrono       = { version = "0.4", features = ["clock", "serde"] }
 chrono-tz    = { version = "0.10", features = ["serde"] }
 rust_decimal = { version = "1", features = ["serde-str"] }
@@ -41,7 +41,7 @@ ahash        = "0.8"
 metrics      = "0.24"
 
 [dev-dependencies]
-criterion    = { version = "0.5", features = ["async_tokio"] }
+criterion    = { version = "0.8", features = ["async_tokio"] }
 proptest     = "1"
 tempfile     = "3"
 tokio-stream = "0.1"
