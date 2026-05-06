@@ -19,7 +19,7 @@ arc-swap     = "1"
 dashmap      = "6"
 ed25519-dalek = { version = "2", features = ["std"] }
 hex          = "0.4"
-notify       = { version = "6", features = [] }
+notify       = { version = "8", features = [] }
 chrono       = { version = "0.4", features = ["clock", "serde"] }
 chrono-tz    = { version = "0.10", features = ["serde"] }
 rust_decimal = { version = "1", features = ["serde-str"] }
