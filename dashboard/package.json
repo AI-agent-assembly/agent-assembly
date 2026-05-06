@@ -15,7 +15,7 @@
   "dependencies": {
     "openapi-fetch": "^0.17.0",
     "react": "^19.2.5",
-    "react-dom": "^19.2.5"
+    "react-dom": "^19.2.6"
   },
   "devDependencies": {
     "@types/react": "^19.2.14",
