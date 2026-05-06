@@ -19,16 +19,16 @@ arc-swap     = "1"
 dashmap      = "6"
 ed25519-dalek = { version = "2", features = ["std"] }
 hex          = "0.4"
-notify       = { version = "6", features = [] }
+notify       = { version = "8", features = [] }
 chrono       = { version = "0.4", features = ["clock", "serde"] }
-chrono-tz    = { version = "0.9", features = ["serde"] }
+chrono-tz    = { version = "0.10", features = ["serde"] }
 rust_decimal = { version = "1", features = ["serde-str"] }
 thiserror    = "2"
 dirs         = "6"
 async-stream = "0.3"
 async-trait  = "0.1"
 sha2         = "0.11"
-similar      = "2"
+similar      = "3"
 tokio-stream = "0.1"
 tonic        = { version = "0.14", features = ["transport"] }
 tracing      = "0.1"
