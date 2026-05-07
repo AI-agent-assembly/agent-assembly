@@ -9,7 +9,9 @@ use clap::Args;
 use serde::Deserialize;
 use uuid::Uuid;
 
-use aa_core::{AdapterError, DevToolAdapter, DevToolInfo, DevToolKind, GovernanceLevel, McpServerInfo, PolicyDocument};
+use aa_core::{
+    AdapterError, DevToolAdapter, DevToolInfo, DevToolKind, GovernanceLevel, McpServerInfo, PolicyDocument, PolicyRule,
+};
 
 use crate::config::ResolvedContext;
 use crate::output::OutputFormat;
@@ -196,6 +198,66 @@ fn build_child_env(handle: &RegistrationHandle, no_proxy: bool) -> HashMap<Strin
     env
 }
 
+/// Construct a default policy document used until a real loader is wired in.
+fn load_policy() -> PolicyDocument {
+    PolicyDocument {
+        version: 1,
+        name: "default".into(),
+        rules: Vec::<PolicyRule>::new(),
+    }
+}
+
+/// Mask a value when its key contains "TOKEN" or "KEY" (case-insensitive).
+fn mask_value(key: &str, value: &str) -> String {
+    let upper = key.to_uppercase();
+    if upper.contains("TOKEN") || upper.contains("KEY") {
+        "***MASKED***".into()
+    } else {
+        value.to_string()
+    }
+}
+
+/// Build the structured dry-run output string.
+fn format_dry_run_output(
+    handle: &RegistrationHandle,
+    settings: &str,
+    cmd: &std::process::Command,
+    env: &HashMap<String, String>,
+) -> String {
+    const SETTINGS_LIMIT: usize = 1024;
+
+    let truncated_settings = if settings.len() > SETTINGS_LIMIT {
+        format!("{}... [truncated]", &settings[..SETTINGS_LIMIT])
+    } else {
+        settings.to_string()
+    };
+
+    let program = cmd.get_program().to_string_lossy().into_owned();
+    let args_strs: Vec<String> = cmd.get_args().map(|a| a.to_string_lossy().into_owned()).collect();
+    let cmd_line = if args_strs.is_empty() {
+        program
+    } else {
+        format!("{} {}", program, args_strs.join(" "))
+    };
+
+    let mut sorted_env: Vec<(&String, &String)> = env.iter().collect();
+    sorted_env.sort_by_key(|(k, _)| k.as_str());
+    let env_lines: String = sorted_env
+        .iter()
+        .map(|(k, v)| format!("{}={}\n", k, mask_value(k, v)))
+        .collect();
+
+    format!(
+        "--- aasm run dry-run ---\nagent_id:    {}\ntrace_id:    {}\nsession_id:  {}\n\n--- managed settings ---\n{}\n\n--- launch command ---\n{}\n\n--- environment ---\n{}",
+        handle.agent_id,
+        handle.trace_id,
+        handle.session_id,
+        truncated_settings,
+        cmd_line,
+        env_lines,
+    )
+}
+
 /// Return the adapter for `tool`, or an error for unrecognised tool names.
 fn resolve_adapter(tool: &str) -> Result<Box<dyn DevToolAdapter>> {
     match tool {
@@ -210,7 +272,7 @@ fn resolve_adapter(tool: &str) -> Result<Box<dyn DevToolAdapter>> {
     }
 }
 
-/// Testable core of `execute`: detect, register, build env, stop before exec.
+/// Testable core of `execute`: detect, register, apply settings, optionally dry-run.
 async fn execute_with_adapters(
     args: &RunArgs,
     ctx: &ResolvedContext,
@@ -236,9 +298,37 @@ async fn execute_with_adapters(
     );
 
     let handle = register_with_gateway(&info, args, ctx).await?;
-    let _child_env = build_child_env(&handle, args.no_proxy);
+    let child_env = build_child_env(&handle, args.no_proxy);
 
-    // AAASM-937 execs the child process using _child_env.
+    let policy = load_policy();
+    let settings = adapter
+        .generate_managed_settings(&policy)
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to generate managed settings: {e}"))?;
+
+    if !args.dry_run {
+        adapter
+            .apply_settings(&settings)
+            .await
+            .map_err(|e| anyhow::anyhow!("failed to apply settings: {e}"))?;
+    }
+
+    let mut cmd = adapter
+        .build_launch_command(
+            &args.tool_args,
+            &handle.agent_id,
+            handle.team_id.as_deref(),
+            handle.proxy_addr.as_deref(),
+        )
+        .map_err(|e| anyhow::anyhow!("failed to build launch command: {e}"))?;
+    cmd.envs(&child_env);
+
+    if args.dry_run {
+        print!("{}", format_dry_run_output(&handle, &settings, &cmd, &child_env));
+        return Ok(());
+    }
+
+    // AAASM-942: exec the child process here.
     Ok(())
 }
 
@@ -266,6 +356,10 @@ pub fn dispatch(args: RunArgs, ctx: &ResolvedContext, _output: OutputFormat) -> 
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
+    use std::sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    };
 
     use aa_core::{DevToolInfo, DevToolKind};
     use clap::Parser;
@@ -545,10 +639,10 @@ mod tests {
             })
         }
         async fn generate_managed_settings(&self, _p: &PolicyDocument) -> Result<String, AdapterError> {
-            unimplemented!()
+            Ok("{}".into())
         }
         async fn apply_settings(&self, _s: &str) -> Result<(), AdapterError> {
-            unimplemented!()
+            Ok(())
         }
         fn build_launch_command(
             &self,
@@ -557,13 +651,57 @@ mod tests {
             _c: Option<&str>,
             _d: Option<&str>,
         ) -> Result<std::process::Command, AdapterError> {
-            unimplemented!()
+            Ok(std::process::Command::new("echo"))
         }
         async fn list_mcp_servers(&self) -> Result<Vec<McpServerInfo>, AdapterError> {
-            unimplemented!()
+            Ok(vec![])
         }
         async fn apply_mcp_governance(&self, _a: &[String], _d: &[String]) -> Result<(), AdapterError> {
-            unimplemented!()
+            Ok(())
+        }
+        fn governance_level(&self) -> GovernanceLevel {
+            GovernanceLevel::L2Enforce
+        }
+    }
+
+    /// Adapter that records whether `apply_settings` was called.
+    struct MockAdapter {
+        apply_called: Arc<AtomicBool>,
+    }
+
+    #[async_trait]
+    impl DevToolAdapter for MockAdapter {
+        fn detect(&self) -> Option<DevToolInfo> {
+            Some(DevToolInfo {
+                kind: DevToolKind::ClaudeCode,
+                version: Some("9.9.9".into()),
+                install_path: PathBuf::from("/usr/local/bin/mock-tool"),
+                governance_level: GovernanceLevel::L2Enforce,
+                supports_mcp: false,
+                supports_managed_settings: true,
+            })
+        }
+        async fn generate_managed_settings(&self, _p: &PolicyDocument) -> Result<String, AdapterError> {
+            Ok(r#"{"key":"val"}"#.into())
+        }
+        async fn apply_settings(&self, _s: &str) -> Result<(), AdapterError> {
+            self.apply_called.store(true, Ordering::SeqCst);
+            Ok(())
+        }
+        fn build_launch_command(
+            &self,
+            _a: &[String],
+            _b: &str,
+            _c: Option<&str>,
+            _d: Option<&str>,
+        ) -> Result<std::process::Command, AdapterError> {
+            Ok(std::process::Command::new("mock-tool"))
+        }
+        async fn list_mcp_servers(&self) -> Result<Vec<McpServerInfo>, AdapterError> {
+            Ok(vec![])
+        }
+        async fn apply_mcp_governance(&self, _a: &[String], _d: &[String]) -> Result<(), AdapterError> {
+            Ok(())
         }
         fn governance_level(&self) -> GovernanceLevel {
             GovernanceLevel::L2Enforce
@@ -653,5 +791,101 @@ mod tests {
             .await
             .unwrap_err();
         assert!(err.to_string().contains("unknown tool"), "got: {err}");
+    }
+
+    // --- dry-run tests ---
+
+    #[tokio::test]
+    async fn dry_run_does_not_apply_settings() {
+        let mock_server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/api/v1/agents"))
+            .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({
+                "agent_id": "dr-agent",
+                "registration_id": "dr-reg",
+                "trace_id": "dr-trace",
+                "session_id": "dr-session",
+                "proxy_addr": null
+            })))
+            .mount(&mock_server)
+            .await;
+
+        let apply_called = Arc::new(AtomicBool::new(false));
+        let mut adapters: HashMap<&str, Box<dyn DevToolAdapter>> = HashMap::new();
+        adapters.insert(
+            "claude",
+            Box::new(MockAdapter {
+                apply_called: Arc::clone(&apply_called),
+            }),
+        );
+
+        let mut args = run_args("claude");
+        args.dry_run = true;
+        let ctx = ResolvedContext {
+            name: None,
+            api_url: mock_server.uri(),
+            api_key: None,
+        };
+
+        let result = execute_with_adapters(&args, &ctx, &adapters).await;
+        assert!(result.is_ok(), "dry-run should succeed: {result:?}");
+        assert!(
+            !apply_called.load(Ordering::SeqCst),
+            "apply_settings must NOT be called when --dry-run is set"
+        );
+    }
+
+    #[test]
+    fn dry_run_prints_command_line() {
+        let handle = RegistrationHandle {
+            agent_id: "agent-xyz".into(),
+            registration_id: "reg-xyz".into(),
+            trace_id: "trace-xyz".into(),
+            session_id: "session-xyz".into(),
+            proxy_addr: None,
+            team_id: None,
+        };
+        let settings = r#"{"mode":"strict"}"#;
+        let mut cmd = std::process::Command::new("mock-tool");
+        cmd.args(["--flag", "value"]);
+        let mut env = HashMap::new();
+        env.insert("AA_AGENT_ID".into(), "agent-xyz".into());
+        env.insert("MY_API_KEY".into(), "secret123".into());
+        env.insert("NORMAL_VAR".into(), "hello".into());
+
+        let output = format_dry_run_output(&handle, settings, &cmd, &env);
+
+        assert!(output.contains("agent_id:"), "missing identity section: {output}");
+        assert!(output.contains("agent-xyz"), "missing agent_id value: {output}");
+        assert!(output.contains("trace-xyz"), "missing trace_id value: {output}");
+        assert!(output.contains("session-xyz"), "missing session_id value: {output}");
+        assert!(
+            output.contains("--- managed settings ---"),
+            "missing settings header: {output}"
+        );
+        assert!(
+            output.contains(r#"{"mode":"strict"}"#),
+            "missing settings content: {output}"
+        );
+        assert!(
+            output.contains("--- launch command ---"),
+            "missing command header: {output}"
+        );
+        assert!(
+            output.contains("mock-tool"),
+            "missing tool name in command line: {output}"
+        );
+        assert!(
+            output.contains("--- environment ---"),
+            "missing environment header: {output}"
+        );
+        assert!(
+            output.contains("***MASKED***"),
+            "MY_API_KEY value should be masked: {output}"
+        );
+        assert!(
+            output.contains("NORMAL_VAR=hello"),
+            "NORMAL_VAR should be unmasked: {output}"
+        );
     }
 }
