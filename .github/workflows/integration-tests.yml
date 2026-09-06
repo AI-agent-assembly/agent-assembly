@@ -81,8 +81,10 @@ jobs:
     # invisible state this ticket exists to eliminate; a step ceiling firing
     # reports `failure`, which is red and blocks.
     #
-    #   step ceilings          71  = 6 protobuf + 6 cache restore + 4 pnpm
-    #                               + 18 pre-build aasm + 9 pre-build api + 28 tests
+    #   step ceilings          81  = 6 protobuf + 6 cache restore + 4 pnpm
+    #                               + 18 pre-build aasm + 9 pre-build api
+    #                               + 10 pre-build test binaries (AAASM-6033)
+    #                               + 28 tests
     #   un-ceilinged steps      2  = 4 checkouts, 6 toolchain/setup actions, a
     #                               symlink, and the non-cache post steps.
     #                               Measured at 58s total in run 32946949070; 2
@@ -91,7 +93,7 @@ jobs:
     #                               on each would cost more noise than it buys.
     #   cold cache save         2  = measured 44s, rounded up. See below.
     #                          ---
-    #   worst bounded run      75  = the longest run in which every step still
+    #   worst bounded run      85  = the longest run in which every step still
     #                               fires its own ceiling first
     #   strictness margin       1  = the ceiling must be strictly ABOVE that sum,
     #                               not equal to it. At equality the two fire in
@@ -99,7 +101,7 @@ jobs:
     #                               tie, which is the `cancelled` outcome this
     #                               whole file exists to make impossible.
     #                          ---
-    #                           76
+    #                           86
     #
     # The cache save is the one contributor that *cannot* be ceilinged: it is a
     # post step, and post steps do not accept `timeout-minutes`. It is therefore
@@ -120,7 +122,7 @@ jobs:
     #
     # Do not lower this below the sum above without lowering the step ceilings
     # too, and do not add an un-ceilinged step that can do unbounded work.
-    timeout-minutes: 76
+    timeout-minutes: 86
     strategy:
       fail-fast: false
       matrix:
@@ -296,6 +298,16 @@ jobs:
         # keeps every later `cargo build` invocation a fast no-op freshness
         # check instead of a cold compile landing unpredictably on one test.
         run: cargo build --quiet -p aa-api --bin aa-api-server
+
+      - name: Pre-build aa-integration-tests test binaries (AAASM-6033)
+        # Worst measured 6m08s (run 34053091032, macOS). 10 = ~1.5x worst.
+        #
+        # `cargo nextest run` compiles the test binaries as its first act, and
+        # under the timed step below that compile competed with the 28-minute
+        # ceiling meant for actually *running* tests. Moving it here is a pure
+        # relocation, not new work — `--no-run` builds and immediately exits.
+        timeout-minutes: 10
+        run: cargo nextest run -p aa-integration-tests --profile evidence --no-run
 
       - name: Run integration tests
         # 28 = 1.48x the 18.9 min of the last green warm run (34a274da6); under
