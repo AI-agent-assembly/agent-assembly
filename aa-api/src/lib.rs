@@ -39,6 +39,8 @@ pub use events::EventBroadcast;
 pub use models::{EventType, GovernanceEvent};
 pub use openapi::ApiDoc;
 pub use replay::ReplayBuffer;
-pub use server::{build_app, build_app_with_spa, run_server, run_server_with_spa, serve_local};
+pub use server::{
+    build_app, build_app_with_spa, check_local_api_bind_addr, run_server, run_server_with_spa, serve_local,
+};
 pub use state::{AppState, LocalAuth, LocalStateError};
 pub use trace_store::{InMemoryTraceStore, TraceStore};
