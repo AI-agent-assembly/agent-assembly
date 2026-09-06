@@ -1147,6 +1147,15 @@ against those repos' trees rather than against the quotes here.
       why that table now distinguishes gateway-bound blocking from local proxy policy.
 - [ ] Host adapter support boundaries documented per
       [AAASM-5606](https://lightning-dust-mite.atlassian.net/browse/AAASM-5606).
+- [x] `docs/src/glossary.md` — named here for the first time (AAASM-5658);
+      previously absent from both this checklist and the AAASM-5528 claim
+      inventory's `docs` rows (which reach only `README.md` and
+      `comparison.md`), so its residuals sat unowned while looking tracked.
+      AAASM-5727 removed the three-layer framing and the
+      eBPF-catches-bypass-attempts claim; the remaining defect — the SDK
+      entry stating it "applies allow/deny decisions" rather than Evaluated
+      (advisory) — is fixed by [docs PR
+      #161](https://github.com/ai-agent-assembly/docs/pull/161).
 
 #### Vocabulary ruling — enforcement terms vs. lifecycle labels
 
