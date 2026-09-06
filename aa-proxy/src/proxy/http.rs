@@ -1297,4 +1297,151 @@ mod tests {
         let out = decompress_content_encoding("gzip", &gzip(&plain)).unwrap();
         assert_eq!(out.len(), MAX_BODY_LEN);
     }
+
+    // ── response-side chunked / close-delimited framing (AAASM-5645) ────────
+
+    #[tokio::test]
+    async fn chunked_response_is_decoded_whole() {
+        // The bug this closes: `Content-Length` was the only framing this
+        // parser understood, so a chunked response's body defaulted to empty.
+        let raw = b"HTTP/1.1 200 OK\r\n\
+                    Content-Type: application/json\r\n\
+                    Transfer-Encoding: chunked\r\n\
+                    \r\n\
+                    5\r\nhello\r\n\
+                    7\r\n, world\r\n\
+                    0\r\n\r\n";
+        let mut reader = make_reader(raw);
+        let resp = read_http_response(&mut reader)
+            .await
+            .unwrap()
+            .expect("response present");
+        assert_eq!(&resp.body, b"hello, world");
+    }
+
+    #[tokio::test]
+    async fn chunked_response_decodes_chunk_extensions() {
+        // RFC 7230 §4.1.1: a `;`-delimited chunk extension is accepted and
+        // ignored, not treated as part of the hex size.
+        let raw = b"HTTP/1.1 200 OK\r\n\
+                    Transfer-Encoding: chunked\r\n\
+                    \r\n\
+                    5;foo=bar\r\nhello\r\n\
+                    0\r\n\r\n";
+        let mut reader = make_reader(raw);
+        let resp = read_http_response(&mut reader)
+            .await
+            .unwrap()
+            .expect("response present");
+        assert_eq!(&resp.body, b"hello");
+    }
+
+    #[tokio::test]
+    async fn chunked_response_discards_trailers() {
+        // Trailer header lines after the terminating chunk are consumed (so
+        // parsing doesn't stop early) but must not be merged into the
+        // response's own headers.
+        let raw = b"HTTP/1.1 200 OK\r\n\
+                    Transfer-Encoding: chunked\r\n\
+                    \r\n\
+                    5\r\nhello\r\n\
+                    0\r\nX-Trailer: should-not-appear\r\n\r\n";
+        let mut reader = make_reader(raw);
+        let resp = read_http_response(&mut reader)
+            .await
+            .unwrap()
+            .expect("response present");
+        assert_eq!(&resp.body, b"hello");
+        assert!(
+            !resp.headers.iter().any(|(k, _)| k.eq_ignore_ascii_case("x-trailer")),
+            "a chunked trailer must not be merged into the response headers"
+        );
+    }
+
+    #[tokio::test]
+    async fn chunked_response_over_cap_is_rejected_without_forwarding() {
+        // The running total is checked before each chunk is appended
+        // (reject-before-alloc), so an over-cap chunked body fails closed the
+        // same way an over-cap Content-Length body does.
+        let mut raw = b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n".to_vec();
+        // One chunk already larger than MAX_BODY_LEN.
+        let chunk_len = MAX_BODY_LEN + 1024;
+        raw.extend_from_slice(format!("{chunk_len:x}\r\n").as_bytes());
+        raw.extend(std::iter::repeat_n(b'a', chunk_len));
+        raw.extend_from_slice(b"\r\n0\r\n\r\n");
+        let mut reader = make_reader(&raw);
+        let err = read_http_response(&mut reader).await.unwrap_err();
+        assert!(
+            matches!(&err, ProxyError::Config(m) if m.contains("exceeds maximum")),
+            "expected over-cap rejection, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn unterminated_chunked_response_is_config_error() {
+        // EOF before the terminating zero-length chunk must fail closed, never
+        // return a truncated `Ok` body.
+        let raw = b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n";
+        let mut reader = make_reader(raw);
+        let err = read_http_response(&mut reader).await.unwrap_err();
+        assert!(
+            matches!(err, ProxyError::Config(_)),
+            "expected Config error, got {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn layered_chunked_transfer_encoding_is_rejected() {
+        // `gzip, chunked` cannot be decoded by this parser's single-layer
+        // chunk decoder, and de-chunking it would hand still-gzipped bytes to
+        // the credential scanner (which decompresses on Content-Encoding, not
+        // Transfer-Encoding) — scanning opaque bytes and forwarding them
+        // (AAASM-4156's gap, on a new axis). Only a literal `chunked` decodes;
+        // anything else fails closed.
+        let raw = b"HTTP/1.1 200 OK\r\nTransfer-Encoding: gzip, chunked\r\n\r\nirrelevant";
+        let mut reader = make_reader(raw);
+        let err = read_http_response(&mut reader).await.unwrap_err();
+        assert!(
+            matches!(&err, ProxyError::Config(m) if m.contains("not inspectable")),
+            "expected fail-closed rejection of a layered Transfer-Encoding, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn close_delimited_response_is_read_to_eof() {
+        // Neither Content-Length nor Transfer-Encoding present: the body is
+        // whatever remains on the connection.
+        let raw = b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nwhatever remains";
+        let mut reader = make_reader(raw);
+        let resp = read_http_response(&mut reader)
+            .await
+            .unwrap()
+            .expect("response present");
+        assert_eq!(&resp.body, b"whatever remains");
+    }
+
+    #[tokio::test]
+    async fn close_delimited_response_over_cap_is_rejected() {
+        let mut raw = b"HTTP/1.1 200 OK\r\n\r\n".to_vec();
+        raw.extend(std::iter::repeat_n(b'a', MAX_BODY_LEN + 1));
+        let mut reader = make_reader(&raw);
+        let err = read_http_response(&mut reader).await.unwrap_err();
+        assert!(
+            matches!(&err, ProxyError::Config(m) if m.contains("exceeds maximum")),
+            "expected over-cap rejection, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn no_content_204_response_does_not_wait_for_eof() {
+        // A body-less status must not block waiting for a connection close
+        // that (in production) only happens after this read returns.
+        let raw = b"HTTP/1.1 204 No Content\r\n\r\n";
+        let mut reader = make_reader(raw);
+        let resp = read_http_response(&mut reader)
+            .await
+            .unwrap()
+            .expect("response present");
+        assert!(resp.body.is_empty());
+    }
 }
