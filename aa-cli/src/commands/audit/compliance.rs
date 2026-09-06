@@ -608,6 +608,72 @@ mod tests {
         assert!(lines[1].contains("false")); // no redaction
     }
 
+    // --- action/policy_rule/reason projection (AAASM-6055) ---
+
+    #[test]
+    fn csv_export_projects_action_fields_from_payload() {
+        // A discriminating fixture: `delete_file` vs a hypothetical `read_file`
+        // decision must be distinguishable in the CSV the same way JSON/JSONL
+        // already distinguishes them — a CSV that dropped `action` entirely
+        // would still pass a test that only checked for *a* non-empty column.
+        let payload = r#"{"action_type":"delete_file","policy_rule":"fs_write_guard","reason":"path outside sandbox"}"#;
+        let entry = AuditEntry::new(
+            0,
+            1_700_000_000_000_000_000,
+            AuditEventType::ToolCallIntercepted,
+            fixed_agent(),
+            fixed_session(),
+            payload.to_string(),
+            [0u8; 32],
+        );
+        let records = vec![map_audit_entry(&entry)];
+        let mut buf = Vec::new();
+        write_records_csv(&records, &mut buf).unwrap();
+        let output = String::from_utf8(buf).unwrap();
+        let lines: Vec<&str> = output.lines().collect();
+        assert!(
+            lines[0].ends_with("decision_id,action,policy_rule,reason"),
+            "header must end with the new columns in order: {}",
+            lines[0]
+        );
+        assert!(
+            lines[1].contains("delete_file"),
+            "action must be projected from payload.action_type: {}",
+            lines[1]
+        );
+        assert!(
+            lines[1].contains("fs_write_guard"),
+            "policy_rule must be projected from payload: {}",
+            lines[1]
+        );
+        assert!(
+            lines[1].contains("path outside sandbox"),
+            "reason must be projected from payload: {}",
+            lines[1]
+        );
+    }
+
+    #[test]
+    fn csv_export_action_fields_empty_on_unparseable_payload() {
+        // sample_records' fixture payload (`{"seq":N}`) is valid JSON but has
+        // none of the three keys — and a genuinely malformed payload must not
+        // abort the export either (fail-soft, not fail-closed, for a
+        // best-effort display projection).
+        let records = sample_records(1);
+        let mut buf = Vec::new();
+        write_records_csv(&records, &mut buf).unwrap();
+        let output = String::from_utf8(buf).unwrap();
+        let lines: Vec<&str> = output.lines().collect();
+        assert!(
+            lines[1].ends_with(",,,"),
+            "action/policy_rule/reason must be empty, not panic, when absent from payload: {}",
+            lines[1]
+        );
+
+        let (action, policy_rule, reason) = extract_action_fields("not json at all");
+        assert_eq!((action.as_str(), policy_rule.as_str(), reason.as_str()), ("", "", ""));
+    }
+
     // --- decision_id (AAASM-5002) ---
 
     #[test]
