@@ -37,6 +37,20 @@ retries = 2
 [profile.evidence]
 retries = 2
 
+# AAASM-6033: diagnostics, not the fix. Before this, a breach of the
+# `Run integration tests` step's 28-minute ceiling names no test and writes
+# no JUnit report (the step is killed before nextest can write one) —
+# `integration-tests.yml`'s own note on this. A per-test slow-timeout turns
+# that into a named, immediate nextest FAILED instead. `period = "360s"`
+# is deliberately generous: the slowest known real test in this crate
+# (`cli_run_codex_launch_env`) has measured up to ~264s, and `retries = 2`
+# above means a `terminate-after` kill is retried up to 3 attempts total —
+# `terminate-after = 1` keeps the worst case at 360s x 3 = 18 min for one
+# pathological test, bounded and still well inside the step ceiling.
+[profile.evidence.slow-timeout]
+period = "360s"
+terminate-after = 1
+
 [profile.evidence.junit]
 path = "junit.xml"
 
