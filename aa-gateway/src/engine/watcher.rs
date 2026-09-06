@@ -136,12 +136,12 @@ pub(crate) fn start_reconciler(path: &Path, slot: Arc<ArcSwap<PolicyDocument>>, 
     // (5s) regardless of whether anything had actually changed — measured to
     // cost over an hour of aggregate CI time across the workspace's test
     // suites, on top of delaying real gateway shutdown in production.
-    let handle = std::thread::spawn(move || loop {
-        match stop_rx.recv_timeout(interval) {
-            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => reconcile_file_tick(&path_buf, &slot),
-            // `Ok(())` (an explicit send) or `Disconnected` (the sender
-            // dropped) both mean stop now — don't wait out the interval.
-            _ => break,
+    // `Ok(())` (an explicit send) or `Disconnected` (the sender dropped)
+    // both mean stop now — don't wait out the interval; only a `Timeout`
+    // continues the loop.
+    let handle = std::thread::spawn(move || {
+        while let Err(std::sync::mpsc::RecvTimeoutError::Timeout) = stop_rx.recv_timeout(interval) {
+            reconcile_file_tick(&path_buf, &slot);
         }
     });
     Reconciler::SlotCompare {
