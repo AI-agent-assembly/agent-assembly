@@ -47,7 +47,7 @@ use notify::{recommended_watcher, Config, EventKind, PollWatcher, RecursiveMode,
 use std::{
     path::Path,
     sync::{
-        atomic::{AtomicBool, AtomicU64, Ordering},
+        atomic::{AtomicU64, Ordering},
         Arc,
     },
     time::Duration,
@@ -127,19 +127,25 @@ pub(crate) fn start_watcher(
 /// Returns the poll handle; drop it to stop reconciling.
 pub(crate) fn start_reconciler(path: &Path, slot: Arc<ArcSwap<PolicyDocument>>, interval: Duration) -> Reconciler {
     let path_buf = path.to_path_buf();
-    let stop = Arc::new(AtomicBool::new(false));
-    let stop_flag = stop.clone();
-    let handle = std::thread::spawn(move || {
-        while !stop_flag.load(Ordering::Relaxed) {
-            std::thread::sleep(interval);
-            if stop_flag.load(Ordering::Relaxed) {
-                break;
-            }
-            reconcile_file_tick(&path_buf, &slot);
+    let (stop_tx, stop_rx) = std::sync::mpsc::channel::<()>();
+    // AAASM-6033: wait on `stop_rx` instead of `thread::sleep`, so dropping
+    // the `Reconciler` (which drops `stop_tx`) wakes the loop immediately
+    // instead of waiting out up to a full `interval` before `handle.join()`
+    // returns. `thread::sleep` cannot be interrupted, so every prior drop of
+    // a file-watching `PolicyEngine` blocked for close to `RECONCILE_INTERVAL`
+    // (5s) regardless of whether anything had actually changed — measured to
+    // cost over an hour of aggregate CI time across the workspace's test
+    // suites, on top of delaying real gateway shutdown in production.
+    let handle = std::thread::spawn(move || loop {
+        match stop_rx.recv_timeout(interval) {
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => reconcile_file_tick(&path_buf, &slot),
+            // `Ok(())` (an explicit send) or `Disconnected` (the sender
+            // dropped) both mean stop now — don't wait out the interval.
+            _ => break,
         }
     });
     Reconciler::SlotCompare {
-        stop,
+        stop: Some(stop_tx),
         handle: Some(handle),
     }
 }
@@ -170,7 +176,7 @@ fn reconcile_file_tick(path: &Path, slot: &Arc<ArcSwap<PolicyDocument>>) {
 pub(crate) enum Reconciler {
     /// [`start_reconciler`]'s slot-comparing background thread.
     SlotCompare {
-        stop: Arc<AtomicBool>,
+        stop: Option<std::sync::mpsc::Sender<()>>,
         handle: Option<std::thread::JoinHandle<()>>,
     },
     /// [`start_cascade_reconciler`]'s `notify::PollWatcher`. The cascade
@@ -183,7 +189,10 @@ pub(crate) enum Reconciler {
 impl Drop for Reconciler {
     fn drop(&mut self) {
         if let Reconciler::SlotCompare { stop, handle } = self {
-            stop.store(true, Ordering::Relaxed);
+            // Dropping the sender disconnects `stop_rx`, waking
+            // `recv_timeout` immediately instead of waiting out the
+            // interval (AAASM-6033).
+            stop.take();
             if let Some(handle) = handle.take() {
                 let _ = handle.join();
             }
