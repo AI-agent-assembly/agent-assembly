@@ -182,6 +182,51 @@ async fn live_tls_upstream() -> SocketAddr {
     addr
 }
 
+/// A TLS upstream that answers with a `Transfer-Encoding: chunked` body
+/// (AAASM-5645) instead of a `Content-Length` one — the framing
+/// `read_http_response` used to leave empty. The marker is split across a
+/// chunk boundary so a decoder that only reads the first chunk, or
+/// mis-consumes the inter-chunk CRLF, fails to reproduce it whole.
+async fn chunked_tls_upstream() -> SocketAddr {
+    install_crypto();
+    let listener = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+    let addr = listener.local_addr().unwrap();
+
+    let cert = rcgen::generate_simple_self_signed(vec!["localhost".to_string()]).unwrap();
+    let cert_der = CertificateDer::from(cert.cert.der().to_vec());
+    let key_der = PrivateKeyDer::from(PrivatePkcs8KeyDer::from(cert.signing_key.serialize_der()));
+    let server_config = ServerConfig::builder()
+        .with_no_client_auth()
+        .with_single_cert(vec![cert_der], key_der)
+        .unwrap();
+    let acceptor = TlsAcceptor::from(Arc::new(server_config));
+
+    tokio::spawn(async move {
+        while let Ok((stream, _)) = listener.accept().await {
+            let acceptor = acceptor.clone();
+            tokio::spawn(async move {
+                let Ok(mut tls) = acceptor.accept(stream).await else {
+                    return;
+                };
+                let mut chunk = [0u8; 8192];
+                let _ = tokio::time::timeout(std::time::Duration::from_millis(500), tls.read(&mut chunk)).await;
+                // "chunk-boundary-marker" split as "chunk-boundary-" (15) + "marker" (6).
+                let body = b"HTTP/1.1 200 OK\r\n\
+                             Content-Type: application/json\r\n\
+                             Transfer-Encoding: chunked\r\n\
+                             Connection: close\r\n\
+                             \r\n\
+                             f\r\nchunk-boundary-\r\n\
+                             6\r\nmarker\r\n\
+                             0\r\n\r\n";
+                let _ = tls.write_all(body).await;
+                let _ = tls.shutdown().await;
+            });
+        }
+    });
+    addr
+}
+
 /// Open a CONNECT tunnel and return the proxy's answer to the CONNECT itself.
 ///
 /// `Err(response)` when the proxy refused the tunnel — which is the case every
@@ -805,6 +850,54 @@ mod gateway_stub {
         tokio::time::sleep(std::time::Duration::from_millis(150)).await;
         format!("http://{addr}")
     }
+
+    /// Allows every `CheckAction` unconditionally. Neither `DenyEverything`
+    /// nor `AllowOnlyNetworkHost` lets an MCP `tools/call` reach the upstream
+    /// (AAASM-5645 needs a real, decoded response body from a live upstream,
+    /// which requires the call itself to be allowed).
+    #[derive(Default)]
+    struct AllowEverything;
+
+    #[tonic::async_trait]
+    impl PolicyService for AllowEverything {
+        async fn check_action(
+            &self,
+            _req: Request<CheckActionRequest>,
+        ) -> Result<Response<CheckActionResponse>, Status> {
+            Ok(Response::new(CheckActionResponse {
+                decision: aa_proto::assembly::common::v1::Decision::Allow as i32,
+                ..Default::default()
+            }))
+        }
+
+        async fn batch_check(&self, _req: Request<BatchCheckRequest>) -> Result<Response<BatchCheckResponse>, Status> {
+            Err(Status::unimplemented("stub"))
+        }
+
+        type OpControlStreamStream = Pin<Box<dyn Stream<Item = Result<OpControlMessage, Status>> + Send + 'static>>;
+
+        async fn op_control_stream(
+            &self,
+            _req: Request<OpControlSubscribeRequest>,
+        ) -> Result<Response<Self::OpControlStreamStream>, Status> {
+            Err(Status::unimplemented("stub"))
+        }
+    }
+
+    /// Bind a gateway that allows everything.
+    pub async fn spawn_allowing_gateway() -> String {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        drop(listener);
+        tokio::spawn(async move {
+            let _ = tonic::transport::Server::builder()
+                .add_service(PolicyServiceServer::new(AllowEverything))
+                .serve(addr)
+                .await;
+        });
+        tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+        format!("http://{addr}")
+    }
 }
 
 // ── the control that keeps the refusal assertions honest ───────────────────
@@ -857,4 +950,52 @@ async fn a_refusal_and_a_forward_are_distinguishable_on_one_proxy() {
     );
     assert!(refusal.execution.establishes_non_transmission());
     assert_eq!(refusal.host, DENIED_HOST);
+}
+
+// ── Chunked MCP response is decoded, not silently emptied (AAASM-5645) ─────
+
+/// Before AAASM-5645, `read_http_response` derived the body length from
+/// `Content-Length` alone and defaulted to zero when the header was absent —
+/// a `Transfer-Encoding: chunked` MCP response therefore reached the client
+/// as a well-formed `200` with an empty body. Modelled on
+/// `an_mcp_tools_call_deny_persists_a_refusal`, but the gateway allows the
+/// call so the response actually reaches `read_http_response`.
+///
+/// Asserts both directions the AC requires: the full marker (spanning a
+/// chunk boundary) reaches the client, **and** the status is `200`, not
+/// `502` — the fail-closed "withhold" option the ticket deliberately did not
+/// take. A test that only checked one of these would also pass if the fix
+/// had instead withheld every chunked response with the existing JSON-RPC
+/// error.
+#[tokio::test]
+async fn an_mcp_response_using_chunked_transfer_encoding_is_relayed_whole() {
+    let dir = tempfile::tempdir().unwrap();
+    let gateway = gateway_stub::spawn_allowing_gateway().await;
+    let upstream = chunked_tls_upstream().await;
+    let (proxy, _audit) = start_proxy(
+        Fixture {
+            mitm_hosts: vec![MITM_HOST.to_string()],
+            gateway_endpoint: Some(gateway),
+            upstream_override: Some(upstream),
+            ..Fixture::default()
+        },
+        dir.path(),
+    )
+    .await;
+
+    let tunnel = open_tunnel(proxy, MITM_HOST).await.expect("the CONNECT is allowed");
+    let response = mitm_send(tunnel, MITM_HOST, &post(MITM_HOST, "/mcp", &mcp_tools_call_body())).await;
+
+    assert!(
+        response.contains("200"),
+        "an allowed chunked MCP response must not be downgraded to a fail-closed withhold, got: {response:?}"
+    );
+    assert!(
+        !response.contains("502"),
+        "a chunked response must be decoded, not withheld as unparseable, got: {response:?}"
+    );
+    assert!(
+        response.contains("chunk-boundary-marker"),
+        "the full body, reassembled across the chunk boundary, must reach the client, got: {response:?}"
+    );
 }
