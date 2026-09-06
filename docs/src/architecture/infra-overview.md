@@ -302,7 +302,7 @@ this loader. See [Data flows → Storage data flow](data-flows.md#storage-data-f
 
 | Knob | Where | Purpose / default |
 |---|---|---|
-| `AA_API_ADDR` | `aa-api/src/config.rs`, `aa-api/src/bin/aa-api-server.rs` | HTTP bind address. Default `127.0.0.1:7700` (`DEFAULT_ADDR`). |
+| `AA_API_ADDR` | `aa-api/src/config.rs`, `aa-api/src/bin/aa-api-server.rs` | HTTP bind address. Default `127.0.0.1:7700` (`DEFAULT_ADDR`). A non-loopback value refuses to start when `AASM_API_AUTH=off` (AAASM-6056, `check_local_api_bind_addr`) — that combination would serve an unauthenticated admin API on the network. |
 | `AA_AUTH` | `aa-auth/src/config.rs` | `off` disables auth (all requests treated as admin, logged as a warning); anything else = on. |
 | `AA_JWT_SECRET` | `aa-auth/src/config.rs` | HMAC key for JWT; **required** when auth is on, with a minimum length. |
 | `AA_API_KEYS_PATH` | `aa-auth/src/config.rs` | Path to the API-keys file. Default `~/.aa/api-keys.json`. |

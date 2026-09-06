@@ -24,6 +24,7 @@ aasm start [OPTIONS]
 | Flag | Type | Default | Description |
 |---|---|---|---|
 | `--mode <MODE>` | `local` \| `remote` | `local` | Deployment mode. `local` binds `127.0.0.1` (loopback only); `remote` binds `0.0.0.0`. |
+| `--host <HOST>` | IP address | unset | Overrides the mode's default bind address (AAASM-6056). An explicit opt-in — `aasm start` does not otherwise honor a pre-set `AA_API_ADDR`. |
 | `--port <PORT>` | integer | `7391` | TCP port the gateway listens on. |
 | `--config <CONFIG>` | path | `~/.aasm/config.yaml` | Accepted for a stable operator surface but **not yet wired** — the value is currently a no-op and is not read by the spawned process. |
 | `--foreground` | flag | off | Stay in the foreground; do not daemonize. |
@@ -39,7 +40,11 @@ aasm start [OPTIONS]
 
 ### Behavior
 
-1. Resolve the listen address from `mode` + `port`.
+1. Resolve the listen address from `--host` (if given), else `mode` + `port`'s
+   default. In local mode, a non-loopback `--host` paired with an unauthenticated
+   `aa-api-server` (`AASM_API_AUTH=off`) is refused by the spawned process itself
+   (AAASM-6056) — it would otherwise serve an unauthenticated admin API on the
+   network.
 2. Exit early (idempotent) if a gateway is already running at that address —
    verified by a live PID file **and** a successful TCP probe.
 3. Spawn the entrypoint binary for the selected mode (background, or foreground

@@ -15,7 +15,7 @@ use aa_proto::assembly::policy::v1::policy_service_server::PolicyServiceServer;
 use crate::config::ApiConfig;
 use crate::middleware::apply_middleware;
 use crate::routes;
-use crate::state::AppState;
+use crate::state::{AppState, LocalAuth};
 
 /// Loopback gRPC endpoint for SDK agent registration in local mode (AAASM-4447).
 ///
@@ -63,6 +63,31 @@ fn resolve_telemetry_addr() -> Result<std::net::SocketAddr, Box<dyn std::error::
         .into());
     }
     Ok(addr)
+}
+
+/// Refuse to serve the main REST bind address `addr` when it is non-loopback
+/// and auth is disabled (AAASM-6056).
+///
+/// `aa-api-server` defaults to API-key auth, so binding `AA_API_ADDR` to a
+/// non-loopback address is fine in the common case — this does not gate
+/// `AA_API_ADDR` generally. The one genuinely unauthenticated combination is
+/// `AASM_API_AUTH=off` (every request treated as admin) paired with a
+/// non-loopback bind, which would put an unauthenticated admin API on the
+/// network. That combination used to only warn ("do not expose this"); this
+/// refuses to start instead, since the remedy (unset `AASM_API_AUTH` or bind
+/// loopback) is free and the failure mode otherwise is silent exposure.
+pub fn check_local_api_bind_addr(addr: std::net::SocketAddr, auth: &LocalAuth) -> Result<(), String> {
+    if addr.ip().is_loopback() {
+        return Ok(());
+    }
+    if matches!(auth, LocalAuth::ApiKey { .. }) {
+        return Ok(());
+    }
+    Err(format!(
+        "refusing to bind {addr} (non-loopback) with AASM_API_AUTH=off — this would serve an \
+         unauthenticated admin API on the network; bind a loopback address instead, or unset \
+         AASM_API_AUTH to require an API key"
+    ))
 }
 
 /// Max accepted gRPC decode size (4 MiB). Parity with `aa-gateway`'s legacy-grpc
@@ -617,5 +642,42 @@ mod tests {
             Some(v) => std::env::set_var("AA_API_TELEMETRY_ADDR", v),
             None => std::env::remove_var("AA_API_TELEMETRY_ADDR"),
         }
+    }
+
+    // --- check_local_api_bind_addr (AAASM-6056) ---
+
+    fn addr(s: &str) -> std::net::SocketAddr {
+        s.parse().unwrap()
+    }
+
+    fn api_key_auth() -> LocalAuth {
+        LocalAuth::ApiKey { key: "aa_test".into() }
+    }
+
+    #[test]
+    fn loopback_is_always_allowed_regardless_of_auth() {
+        assert!(check_local_api_bind_addr(addr("127.0.0.1:7700"), &LocalAuth::Off).is_ok());
+        assert!(check_local_api_bind_addr(addr("127.0.0.2:7700"), &LocalAuth::Off).is_ok());
+        assert!(check_local_api_bind_addr(addr("[::1]:7700"), &LocalAuth::Off).is_ok());
+        assert!(check_local_api_bind_addr(addr("127.0.0.1:7700"), &api_key_auth()).is_ok());
+    }
+
+    #[test]
+    fn non_loopback_with_auth_off_is_refused() {
+        let err = check_local_api_bind_addr(addr("0.0.0.0:7700"), &LocalAuth::Off).unwrap_err();
+        assert!(
+            err.contains("AASM_API_AUTH"),
+            "error must name the offending env var: {err}"
+        );
+
+        let err = check_local_api_bind_addr(addr("[::]:7700"), &LocalAuth::Off).unwrap_err();
+        assert!(err.contains("AASM_API_AUTH"));
+    }
+
+    #[test]
+    fn non_loopback_with_api_key_auth_is_allowed() {
+        // The common case this must not gate: AA_API_ADDR generally isn't
+        // restricted, only the auth-off combination is.
+        assert!(check_local_api_bind_addr(addr("0.0.0.0:7700"), &api_key_auth()).is_ok());
     }
 }
