@@ -331,6 +331,10 @@ jobs:
           GO_SDK_PATH: ${{ github.workspace }}/go-sdk
           # AAASM-2340: spawn the binary pre-built in the previous step
           # instead of paying cargo-run overhead per test under --test-threads=1.
+          # This is what makes AAASM-6033's --test-threads=4 below safe: the
+          # per-test `cargo run` overhead --test-threads=1 originally existed
+          # to serialize (see the pre-build step's comment above) is already
+          # eliminated by spawning this pre-built binary directly.
           AASM_BIN_PATH: ${{ github.workspace }}/target/debug/aasm
           # AAASM-5977: this lane provisions every binary its own skip guards
           # check for (see the pre-build step above), so an unmet precondition
@@ -346,7 +350,20 @@ jobs:
         # `--profile evidence` writes the JUnit report the summary step needs
         # for its ran/passed count (AC5) — same profile the conformance and CI
         # workspace lanes already use for the same reason.
-        run: cargo nextest run -p aa-integration-tests --profile evidence --test-threads=1
+        #
+        # AAASM-6033: raised from --test-threads=1. The reconciler-drop fix
+        # (aa-gateway/src/engine/watcher.rs) removed an uninterruptible ~5s
+        # wait that 1,323 tests workspace-wide paid on every drop of a
+        # file-watching PolicyEngine — measured at 63.17 min of serial test
+        # time for this crate's 745 tests in ci.yml's Test job before that
+        # fix. Running 4-wide gets real concurrency margin instead of merely
+        # clearing the ceiling. The handful of real-process/port-binding
+        # tests this would otherwise race are pinned to their own serial
+        # group in .config/nextest.toml (`serial-process`, [[profile.
+        # evidence.overrides]]) rather than serializing the whole suite
+        # again — ci.yml's `Test` job already runs these same tests fully
+        # concurrently and is green, which is the precedent this leans on.
+        run: cargo nextest run -p aa-integration-tests --profile evidence --test-threads=4
 
       - name: Test evidence summary
         # `always()`: a lane that failed on a strict-mode precondition panic

@@ -39,3 +39,30 @@ retries = 2
 
 [profile.evidence.junit]
 path = "junit.xml"
+
+# AAASM-6033: `integration-tests.yml`'s `Run integration tests` step raised
+# --test-threads from 1 to 4 once its original reason (per-test `cargo run`
+# overhead, serialized by definition) was eliminated by the AASM_BIN_PATH
+# pre-build step. The real-process/long-running tests below still need to
+# run one at a time — several spawn real gateway/proxy processes and are
+# timing-sensitive under concurrent CPU load — so they're pinned into their
+# own serial group instead of forcing the whole 747-test suite serial again.
+# ci.yml's `Test` job already runs the full workspace, these tests included,
+# fully concurrently and is green, which is the safety precedent for
+# everything *not* listed here running at --test-threads=4.
+[test-groups.serial-process]
+max-threads = 1
+
+[[profile.evidence.overrides]]
+filter = '''
+binary_id(aa-integration-tests::cli_run_claude_deterministic_conformance)
+  + binary_id(aa-integration-tests::cli_run_claude_governed_launch)
+  + binary_id(aa-integration-tests::cli_run_claude_launch_env)
+  + binary_id(aa-integration-tests::cli_run_codex_launch_env)
+  + binary_id(aa-integration-tests::cli_run_concurrent_isolation)
+  + binary_id(aa-integration-tests::cli_run_leak_freedom)
+  + binary_id(aa-integration-tests::cli_run_trusted_proxy)
+  + binary_id(aa-integration-tests::adversarial_isolation_launch)
+  + binary_id(aa-integration-tests::e2e_sensitive_data_reference_journey)
+'''
+test-group = "serial-process"
