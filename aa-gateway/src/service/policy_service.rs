@@ -1272,6 +1272,7 @@ impl PolicyServiceImpl {
                     lineage,
                     redaction,
                     eval.policy_doc_id.clone(),
+                    None, // AAASM-5002: decision_id minting lands in a follow-up commit
                 )
             })
             .await
