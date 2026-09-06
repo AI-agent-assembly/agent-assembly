@@ -140,6 +140,7 @@ mod tests {
             Lineage::default(),
             Redaction::default(),
             Some("sha256:from-field".to_string()),
+            None,
         );
         assert_eq!(doc_id_of(&with_field).as_deref(), Some("sha256:from-field"));
 

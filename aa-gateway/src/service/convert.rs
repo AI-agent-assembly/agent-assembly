@@ -41,6 +41,19 @@ pub fn hash_to_16(s: &str) -> [u8; 16] {
     out
 }
 
+/// AAASM-5002 — the [`SessionId`] for an audit entry derived from a request's
+/// `trace_id`. Empty `trace_id` yields the all-zero id, NOT `hash_to_16("")`:
+/// the latter is one fixed value, so every check that carried no trace — the
+/// common case, e.g. aa-proxy — would be audited under one indistinguishable
+/// session. Mirrors what `audit_service.rs` has always done for `ReportEvents`.
+pub fn session_id_from_trace(trace_id: &str) -> SessionId {
+    if trace_id.is_empty() {
+        SessionId::from_bytes([0u8; 16])
+    } else {
+        SessionId::from_bytes(hash_to_16(trace_id))
+    }
+}
+
 /// The [`AgentId`] used for a check that carried no agent identity
 /// (AAASM-5665).
 ///

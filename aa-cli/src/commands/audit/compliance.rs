@@ -82,6 +82,7 @@ pub fn map_audit_entry(entry: &AuditEntry) -> ComplianceRecord {
         delegation_reason: entry.delegation_reason().map(|s| s.to_string()),
         spawned_by_tool: entry.spawned_by_tool().map(|s| s.to_string()),
         depth: entry.depth(),
+        decision_id: entry.decision_id().map(|s| s.to_string()),
     }
 }
 
@@ -136,6 +137,7 @@ pub fn write_records_csv<W: Write>(
         "entry_hash",
         "credential_findings_count",
         "redacted",
+        "decision_id",
     ])?;
     for record in records {
         wtr.write_record([
@@ -152,6 +154,7 @@ pub fn write_records_csv<W: Write>(
             } else {
                 "false"
             },
+            record.decision_id.as_deref().unwrap_or(""),
         ])?;
     }
     wtr.flush()?;
@@ -576,5 +579,107 @@ mod tests {
         assert!(lines[0].starts_with("seq,timestamp,event_type,agent_id,session_id,previous_hash,entry_hash"));
         assert!(lines[1].contains("ToolCallIntercepted"));
         assert!(lines[1].contains("false")); // no redaction
+    }
+
+    // --- decision_id (AAASM-5002) ---
+
+    #[test]
+    fn map_audit_entry_carries_decision_id_through() {
+        use aa_core::Lineage;
+        use aa_security::Redaction;
+
+        let with_id = AuditEntry::new_with_lineage_redaction_and_attribution(
+            0,
+            1_700_000_000_000_000_000,
+            AuditEventType::PolicyViolation,
+            fixed_agent(),
+            fixed_session(),
+            "{}".to_string(),
+            [0u8; 32],
+            Lineage::default(),
+            Redaction::default(),
+            None,
+            Some("0191f3c2-1234-7abc-9def-0123456789ab".to_string()),
+        );
+        let record = map_audit_entry(&with_id);
+        assert_eq!(
+            record.decision_id.as_deref(),
+            Some("0191f3c2-1234-7abc-9def-0123456789ab")
+        );
+
+        let without_id = AuditEntry::new(
+            0,
+            1_700_000_000_000_000_000,
+            AuditEventType::PolicyViolation,
+            fixed_agent(),
+            fixed_session(),
+            "{}".to_string(),
+            [0u8; 32],
+        );
+        assert_eq!(map_audit_entry(&without_id).decision_id, None);
+    }
+
+    #[test]
+    fn jsonl_export_includes_decision_id_when_present_omits_when_absent() {
+        use aa_core::Lineage;
+        use aa_security::Redaction;
+
+        let with_id = AuditEntry::new_with_lineage_redaction_and_attribution(
+            0,
+            1_700_000_000_000_000_000,
+            AuditEventType::PolicyViolation,
+            fixed_agent(),
+            fixed_session(),
+            "{}".to_string(),
+            [0u8; 32],
+            Lineage::default(),
+            Redaction::default(),
+            None,
+            Some("0191f3c2-1234-7abc-9def-0123456789ab".to_string()),
+        );
+        let records = vec![map_audit_entry(&with_id)];
+        let mut buf = Vec::new();
+        write_records_jsonl(&records, &mut buf).unwrap();
+        let line = String::from_utf8(buf).unwrap();
+        assert!(line.contains("\"decision_id\""), "present decision_id must serialize");
+
+        let no_id_records = sample_records(1);
+        let mut buf2 = Vec::new();
+        write_records_jsonl(&no_id_records, &mut buf2).unwrap();
+        let line2 = String::from_utf8(buf2).unwrap();
+        assert!(
+            !line2.contains("\"decision_id\""),
+            "absent decision_id must not appear in JSON"
+        );
+    }
+
+    #[test]
+    fn csv_export_appends_decision_id_column_last() {
+        use aa_core::Lineage;
+        use aa_security::Redaction;
+
+        let with_id = AuditEntry::new_with_lineage_redaction_and_attribution(
+            0,
+            1_700_000_000_000_000_000,
+            AuditEventType::PolicyViolation,
+            fixed_agent(),
+            fixed_session(),
+            "{}".to_string(),
+            [0u8; 32],
+            Lineage::default(),
+            Redaction::default(),
+            None,
+            Some("0191f3c2-1234-7abc-9def-0123456789ab".to_string()),
+        );
+        let records = vec![map_audit_entry(&with_id)];
+        let mut buf = Vec::new();
+        write_records_csv(&records, &mut buf).unwrap();
+        let output = String::from_utf8(buf).unwrap();
+        let lines: Vec<&str> = output.lines().collect();
+        assert!(lines[0].ends_with(",decision_id"), "header must end with decision_id");
+        assert!(
+            lines[1].ends_with(",0191f3c2-1234-7abc-9def-0123456789ab"),
+            "row must end with the decision_id value"
+        );
     }
 }
