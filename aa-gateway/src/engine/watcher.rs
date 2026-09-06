@@ -749,4 +749,32 @@ mod tests {
             std::thread::sleep(Duration::from_millis(10));
         }
     }
+
+    /// Dropping a `Reconciler` must not wait out its polling interval
+    /// (AAASM-6033).
+    ///
+    /// A 30s interval makes this a real falsifier: revert the `stop_rx`
+    /// fix in `start_reconciler`/`Reconciler::drop` back to an
+    /// `AtomicBool` + `thread::sleep`, and this blocks for ~30s and fails
+    /// the 500ms bound — checked directly, not assumed from reading the
+    /// diff.
+    #[test]
+    fn dropping_a_reconciler_does_not_wait_out_its_interval() {
+        let mut tmp = NamedTempFile::new().unwrap();
+        write!(tmp, "{}", ALLOW_YAML).unwrap();
+        tmp.flush().unwrap();
+
+        let slot = Arc::new(ArcSwap::new(Arc::new(parse_doc(ALLOW_YAML))));
+        let reconciler = start_reconciler(tmp.path(), slot, Duration::from_secs(30));
+
+        let start = std::time::Instant::now();
+        drop(reconciler);
+        let elapsed = start.elapsed();
+
+        assert!(
+            elapsed < Duration::from_millis(500),
+            "dropping the reconciler took {elapsed:?} — it waited out (part of) its \
+             30s polling interval instead of being woken immediately"
+        );
+    }
 }
