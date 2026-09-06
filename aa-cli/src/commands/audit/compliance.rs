@@ -116,12 +116,32 @@ pub fn write_records_json<W: Write>(
     Ok(())
 }
 
+/// Project `action_type`, `policy_rule`, and `reason` out of a
+/// [`ComplianceRecord::payload`] JSON body — the tool/action-identification
+/// fields AAASM-6055 found missing from the CSV export. Mirrors the shape
+/// `aa-gateway/src/service/policy_service.rs` writes into the audit payload.
+///
+/// Fail-soft: a field that is absent, not a string, or a `payload` that does
+/// not parse as JSON at all yields an empty string for that field rather than
+/// aborting the export — one malformed entry must not fail a whole run.
+fn extract_action_fields(payload: &str) -> (String, String, String) {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(payload) else {
+        return (String::new(), String::new(), String::new());
+    };
+    let field = |key: &str| value.get(key).and_then(|v| v.as_str()).unwrap_or("").to_string();
+    (field("action_type"), field("policy_rule"), field("reason"))
+}
+
 /// Write compliance records as CSV with the regulator-relevant columns.
 ///
-/// The CSV view drops the payload body and lineage to keep the file
-/// approachable for spreadsheet review. It always includes the hash chain
-/// anchors and the count of credential findings so an auditor can spot
-/// scrubbed entries at a glance. Use JSONL for full fidelity.
+/// The CSV view drops the full payload body and lineage to keep the file
+/// approachable for spreadsheet review, but projects out `action`,
+/// `policy_rule`, and `reason` (AAASM-6055) so a CSV export can still tell a
+/// `read_file` decision from a `delete_file` one — the payload fields that
+/// JSON/JSONL pass through verbatim but this format previously dropped
+/// entirely. It always includes the hash chain anchors and the count of
+/// credential findings so an auditor can spot scrubbed entries at a glance.
+/// Use JSONL for full fidelity.
 pub fn write_records_csv<W: Write>(
     records: &[ComplianceRecord],
     mut writer: W,
@@ -138,8 +158,12 @@ pub fn write_records_csv<W: Write>(
         "credential_findings_count",
         "redacted",
         "decision_id",
+        "action",
+        "policy_rule",
+        "reason",
     ])?;
     for record in records {
+        let (action, policy_rule, reason) = extract_action_fields(&record.payload);
         wtr.write_record([
             record.seq.to_string().as_str(),
             record.timestamp.as_str(),
@@ -155,6 +179,9 @@ pub fn write_records_csv<W: Write>(
                 "false"
             },
             record.decision_id.as_deref().unwrap_or(""),
+            action.as_str(),
+            policy_rule.as_str(),
+            reason.as_str(),
         ])?;
     }
     wtr.flush()?;
@@ -581,6 +608,72 @@ mod tests {
         assert!(lines[1].contains("false")); // no redaction
     }
 
+    // --- action/policy_rule/reason projection (AAASM-6055) ---
+
+    #[test]
+    fn csv_export_projects_action_fields_from_payload() {
+        // A discriminating fixture: `delete_file` vs a hypothetical `read_file`
+        // decision must be distinguishable in the CSV the same way JSON/JSONL
+        // already distinguishes them — a CSV that dropped `action` entirely
+        // would still pass a test that only checked for *a* non-empty column.
+        let payload = r#"{"action_type":"delete_file","policy_rule":"fs_write_guard","reason":"path outside sandbox"}"#;
+        let entry = AuditEntry::new(
+            0,
+            1_700_000_000_000_000_000,
+            AuditEventType::ToolCallIntercepted,
+            fixed_agent(),
+            fixed_session(),
+            payload.to_string(),
+            [0u8; 32],
+        );
+        let records = vec![map_audit_entry(&entry)];
+        let mut buf = Vec::new();
+        write_records_csv(&records, &mut buf).unwrap();
+        let output = String::from_utf8(buf).unwrap();
+        let lines: Vec<&str> = output.lines().collect();
+        assert!(
+            lines[0].ends_with("decision_id,action,policy_rule,reason"),
+            "header must end with the new columns in order: {}",
+            lines[0]
+        );
+        assert!(
+            lines[1].contains("delete_file"),
+            "action must be projected from payload.action_type: {}",
+            lines[1]
+        );
+        assert!(
+            lines[1].contains("fs_write_guard"),
+            "policy_rule must be projected from payload: {}",
+            lines[1]
+        );
+        assert!(
+            lines[1].contains("path outside sandbox"),
+            "reason must be projected from payload: {}",
+            lines[1]
+        );
+    }
+
+    #[test]
+    fn csv_export_action_fields_empty_on_unparseable_payload() {
+        // sample_records' fixture payload (`{"seq":N}`) is valid JSON but has
+        // none of the three keys — and a genuinely malformed payload must not
+        // abort the export either (fail-soft, not fail-closed, for a
+        // best-effort display projection).
+        let records = sample_records(1);
+        let mut buf = Vec::new();
+        write_records_csv(&records, &mut buf).unwrap();
+        let output = String::from_utf8(buf).unwrap();
+        let lines: Vec<&str> = output.lines().collect();
+        assert!(
+            lines[1].ends_with(",,,"),
+            "action/policy_rule/reason must be empty, not panic, when absent from payload: {}",
+            lines[1]
+        );
+
+        let (action, policy_rule, reason) = extract_action_fields("not json at all");
+        assert_eq!((action.as_str(), policy_rule.as_str(), reason.as_str()), ("", "", ""));
+    }
+
     // --- decision_id (AAASM-5002) ---
 
     #[test]
@@ -676,10 +769,18 @@ mod tests {
         write_records_csv(&records, &mut buf).unwrap();
         let output = String::from_utf8(buf).unwrap();
         let lines: Vec<&str> = output.lines().collect();
-        assert!(lines[0].ends_with(",decision_id"), "header must end with decision_id");
+        // AAASM-6055 appended action/policy_rule/reason after decision_id, so
+        // decision_id is no longer the last column — it must still appear,
+        // immediately before the new columns.
         assert!(
-            lines[1].ends_with(",0191f3c2-1234-7abc-9def-0123456789ab"),
-            "row must end with the decision_id value"
+            lines[0].contains(",decision_id,action,policy_rule,reason"),
+            "decision_id must precede the AAASM-6055 columns in the header: {}",
+            lines[0]
+        );
+        assert!(
+            lines[1].contains(",0191f3c2-1234-7abc-9def-0123456789ab,"),
+            "row must carry the decision_id value ahead of the new columns: {}",
+            lines[1]
         );
     }
 }
