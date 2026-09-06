@@ -433,6 +433,21 @@ impl PolicyServiceImpl {
         response
     }
 
+    /// AAASM-5002 — stamp the gateway-minted per-decision correlation id onto
+    /// a response before it is returned to the caller and handed to the
+    /// audit path (`record_audit`/`record_impersonation_audit` read it back
+    /// off the response, never mint a second value).
+    ///
+    /// Must run AFTER every path that can rewrite the response wholesale
+    /// (`enforce_anomaly_block` builds a fresh `CheckActionResponse` for its
+    /// Deny rewrite) — stamping earlier would be silently discarded on that
+    /// path, and the caller's response and the audit entry would agree only
+    /// because both were empty.
+    fn stamp_decision_id(&self, mut response: CheckActionResponse, decision_id: &str) -> CheckActionResponse {
+        response.decision_id = decision_id.to_string();
+        response
+    }
+
     /// Look up the per-agent `enforcement_mode` override for the request's
     /// authoritative agent (see [`Self::authoritative_agent_key`]).
     ///
@@ -824,7 +839,7 @@ impl PolicyServiceImpl {
         let agent_id_val = proto_agent
             .map(|a| AgentId::from_bytes(convert::hash_to_16(&a.agent_id)))
             .unwrap_or_else(|| AgentId::from_bytes([0u8; 16]));
-        let session_id_val = SessionId::from_bytes(convert::hash_to_16(&req.trace_id));
+        let session_id_val = convert::session_id_from_trace(&req.trace_id);
 
         // Emit ApprovalRouted audit event (chain-hashed WORM log) when a team is identified.
         if let Some(ref tid) = team_id {
@@ -985,6 +1000,7 @@ impl PolicyServiceImpl {
         ops_op_id: Option<String>,
         anomaly_event: Option<AnomalyEvent>,
         shadow_event: Option<ShadowEvent>,
+        decision_id: String,
     ) {
         // Await the operator's decision with a timeout guard.
         // The ApprovalQueue also spawns its own timeout task, so both race;
@@ -1016,6 +1032,10 @@ impl PolicyServiceImpl {
         let response = self.enforce_anomaly_block(response, anomaly_event.as_ref());
         let response = self.maybe_accrue_llm_spend(&req, response);
         let response = self.stamp_identity_assurance(&req, response);
+        // AAASM-5002 — same decision_id as the initial Pending response/audit
+        // entry: this is that same decision's resolution, not a new one, so
+        // an operator can join the hold and its outcome.
+        let response = self.stamp_decision_id(response, &decision_id);
 
         if let Some(op_id) = ops_op_id.as_deref() {
             let decision = response.decision;
@@ -1055,7 +1075,7 @@ impl PolicyServiceImpl {
             Some(id) => convert::hash_to_16(id),
             None => convert::UNATTRIBUTED_AGENT_ID,
         });
-        let session_id = SessionId::from_bytes(convert::hash_to_16(&req.trace_id));
+        let session_id = convert::session_id_from_trace(&req.trace_id);
 
         // AAASM-1944: when the request carries `caller_agent_id` and it
         // differs from `agent_id`, the call is an agent-to-agent (A2A)
@@ -1147,6 +1167,10 @@ impl PolicyServiceImpl {
         // budget engine-level denies, empty cascade) — absent, never a
         // misleading id.
         let policy_doc_id: Option<&str> = eval.policy_doc_id.as_deref();
+        // AAASM-5002 — read the id off the response this call already has,
+        // never mint a second value: that's what makes the equality this
+        // ticket requires (caller's response == audit entry) non-vacuous.
+        let decision_id: Option<String> = (!response.decision_id.is_empty()).then(|| response.decision_id.clone());
 
         // AAASM-5100 / ADR-0018 items A+B — capture the finer 5-way runtime
         // verdict and the per-decision latency onto the audit payload (the
@@ -1272,7 +1296,7 @@ impl PolicyServiceImpl {
                     lineage,
                     redaction,
                     eval.policy_doc_id.clone(),
-                    None, // AAASM-5002: decision_id minting lands in a follow-up commit
+                    decision_id.clone(),
                 )
             })
             .await
@@ -1327,7 +1351,11 @@ impl PolicyServiceImpl {
     ///
     /// Emitting the audit event is fire-and-forget — a full `Deny`
     /// response is always constructed and returned to the caller.
-    async fn validate_credential_token(&self, req: &CheckActionRequest) -> Option<CheckActionResponse> {
+    async fn validate_credential_token(
+        &self,
+        req: &CheckActionRequest,
+        decision_id: &str,
+    ) -> Option<CheckActionResponse> {
         let registry = self.registry.as_ref()?;
         // AAASM-5665 (R1) — an ABSENT `agent_id` message is the same claim as a
         // blank one: none. `convert::claimed_agent_id` already collapses the two
@@ -1432,6 +1460,7 @@ impl PolicyServiceImpl {
                 ..Default::default()
             },
         );
+        let response = self.stamp_decision_id(response, decision_id);
 
         self.record_impersonation_audit(req, &response).await;
         Some(response)
@@ -1457,7 +1486,7 @@ impl PolicyServiceImpl {
             Some(id) => convert::hash_to_16(id),
             None => convert::UNATTRIBUTED_AGENT_ID,
         });
-        let session_id = SessionId::from_bytes(convert::hash_to_16(&req.trace_id));
+        let session_id = convert::session_id_from_trace(&req.trace_id);
         let timestamp_ns = Timestamp::from(SystemTime::now()).as_nanos();
 
         let payload = serde_json::json!({
@@ -1502,10 +1531,15 @@ impl PolicyServiceImpl {
             }
         };
 
+        // AAASM-5002 — read the id off the response this call already has,
+        // same rationale as `record_audit`: one value, so the equality this
+        // ticket requires is not vacuous.
+        let decision_id: Option<String> = (!response.decision_id.is_empty()).then(|| response.decision_id.clone());
+
         match self
             .chain
             .emit(|seq, previous_hash| {
-                AuditEntry::new_with_lineage(
+                AuditEntry::new_with_lineage_redaction_and_attribution(
                     seq,
                     timestamp_ns,
                     AuditEventType::A2AImpersonationAttempted,
@@ -1514,6 +1548,9 @@ impl PolicyServiceImpl {
                     payload,
                     previous_hash,
                     claimed_org_lineage,
+                    Redaction::default(),
+                    None,
+                    decision_id,
                 )
             })
             .await
@@ -1898,10 +1935,17 @@ impl PolicyService for PolicyServiceImpl {
     ) -> Result<Response<CheckActionResponse>, Status> {
         let req = request.into_inner();
 
+        // AAASM-5002 — one gateway-minted id per decision, independent of the
+        // caller-supplied (optional, unvalidated) trace_id/span_id. Minted
+        // before any response path so every response this call can produce —
+        // including the credential-rejection Deny below — carries one.
+        let decision_id = uuid::Uuid::now_v7().to_string();
+
         tracing::debug!(
             agent_id = ?req.agent_id.as_ref().map(|a| &a.agent_id),
             action_type = req.action_type,
             trace_id = %req.trace_id,
+            decision_id = %decision_id,
             "check_action request"
         );
 
@@ -1916,7 +1960,7 @@ impl PolicyService for PolicyServiceImpl {
         // registered (allows existing detection-slice fixtures to continue
         // working unchanged). Registered agents always go through the
         // strict validation path — opt-in is by registering the agent.
-        if let Some(rejection) = self.validate_credential_token(&req).await {
+        if let Some(rejection) = self.validate_credential_token(&req, &decision_id).await {
             return Ok(Response::new(rejection));
         }
 
@@ -1965,6 +2009,7 @@ impl PolicyService for PolicyServiceImpl {
             self.maybe_submit_approval(&req, &eval, latency_us, &policy_rule).await
         {
             let pending = self.stamp_identity_assurance(&req, pending);
+            let pending = self.stamp_decision_id(pending, &decision_id);
 
             tracing::debug!(
                 decision = pending.decision,
@@ -1987,6 +2032,7 @@ impl PolicyService for PolicyServiceImpl {
                 ops_op_id,
                 anomaly_event,
                 shadow_event,
+                decision_id,
             ));
 
             return Ok(Response::new(pending));
@@ -2005,6 +2051,8 @@ impl PolicyService for PolicyServiceImpl {
         // every path that can rewrite the decision (anomaly, budget)
         // so a rewritten response carries it too.
         let response = self.stamp_identity_assurance(&req, response);
+        // AAASM-5002 — stamped last, after every rewrite, for the same reason.
+        let response = self.stamp_decision_id(response, &decision_id);
 
         // AAASM-1422 / AAASM-1657: transition the registry op to match the
         // final policy decision. Allow → Running, Deny → Terminated.
@@ -2048,6 +2096,10 @@ impl PolicyService for PolicyServiceImpl {
         let mut responses = Vec::with_capacity(batch.requests.len());
 
         for req in &batch.requests {
+            // AAASM-5002 — one id per batch entry, not one per batch: two
+            // requests in the same batch must not share a decision_id.
+            let decision_id = uuid::Uuid::now_v7().to_string();
+
             // AAASM-3888: validate the supplied `credential_token` against the
             // registered token for the claimed `agent_id` BEFORE any evaluation
             // or side-effect (audit / spend / suspend), exactly as `check_action`
@@ -2059,7 +2111,7 @@ impl PolicyService for PolicyServiceImpl {
             // against the victim. On rejection, push the Deny and skip all
             // side-effects for this request — `evaluate_one`'s tenancy-anchoring
             // invariant (which assumes validation already ran) is thereby upheld.
-            if let Some(rejection) = self.validate_credential_token(req).await {
+            if let Some(rejection) = self.validate_credential_token(req, &decision_id).await {
                 responses.push(rejection);
                 continue;
             }
@@ -2091,6 +2143,7 @@ impl PolicyService for PolicyServiceImpl {
                 self.maybe_submit_approval(req, &eval, latency_us, &policy_rule).await
             {
                 let pending = self.stamp_identity_assurance(req, pending);
+                let pending = self.stamp_decision_id(pending, &decision_id);
                 self.record_audit(req, &pending, &eval, shadow_event.as_ref()).await;
                 tokio::spawn(self.clone().run_approval_continuation(
                     req.clone(),
@@ -2103,6 +2156,7 @@ impl PolicyService for PolicyServiceImpl {
                     None, // batch_check does not ingest an ops-registry entry per request
                     anomaly_event,
                     shadow_event,
+                    decision_id,
                 ));
                 responses.push(pending);
                 continue;
@@ -2115,6 +2169,8 @@ impl PolicyService for PolicyServiceImpl {
             let resp = self.maybe_accrue_llm_spend(req, resp);
             // AAASM-5665: same stamp as `check_action`, per batch entry.
             let resp = self.stamp_identity_assurance(req, resp);
+            // AAASM-5002 — same stamp as `check_action`, per batch entry.
+            let resp = self.stamp_decision_id(resp, &decision_id);
             self.maybe_suspend_agent(req, deny_action).await;
             self.record_audit(req, &resp, &eval, shadow_event.as_ref()).await;
             responses.push(resp);
