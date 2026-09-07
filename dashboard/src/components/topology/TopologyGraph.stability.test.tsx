@@ -122,4 +122,26 @@ describe('TopologyGraph — simulation stability across payload updates', () => 
       expect(budget).toHaveAttribute('data-truth-state', 'unconfigured')
     }
   })
+
+  // AAASM-5198 — the real "stopped" signal e2e now waits on instead of diffing
+  // two position samples. Two real settle waits exceed vitest's 5s default
+  // test timeout, so this test gets its own longer one.
+  it('marks the wrap settled once the simulation actually stops, and unsettled again on a rebuild', async () => {
+    const { rerender } = render(<TopologyGraph nodes={BASE} edges={EDGES} />)
+    const wrap = screen.getByTestId('topology-graph-wrap')
+
+    expect(wrap).not.toHaveAttribute('data-simulation-settled')
+    await waitFor(() => expect(wrap).toHaveAttribute('data-simulation-settled', 'true'), { timeout: 10_000 })
+
+    // A rebuild (new agent, no position yet) must go unsettled again rather
+    // than keep stale 'true' from the previous simulation instance.
+    rerender(
+      <TopologyGraph
+        nodes={[...BASE, { id: 'n4', name: 'four', status: 'active', team: 'gamma', owner: 'c', policyCount: 1, budgetSpend: 1, budgetLimit: 10 }]}
+        edges={EDGES}
+      />,
+    )
+    expect(wrap).not.toHaveAttribute('data-simulation-settled')
+    await waitFor(() => expect(wrap).toHaveAttribute('data-simulation-settled', 'true'), { timeout: 10_000 })
+  }, 25_000)
 })

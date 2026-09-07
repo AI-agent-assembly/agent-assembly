@@ -484,6 +484,22 @@ export function TopologyGraph({
     () => (simulation.nodes() as PositionedNode[]).map(n => ({ ...n })),
   )
 
+  // AAASM-5198 — a real "stopped" signal, not "didn't visibly move between two
+  // polls": d3 dispatches 'end' when alpha decays below alphaMin and its
+  // internal timer stops, which is what actually means the layout settled.
+  // Exposed via `data-simulation-settled` below so the e2e suite can wait on
+  // it instead of diffing two samples (sound only when they happen to land
+  // far enough apart — the AAASM-5198 flake).
+  //
+  // `settled` is derived by comparing against the simulation `end` fired for,
+  // rather than reset with an explicit `setSettled(false)` at the top of the
+  // effect below — that would set state synchronously during the effect's own
+  // body (react-hooks/set-state-in-effect) instead of in response to 'tick'/
+  // 'end', which only fire asynchronously. Deriving it means a new `simulation`
+  // is unsettled with no separate reset to keep in sync.
+  const [endedSimulation, setEndedSimulation] = useState<Simulation<PositionedNode, PositionedEdge> | null>(null)
+  const settled = endedSimulation === simulation
+
   useEffect(() => {
     let alive = true
     const sim = simulation
@@ -491,10 +507,15 @@ export function TopologyGraph({
       if (!alive) return
       setPositions((sim.nodes() as PositionedNode[]).map(n => ({ ...n })))
     })
+    sim.on('end', () => {
+      if (!alive) return
+      setEndedSimulation(sim)
+    })
     sim.alpha(1).restart()
     return () => {
       alive = false
       sim.on('tick', null)
+      sim.on('end', null)
       sim.stop()
     }
   }, [simulation])
@@ -655,7 +676,7 @@ export function TopologyGraph({
   const resetView = useCallback(() => { setPan({ x: 0, y: 0 }); setZoom(1) }, [])
 
   return (
-    <div className="topology-graph-wrap" data-testid="topology-graph-wrap">
+    <div className="topology-graph-wrap" data-testid="topology-graph-wrap" data-simulation-settled={settled ? 'true' : undefined}>
     <svg
       ref={svgRef}
       className="topology-graph"

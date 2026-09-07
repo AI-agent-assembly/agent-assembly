@@ -375,19 +375,25 @@ test.describe('AAASM-5135 — Topology asserts only the budgets it was given', (
 
     // Let the force layout settle before sampling, so the comparison is against
     // a resting graph rather than one still finding its shape.
+    //
+    // AAASM-5198 — wait on the simulation's own 'end' event (surfaced as
+    // `data-simulation-settled`), not on two consecutive position samples
+    // matching. Two adjacent polls landing equal only proves the graph did not
+    // move measurably *between those two samples*; on a quiet machine the
+    // samples arrive close enough together to match while the simulation is
+    // still running, so the assertion below would fire against a graph still
+    // drifting. `end` fires exactly once, when d3's alpha actually decays
+    // below alphaMin and its internal timer stops — that is what "settled"
+    // means, independent of how fast or slow the polling loop runs.
     const positions = async () =>
       cards.evaluateAll((els) => els.map((el) => el.getAttribute('transform')))
     const buckets = async () =>
       cards.evaluateAll((els) => els.map((el) => el.getAttribute('data-size-bucket')))
-    let previous = await positions()
-    await expect
-      .poll(async () => {
-        const current = await positions()
-        const stable = JSON.stringify(current) === JSON.stringify(previous)
-        previous = current
-        return stable
-      }, { message: 'force layout settles', timeout: 15_000 })
-      .toBe(true)
+    await expect(page.getByTestId('topology-graph-wrap')).toHaveAttribute(
+      'data-simulation-settled',
+      'true',
+      { timeout: 15_000 },
+    )
 
     const settled = await positions()
     const budgetText = async () =>
