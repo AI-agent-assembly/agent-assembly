@@ -9,8 +9,14 @@
 # Scope (AAASM-4922): the two highest-fan-out canonical values reconciled in this
 # repo that have ZERO legitimate occurrence anywhere here, so the lint stays
 # false-positive-free:
-#   * the `.github` governance-doc branch — canonical is `master`, not `main`
-#     (registry `governance.baseline_doc_base`);
+#   * the `.github` governance-doc branch — canonical is `main`, not `master`
+#     (registry `governance.baseline_doc_base`); AAASM-5293/5294 also blesses
+#     the `blob/HEAD` form for cross-repo links (a rename redirect doesn't cover
+#     `raw.githubusercontent.com`, `git fetch`, or `uses: ...@master`), so both
+#     `main` and `HEAD` pass — anything else, including `master`, is drift
+#     (AAASM-5297: this gate previously enforced `master` while the registry it
+#     cited said `main`, which the literal-`main` pattern never caught because
+#     every real link already used the `HEAD` form);
 #   * the `.dev` alternate installer host — it serves the script at its host ROOT
 #     (a `custom_domain` route, ADR 0007), so `tool.agent-assembly.dev/install.sh`
 #     is a wrong path (registry `urls.installer_alt`).
@@ -41,9 +47,28 @@ check() {
   fi
 }
 
-check "'.github' governance link uses 'blob/main' (canonical branch is 'master')" \
-  'ai-agent-assembly/\.github/blob/main' \
-  "use .../.github/blob/master/... (registry governance.baseline_doc_base)"
+# The 'main'/'master' check matches on the branch segment rather than one
+# literal, so an unexpected branch fails deliberately instead of evading the
+# pattern by not being the one literal it names (AAASM-5297). 'main' and
+# 'HEAD' both pass; everything else, 'master' included, fails.
+check_github_governance_branch() {
+  local desc="'.github' governance link uses a branch other than the registry's canonical 'main' (or the 'HEAD' form)"
+  local fix="use .../.github/blob/main/... or .../.github/blob/HEAD/... (registry governance.baseline_doc_base; HEAD form per AAASM-5293/5294)"
+  local hits
+  hits=$(git grep -nE 'ai-agent-assembly/\.github/blob/[A-Za-z0-9_.-]+' -- \
+    ':(exclude)docs/src/adr/*' \
+    ':(exclude).ci/check-metadata-drift.sh' 2>/dev/null \
+    | grep -vE 'ai-agent-assembly/\.github/blob/(main|HEAD)([^A-Za-z0-9_.-]|$)' || true)
+  if [ -n "$hits" ]; then
+    echo "──────────────────────────────────────────────────────"
+    echo "Metadata drift: ${desc}"
+    echo "${hits}"
+    echo "Fix: ${fix}"
+    echo "──────────────────────────────────────────────────────"
+    status=1
+  fi
+}
+check_github_governance_branch
 
 check "'.dev' installer alt carries an '/install.sh' path (it serves at host root)" \
   'tool\.agent-assembly\.dev/install\.sh' \
