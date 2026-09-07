@@ -47,6 +47,15 @@ pub struct StartArgs {
     /// TCP port the gateway should listen on.
     #[arg(long, default_value_t = 7391)]
     pub port: u16,
+    /// Bind address override — an explicit opt-in to a non-default host
+    /// (AAASM-6056). Unset preserves the per-mode default (`127.0.0.1` for
+    /// `local`, `0.0.0.0` for `remote`); local mode does not otherwise have
+    /// a way to listen on anything but loopback. Not gated further here:
+    /// `aa-api-server` itself refuses to start on a non-loopback address
+    /// while `AASM_API_AUTH=off`, which is the one combination that would
+    /// actually expose an unauthenticated admin API.
+    #[arg(long)]
+    pub host: Option<IpAddr>,
     /// Path to the YAML config file consumed by the gateway.
     #[arg(long, default_value = "~/.aasm/config.yaml")]
     pub config: PathBuf,
@@ -58,29 +67,36 @@ pub struct StartArgs {
     pub no_dashboard: bool,
 }
 
-/// Resolve the listen address from `mode` + `port`.
+/// Resolve the listen address from `mode` + `port`, honouring an explicit
+/// `--host` override (AAASM-6056).
 ///
 /// * **Local** binds to `127.0.0.1` — strictly loopback, no external
 ///   reachability — matching the developer-laptop story in the Epic 17
 ///   spec.
 /// * **Remote** binds to `0.0.0.0` so multiple machines can reach the
 ///   control plane.
-pub fn resolve_listen_addr(mode: ModeArg, port: u16) -> SocketAddr {
-    let ip = match mode {
+///
+/// `host`, when set, wins over both mode defaults — it is the explicit
+/// opt-in a non-default bind requires; `None` preserves the exact
+/// pre-AAASM-6056 behaviour.
+pub fn resolve_listen_addr(mode: ModeArg, host: Option<IpAddr>, port: u16) -> SocketAddr {
+    let ip = host.unwrap_or(match mode {
         ModeArg::Local => IpAddr::V4(Ipv4Addr::LOCALHOST),
         ModeArg::Remote => IpAddr::V4(Ipv4Addr::UNSPECIFIED),
-    };
+    });
     SocketAddr::new(ip, port)
 }
 
-/// Human-readable address an operator would type into a browser
-/// for the configured mode + port. For local mode we always show
-/// `http://localhost:{port}` rather than `127.0.0.1:{port}` because
-/// that's what the dashboard URL looks like in the Epic 17 spec.
-fn display_address(mode: ModeArg, port: u16) -> String {
-    match mode {
-        ModeArg::Local => format!("http://localhost:{port}"),
-        ModeArg::Remote => format!("http://0.0.0.0:{port}"),
+/// Human-readable address an operator would type into a browser for the
+/// resolved bind address. Loopback addresses show as `http://localhost:{port}`
+/// rather than the literal loopback IP, because that's what the dashboard URL
+/// looks like in the Epic 17 spec — preserved for both mode defaults now that
+/// `--host` can produce other loopback addresses too (e.g. `127.0.0.2`).
+fn display_address(addr: SocketAddr) -> String {
+    if addr.ip().is_loopback() {
+        format!("http://localhost:{}", addr.port())
+    } else {
+        format!("http://{addr}")
     }
 }
 
@@ -88,7 +104,7 @@ fn display_address(mode: ModeArg, port: u16) -> String {
 ///
 /// Returned as a `String` (rather than printed directly) so the
 /// format is unit-testable without capturing stdout.
-pub fn format_started_banner(mode: ModeArg, port: u16, pid: u32) -> String {
+pub fn format_started_banner(mode: ModeArg, addr: SocketAddr, pid: u32) -> String {
     let mode_label = match mode {
         ModeArg::Local => "local",
         ModeArg::Remote => "remote",
@@ -96,17 +112,17 @@ pub fn format_started_banner(mode: ModeArg, port: u16, pid: u32) -> String {
     format!(
         "✓ Agent Assembly gateway started\n  Mode:    {mode}\n  Address: {addr}\n  PID:     {pid}\n",
         mode = mode_label,
-        addr = display_address(mode, port),
+        addr = display_address(addr),
         pid = pid,
     )
 }
 
 /// Format the "already running" message printed when `aasm start`
 /// is called while a gateway is already accepting traffic.
-pub fn format_already_running_message(mode: ModeArg, port: u16, pid: u32) -> String {
+pub fn format_already_running_message(addr: SocketAddr, pid: u32) -> String {
     format!(
         "Gateway already running at {addr} (PID {pid}). Use 'aasm stop' first.",
-        addr = display_address(mode, port),
+        addr = display_address(addr),
         pid = pid,
     )
 }
@@ -238,10 +254,10 @@ pub fn run(args: StartArgs) -> ExitCode {
 /// so unit tests can drive the full flow without spawning a real
 /// `aa-gateway` child.
 pub fn run_with_spawner<S: GatewaySpawner>(args: StartArgs, spawner: &S, pid_file: &Path) -> ExitCode {
-    let addr = resolve_listen_addr(args.mode, args.port);
+    let addr = resolve_listen_addr(args.mode, args.host, args.port);
 
     if let Some(pid) = check_already_running(pid_file, addr, Duration::from_millis(200)) {
-        println!("{}", format_already_running_message(args.mode, args.port, pid));
+        println!("{}", format_already_running_message(addr, pid));
         return ExitCode::SUCCESS;
     }
 
@@ -269,7 +285,7 @@ pub fn run_with_spawner<S: GatewaySpawner>(args: StartArgs, spawner: &S, pid_fil
     }
     match super::gw_probe::wait_for_ready(addr, Duration::from_secs(5), Duration::from_millis(100)) {
         Ok(()) => {
-            println!("{}", format_started_banner(args.mode, args.port, pid));
+            println!("{}", format_started_banner(args.mode, addr, pid));
             ExitCode::SUCCESS
         }
         Err(e) => {
@@ -327,21 +343,51 @@ mod tests {
 
     #[test]
     fn resolve_listen_addr_local_binds_loopback() {
-        let addr = resolve_listen_addr(ModeArg::Local, 7391);
+        let addr = resolve_listen_addr(ModeArg::Local, None, 7391);
         assert_eq!(addr.ip(), IpAddr::V4(Ipv4Addr::LOCALHOST));
         assert_eq!(addr.port(), 7391);
     }
 
     #[test]
     fn resolve_listen_addr_remote_binds_unspecified() {
-        let addr = resolve_listen_addr(ModeArg::Remote, 7391);
+        let addr = resolve_listen_addr(ModeArg::Remote, None, 7391);
+        assert_eq!(addr.ip(), IpAddr::V4(Ipv4Addr::UNSPECIFIED));
+        assert_eq!(addr.port(), 7391);
+    }
+
+    // --- --host override (AAASM-6056) ---
+
+    #[test]
+    fn resolve_listen_addr_host_override_wins_over_local_default() {
+        let addr = resolve_listen_addr(ModeArg::Local, Some(IpAddr::V4(Ipv4Addr::UNSPECIFIED)), 7391);
         assert_eq!(addr.ip(), IpAddr::V4(Ipv4Addr::UNSPECIFIED));
         assert_eq!(addr.port(), 7391);
     }
 
     #[test]
+    fn resolve_listen_addr_host_override_wins_over_remote_default() {
+        let addr = resolve_listen_addr(ModeArg::Remote, Some(IpAddr::V4(Ipv4Addr::LOCALHOST)), 7391);
+        assert_eq!(addr.ip(), IpAddr::V4(Ipv4Addr::LOCALHOST));
+    }
+
+    #[test]
+    fn start_args_host_defaults_to_none() {
+        // No --host flag on the command line must not silently pick a
+        // non-default bind — the opt-in has to be explicit.
+        use clap::Parser;
+        #[derive(clap::Parser)]
+        struct Wrapper {
+            #[command(flatten)]
+            args: StartArgs,
+        }
+        let parsed = Wrapper::parse_from(["aasm-start"]);
+        assert!(parsed.args.host.is_none());
+    }
+
+    #[test]
     fn format_started_banner_contains_mode_address_and_pid() {
-        let banner = format_started_banner(ModeArg::Local, 7391, 12_345);
+        let addr: SocketAddr = "127.0.0.1:7391".parse().unwrap();
+        let banner = format_started_banner(ModeArg::Local, addr, 12_345);
         assert!(banner.contains("✓ Agent Assembly gateway started"));
         assert!(banner.contains("Mode:    local"));
         assert!(banner.contains("Address: http://localhost:7391"));
@@ -349,8 +395,18 @@ mod tests {
     }
 
     #[test]
+    fn format_started_banner_shows_non_loopback_host_verbatim() {
+        // AAASM-6056: an explicit --host must be reflected in the banner,
+        // not silently displayed as "localhost".
+        let addr: SocketAddr = "0.0.0.0:7391".parse().unwrap();
+        let banner = format_started_banner(ModeArg::Local, addr, 12_345);
+        assert!(banner.contains("Address: http://0.0.0.0:7391"));
+    }
+
+    #[test]
     fn format_already_running_message_matches_story_contract() {
-        let msg = format_already_running_message(ModeArg::Local, 7391, 12_345);
+        let addr: SocketAddr = "127.0.0.1:7391".parse().unwrap();
+        let msg = format_already_running_message(addr, 12_345);
         assert_eq!(
             msg,
             "Gateway already running at http://localhost:7391 (PID 12345). Use 'aasm stop' first."
@@ -419,6 +475,7 @@ mod tests {
         let args = StartArgs {
             mode: ModeArg::Local,
             port: addr.port(),
+            host: None,
             config: std::path::PathBuf::from("/dev/null"),
             foreground: false,
             no_dashboard: false,

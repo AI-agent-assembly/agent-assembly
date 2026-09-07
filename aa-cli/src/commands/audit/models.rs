@@ -114,6 +114,13 @@ pub struct ComplianceRecord {
     /// Depth of this agent in the delegation tree (root = 0).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub depth: Option<u32>,
+    /// AAASM-5002 — gateway-minted per-decision id, identical to the
+    /// `decision_id` the SDK received on the `CheckActionResponse`. The join
+    /// key between an operator's audit record and the caller's response.
+    /// `None` for entries written before AAASM-5002 and for non-decision
+    /// events.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub decision_id: Option<String>,
 }
 
 /// Compliance report format for `aasm audit export --compliance`.

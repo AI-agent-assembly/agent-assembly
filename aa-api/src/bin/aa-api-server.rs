@@ -61,6 +61,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
+    // AAASM-6056 (fail-closed): a non-loopback bind with auth disabled would
+    // serve an unauthenticated admin API on the network. Checked here, before
+    // the banner, for the same false-positive-readiness reason as the API-key
+    // format gate above.
+    aa_api::check_local_api_bind_addr(addr, &auth)?;
+
     match &auth {
         LocalAuth::Off => {
             eprintln!(

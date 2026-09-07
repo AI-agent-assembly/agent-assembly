@@ -10,11 +10,12 @@ use tonic::transport::Server;
 
 use aa_gateway::registry::AgentRegistry;
 use aa_proto::assembly::agent::v1::agent_lifecycle_service_server::AgentLifecycleServiceServer;
+use aa_proto::assembly::policy::v1::policy_service_server::PolicyServiceServer;
 
 use crate::config::ApiConfig;
 use crate::middleware::apply_middleware;
 use crate::routes;
-use crate::state::AppState;
+use crate::state::{AppState, LocalAuth};
 
 /// Loopback gRPC endpoint for SDK agent registration in local mode (AAASM-4447).
 ///
@@ -62,6 +63,31 @@ fn resolve_telemetry_addr() -> Result<std::net::SocketAddr, Box<dyn std::error::
         .into());
     }
     Ok(addr)
+}
+
+/// Refuse to serve the main REST bind address `addr` when it is non-loopback
+/// and auth is disabled (AAASM-6056).
+///
+/// `aa-api-server` defaults to API-key auth, so binding `AA_API_ADDR` to a
+/// non-loopback address is fine in the common case — this does not gate
+/// `AA_API_ADDR` generally. The one genuinely unauthenticated combination is
+/// `AASM_API_AUTH=off` (every request treated as admin) paired with a
+/// non-loopback bind, which would put an unauthenticated admin API on the
+/// network. That combination used to only warn ("do not expose this"); this
+/// refuses to start instead, since the remedy (unset `AASM_API_AUTH` or bind
+/// loopback) is free and the failure mode otherwise is silent exposure.
+pub fn check_local_api_bind_addr(addr: std::net::SocketAddr, auth: &LocalAuth) -> Result<(), String> {
+    if addr.ip().is_loopback() {
+        return Ok(());
+    }
+    if matches!(auth, LocalAuth::ApiKey { .. }) {
+        return Ok(());
+    }
+    Err(format!(
+        "refusing to bind {addr} (non-loopback) with AASM_API_AUTH=off — this would serve an \
+         unauthenticated admin API on the network; bind a loopback address instead, or unset \
+         AASM_API_AUTH to require an API key"
+    ))
 }
 
 /// Max accepted gRPC decode size (4 MiB). Parity with `aa-gateway`'s legacy-grpc
@@ -216,7 +242,17 @@ pub async fn serve_local(
     // registered agent is immediately visible in the dashboard. Both servers run
     // concurrently and drain on the same shutdown signal; a port-in-use gRPC bind
     // degrades gracefully to REST-only (see `serve_local_grpc`).
+    //
+    // AAASM-5006: the SAME :50051 listener also serves `PolicyService`
+    // (CheckAction/BatchCheck) over the SAME `policy_engine`/`approval_queue`
+    // AppState already loaded from `$AA_POLICY`, and the SAME `audit_chain` the
+    // REST surface's audit-emitting routes write to — one process now serves
+    // both the `/api/v1/*` operator surface and real per-action enforcement,
+    // with zero SDK/runtime config change (both dial the one default endpoint).
     let registry = std::sync::Arc::clone(&state.agent_registry);
+    let policy_engine = std::sync::Arc::clone(&state.policy_engine);
+    let approval_queue = std::sync::Arc::clone(&state.approval_queue);
+    let audit_chain = state.audit_chain.clone();
     let grpc_addr: std::net::SocketAddr = LOCAL_GRPC_ADDR
         .parse()
         .expect("LOCAL_GRPC_ADDR is a valid loopback address");
@@ -232,24 +268,29 @@ pub async fn serve_local(
     let telemetry_addr = resolve_telemetry_addr()?;
 
     let rest = run_server_with_spa(config, state, spa_dist.as_deref());
-    let grpc = serve_local_grpc(grpc_addr, registry);
+    let grpc = serve_local_grpc(grpc_addr, registry, policy_engine, approval_queue, audit_chain);
     let telemetry = serve_local_telemetry_grpc(telemetry_addr, secret_tx);
     tokio::try_join!(rest, grpc, telemetry)?;
     Ok(())
 }
 
-/// Bind the local-mode gRPC `AgentLifecycleService` on `addr` and serve until
-/// shutdown, reusing `aa-gateway`'s service impl and possession-proof
-/// enrich interceptor (AAASM-4447 / AAASM-4460 / AAASM-4461).
+/// Bind the local-mode gRPC listener on `addr` and serve until shutdown,
+/// reusing `aa-gateway`'s service impls and possession-proof enrich
+/// interceptor (AAASM-4447 / AAASM-4460 / AAASM-4461 / AAASM-5006).
 ///
 /// `addr` must be a loopback address ([`LOCAL_GRPC_ADDR`]); the caller controls
 /// that. If the port is already in use (e.g. an `aa-gateway` process is already
-/// serving it) the bind failure is downgraded to a warning and this returns
-/// `Ok(())` so the REST surface still comes up — the process degrades to
-/// REST-only rather than failing to start. Any other bind error propagates.
+/// serving it — in which case that process already serves both registration
+/// and policy enforcement) the bind failure is downgraded to a warning and
+/// this returns `Ok(())` so the REST surface still comes up — the process
+/// degrades to REST-only rather than failing to start. Any other bind error
+/// propagates.
 async fn serve_local_grpc(
     addr: std::net::SocketAddr,
     registry: Arc<AgentRegistry>,
+    policy_engine: Arc<aa_gateway::PolicyEngine>,
+    approval_queue: Arc<aa_runtime::approval::ApprovalQueue>,
+    audit_chain: Option<Arc<aa_gateway::audit::AuditChain>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let listener = match TcpListener::bind(addr).await {
         Ok(listener) => listener,
@@ -258,16 +299,27 @@ async fn serve_local_grpc(
                 target: "aa_api::serve_local",
                 %addr,
                 error = %e,
-                "gRPC agent-registration port already in use — serving REST only; \
-                 SDK registration to this endpoint is handled by the process that \
-                 owns the port"
+                "gRPC agent-plane port already in use — serving REST only; \
+                 agent registration and policy enforcement on this endpoint are \
+                 handled by the process that owns the port"
             );
             return Ok(());
         }
         Err(e) => return Err(e.into()),
     };
-    tracing::info!(%addr, "aa-api local gRPC AgentLifecycleService listening (loopback-only)");
-    serve_lifecycle_grpc(listener, registry, crate::shutdown::shutdown_signal()).await
+    tracing::info!(
+        %addr,
+        "aa-api local gRPC AgentLifecycleService + PolicyService listening (loopback-only)"
+    );
+    serve_agent_plane_grpc(
+        listener,
+        registry,
+        policy_engine,
+        approval_queue,
+        audit_chain,
+        crate::shutdown::shutdown_signal(),
+    )
+    .await
 }
 
 /// Bind the redaction telemetry ingest on `addr` and serve until shutdown
@@ -327,33 +379,83 @@ pub async fn serve_telemetry_grpc(
     Ok(())
 }
 
-/// Serve the gRPC `AgentLifecycleService` on an already-bound `listener` over
-/// `registry`, until `shutdown` resolves (AAASM-4460).
+/// Serve the gRPC `AgentLifecycleService` — and, when `audit_chain` is
+/// attached, the enforcement `PolicyService` too — on an already-bound
+/// `listener`, until `shutdown` resolves (AAASM-4460, AAASM-5006).
 ///
 /// Extracted so tests can drive the exact production wiring on an ephemeral
 /// port. Reuses `aa-gateway`'s [`AgentLifecycleServiceImpl`] (Register +
 /// RequestChallenge + heartbeat/deregister — the RPCs `RuntimeClient` uses)
-/// rather than duplicating it, and applies the same `enrich_interceptor` the
-/// gateway wraps its lifecycle service with. The `Register` RPC self-validates
-/// the possession-proof challenge, so this adds no new unauthenticated surface.
-pub async fn serve_lifecycle_grpc(
+/// and, for policy enforcement, `aa-gateway`'s own `PolicyServiceImpl` (rather
+/// than duplicating either), applying the same `enrich_interceptor` the
+/// gateway wraps both services with. Both RPCs self-validate: `Register` via
+/// its possession-proof challenge, `CheckAction`/`BatchCheck` via
+/// [`aa_gateway::service::PolicyServiceImpl::validate_credential_token`]
+/// (AAASM-1944) against `registry` — so this adds no new unauthenticated
+/// surface, and skipping `enrich` here would not have been the bypass; a
+/// registry-less `PolicyServiceImpl` would.
+///
+/// `audit_chain` gates whether `PolicyService` is served at all: an
+/// enforcement decision that cannot be audited must not be served. In the
+/// shipped `serve_local` path `audit_chain` is always `Some` (set by
+/// `AppState::local_hardened_at`); the `None` arm exists for the disconnected-
+/// audit-pipeline configuration `AppState::local_in_memory` builds for tests,
+/// where policy enforcement stays unavailable and only agent registration is
+/// served, matching pre-AAASM-5006 behavior for that configuration.
+///
+/// `PolicyServiceImpl` is constructed via `with_registry_and_approval` with a
+/// throwaway one-shot audit channel, then immediately switched onto the real
+/// shared chain via `with_shared_chain` — the same construct-then-replace
+/// shape `aa-gateway::server::serve_tcp` uses (AAASM-5626), so this service's
+/// audit entries interleave correctly with the REST surface's own writes to
+/// the same JSONL file rather than forking the hash chain.
+pub async fn serve_agent_plane_grpc(
     listener: TcpListener,
     registry: Arc<AgentRegistry>,
+    policy_engine: Arc<aa_gateway::PolicyEngine>,
+    approval_queue: Arc<aa_runtime::approval::ApprovalQueue>,
+    audit_chain: Option<Arc<aa_gateway::audit::AuditChain>>,
     shutdown: impl std::future::Future<Output = ()> + Send + 'static,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let tenancy_mode = aa_gateway::service::TenancyMode::from_env();
     let lifecycle =
         aa_gateway::service::AgentLifecycleServiceImpl::new(Arc::clone(&registry)).with_tenancy_mode(tenancy_mode);
-    let enrich = aa_gateway::iam::enrich_interceptor(registry);
+    let enrich = aa_gateway::iam::enrich_interceptor(Arc::clone(&registry));
     let incoming = tokio_stream::wrappers::TcpListenerStream::new(listener);
 
-    Server::builder()
-        .add_service(InterceptedService::new(
-            AgentLifecycleServiceServer::new(lifecycle).max_decoding_message_size(MAX_DECODING_MESSAGE_SIZE),
-            enrich,
-        ))
-        .serve_with_incoming_shutdown(incoming, shutdown)
-        .await?;
+    let router = Server::builder().add_service(InterceptedService::new(
+        AgentLifecycleServiceServer::new(lifecycle).max_decoding_message_size(MAX_DECODING_MESSAGE_SIZE),
+        enrich.clone(),
+    ));
+
+    let router = match audit_chain {
+        Some(chain) => {
+            let (throwaway_tx, _throwaway_rx) = tokio::sync::mpsc::channel(1);
+            let policy_svc = aa_gateway::service::PolicyServiceImpl::with_registry_and_approval(
+                policy_engine,
+                registry,
+                approval_queue,
+                throwaway_tx,
+                Arc::new(std::sync::atomic::AtomicU64::new(0)),
+                [0u8; 32],
+            )
+            .with_shared_chain(chain);
+            router.add_service(InterceptedService::new(
+                PolicyServiceServer::new(policy_svc).max_decoding_message_size(MAX_DECODING_MESSAGE_SIZE),
+                enrich,
+            ))
+        }
+        None => {
+            tracing::warn!(
+                target: "aa_api::serve_local",
+                "audit pipeline not connected — PolicyService enforcement not served on the \
+                 local gRPC listener; only AgentLifecycleService (registration) is available"
+            );
+            router
+        }
+    };
+
+    router.serve_with_incoming_shutdown(incoming, shutdown).await?;
     Ok(())
 }
 
@@ -540,5 +642,42 @@ mod tests {
             Some(v) => std::env::set_var("AA_API_TELEMETRY_ADDR", v),
             None => std::env::remove_var("AA_API_TELEMETRY_ADDR"),
         }
+    }
+
+    // --- check_local_api_bind_addr (AAASM-6056) ---
+
+    fn addr(s: &str) -> std::net::SocketAddr {
+        s.parse().unwrap()
+    }
+
+    fn api_key_auth() -> LocalAuth {
+        LocalAuth::ApiKey { key: "aa_test".into() }
+    }
+
+    #[test]
+    fn loopback_is_always_allowed_regardless_of_auth() {
+        assert!(check_local_api_bind_addr(addr("127.0.0.1:7700"), &LocalAuth::Off).is_ok());
+        assert!(check_local_api_bind_addr(addr("127.0.0.2:7700"), &LocalAuth::Off).is_ok());
+        assert!(check_local_api_bind_addr(addr("[::1]:7700"), &LocalAuth::Off).is_ok());
+        assert!(check_local_api_bind_addr(addr("127.0.0.1:7700"), &api_key_auth()).is_ok());
+    }
+
+    #[test]
+    fn non_loopback_with_auth_off_is_refused() {
+        let err = check_local_api_bind_addr(addr("0.0.0.0:7700"), &LocalAuth::Off).unwrap_err();
+        assert!(
+            err.contains("AASM_API_AUTH"),
+            "error must name the offending env var: {err}"
+        );
+
+        let err = check_local_api_bind_addr(addr("[::]:7700"), &LocalAuth::Off).unwrap_err();
+        assert!(err.contains("AASM_API_AUTH"));
+    }
+
+    #[test]
+    fn non_loopback_with_api_key_auth_is_allowed() {
+        // The common case this must not gate: AA_API_ADDR generally isn't
+        // restricted, only the auth-off combination is.
+        assert!(check_local_api_bind_addr(addr("0.0.0.0:7700"), &api_key_auth()).is_ok());
     }
 }

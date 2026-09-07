@@ -45,13 +45,28 @@ use aa_core::types::sensitive_data::{ExecutionEvidence, TransmissionEvidence};
 /// giving up (D7).
 ///
 /// `connect_revalidated` (the direct-dial path) has no timeout at all to
-/// inherit — verified: the only `tokio::time::timeout` calls in this module
-/// are `#[cfg(test)]`-only — so this is a genuinely new bound, not an
-/// assumed one. A multi-hop loop D7's single-hop startup check cannot see
+/// inherit — verified: at the time this was written, the only other
+/// non-`#[cfg(test)]` `tokio::time::timeout` call in this module was
+/// [`MCP_RESPONSE_READ_TIMEOUT`] below — so this is a genuinely new bound, not
+/// an assumed one. A multi-hop loop D7's single-hop startup check cannot see
 /// (the trusted endpoint itself relaying back through some other path)
 /// degrades to this bounded failure, feeding D4's fail-closed behaviour,
 /// rather than hanging the connection task indefinitely.
 const TRUSTED_PROXY_DIAL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// How long [`ProxyServer::relay_mcp_response`] waits for
+/// [`read_http_response`] to return before withholding the response
+/// (AAASM-5645).
+///
+/// [`crate::proxy::http::read_chunked_body`] and the close-delimited
+/// (no `Content-Length`, no `Transfer-Encoding`) framing branch it added both
+/// read until their own terminating condition (the zero-length chunk; EOF)
+/// rather than a fixed length — so a stalled or slow-drip upstream, not just a
+/// malformed one, can now leave this read pending indefinitely where it
+/// previously would have returned an (incorrectly) empty body almost
+/// immediately. Bounding the read keeps a stalled upstream a bounded,
+/// explicit fail-closed withhold rather than a silent hang.
+const MCP_RESPONSE_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
 /// A transport this proxy can lay TLS over, type-erased.
 ///
@@ -286,8 +301,12 @@ fn build_jsonrpc_error_response(code: i32, message: &str) -> String {
 }
 
 /// Fail-closed client response for an MCP upstream response the proxy could not
-/// parse (chunked / malformed) and therefore could not scan for secrets
-/// (AAASM-3997).
+/// parse or read within the relay timeout (AAASM-3997; malformed and timed-out
+/// cases folded in by AAASM-5645) and therefore could not scan for secrets.
+/// A literal `chunked` or close-delimited body is decoded, not withheld here
+/// (AAASM-5645) — this path is for a body the parser genuinely cannot read:
+/// malformed framing, a layered `Transfer-Encoding`, an over-cap body, or a
+/// stall past the read timeout.
 ///
 /// The pre-3997 behaviour relayed the un-parsed upstream bytes verbatim, which
 /// leaked an *unredacted* upstream body straight to the agent — defeating
@@ -1202,7 +1221,14 @@ impl ProxyServer {
         args_bytes: &[u8],
     ) -> Result<(), ProxyError> {
         let mut upstream_reader = BufReader::new(upstream_read);
-        match read_http_response(&mut upstream_reader).await {
+        let read_result =
+            match tokio::time::timeout(MCP_RESPONSE_READ_TIMEOUT, read_http_response(&mut upstream_reader)).await {
+                Ok(result) => result,
+                Err(_elapsed) => Err(ProxyError::Config(format!(
+                    "MCP response not read within {MCP_RESPONSE_READ_TIMEOUT:?}; refusing (fail-closed)"
+                ))),
+            };
+        match read_result {
             Ok(Some(resp)) => {
                 let content_encoding = resp
                     .headers

@@ -81,8 +81,10 @@ jobs:
     # invisible state this ticket exists to eliminate; a step ceiling firing
     # reports `failure`, which is red and blocks.
     #
-    #   step ceilings          71  = 6 protobuf + 6 cache restore + 4 pnpm
-    #                               + 18 pre-build aasm + 9 pre-build api + 28 tests
+    #   step ceilings          81  = 6 protobuf + 6 cache restore + 4 pnpm
+    #                               + 18 pre-build aasm + 9 pre-build api
+    #                               + 10 pre-build test binaries (AAASM-6033)
+    #                               + 28 tests
     #   un-ceilinged steps      2  = 4 checkouts, 6 toolchain/setup actions, a
     #                               symlink, and the non-cache post steps.
     #                               Measured at 58s total in run 32946949070; 2
@@ -91,7 +93,7 @@ jobs:
     #                               on each would cost more noise than it buys.
     #   cold cache save         2  = measured 44s, rounded up. See below.
     #                          ---
-    #   worst bounded run      75  = the longest run in which every step still
+    #   worst bounded run      85  = the longest run in which every step still
     #                               fires its own ceiling first
     #   strictness margin       1  = the ceiling must be strictly ABOVE that sum,
     #                               not equal to it. At equality the two fire in
@@ -99,7 +101,7 @@ jobs:
     #                               tie, which is the `cancelled` outcome this
     #                               whole file exists to make impossible.
     #                          ---
-    #                           76
+    #                           86
     #
     # The cache save is the one contributor that *cannot* be ceilinged: it is a
     # post step, and post steps do not accept `timeout-minutes`. It is therefore
@@ -120,7 +122,7 @@ jobs:
     #
     # Do not lower this below the sum above without lowering the step ceilings
     # too, and do not add an un-ceilinged step that can do unbounded work.
-    timeout-minutes: 76
+    timeout-minutes: 86
     strategy:
       fail-fast: false
       matrix:
@@ -297,6 +299,16 @@ jobs:
         # check instead of a cold compile landing unpredictably on one test.
         run: cargo build --quiet -p aa-api --bin aa-api-server
 
+      - name: Pre-build aa-integration-tests test binaries (AAASM-6033)
+        # Worst measured 6m08s (run 34053091032, macOS). 10 = ~1.5x worst.
+        #
+        # `cargo nextest run` compiles the test binaries as its first act, and
+        # under the timed step below that compile competed with the 28-minute
+        # ceiling meant for actually *running* tests. Moving it here is a pure
+        # relocation, not new work — `--no-run` builds and immediately exits.
+        timeout-minutes: 10
+        run: cargo nextest run -p aa-integration-tests --profile evidence --no-run
+
       - name: Run integration tests
         # 28 = 1.48x the 18.9 min of the last green warm run (34a274da6); under
         # the ratchet the step was truncated at 11.9-16.4 min and never finished.
@@ -319,6 +331,10 @@ jobs:
           GO_SDK_PATH: ${{ github.workspace }}/go-sdk
           # AAASM-2340: spawn the binary pre-built in the previous step
           # instead of paying cargo-run overhead per test under --test-threads=1.
+          # This is what makes AAASM-6033's --test-threads=4 below safe: the
+          # per-test `cargo run` overhead --test-threads=1 originally existed
+          # to serialize (see the pre-build step's comment above) is already
+          # eliminated by spawning this pre-built binary directly.
           AASM_BIN_PATH: ${{ github.workspace }}/target/debug/aasm
           # AAASM-5977: this lane provisions every binary its own skip guards
           # check for (see the pre-build step above), so an unmet precondition
@@ -334,7 +350,20 @@ jobs:
         # `--profile evidence` writes the JUnit report the summary step needs
         # for its ran/passed count (AC5) — same profile the conformance and CI
         # workspace lanes already use for the same reason.
-        run: cargo nextest run -p aa-integration-tests --profile evidence --test-threads=1
+        #
+        # AAASM-6033: raised from --test-threads=1. The reconciler-drop fix
+        # (aa-gateway/src/engine/watcher.rs) removed an uninterruptible ~5s
+        # wait that 1,323 tests workspace-wide paid on every drop of a
+        # file-watching PolicyEngine — measured at 63.17 min of serial test
+        # time for this crate's 745 tests in ci.yml's Test job before that
+        # fix. Running 4-wide gets real concurrency margin instead of merely
+        # clearing the ceiling. The handful of real-process/port-binding
+        # tests this would otherwise race are pinned to their own serial
+        # group in .config/nextest.toml (`serial-process`, [[profile.
+        # evidence.overrides]]) rather than serializing the whole suite
+        # again — ci.yml's `Test` job already runs these same tests fully
+        # concurrently and is green, which is the precedent this leans on.
+        run: cargo nextest run -p aa-integration-tests --profile evidence --test-threads=4
 
       - name: Test evidence summary
         # `always()`: a lane that failed on a strict-mode precondition panic
