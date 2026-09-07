@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useRef, useState, type RefObject } from 'react'
 import { ignorePromise } from '../lib/ignorePromise'
-import { usePoliciesQuery, useCreatePolicy, type Policy } from '../features/policies/api'
+import { usePoliciesQuery, useCreatePolicy, PoliciesHttpError, type Policy } from '../features/policies/api'
 import { useSandboxSummaryQuery } from '../features/audit/api'
 import { extractEnforcementMode, extractScope } from '../features/policies/policyYamlHelpers'
 import { SandboxEnableLiveDialog } from '../features/policies/SandboxEnableLiveDialog'
@@ -304,6 +304,8 @@ function PoliciesSandboxBanner({ summary, onEnableLive }: PoliciesSandboxBannerP
 
 interface PoliciesContentProps {
   readonly isError: boolean
+  /** The query's own error, so a 403 can be told apart from a real failure. */
+  readonly error: unknown
   readonly isLoading: boolean
   readonly filter: FilterTab
   readonly filtered: readonly Policy[]
@@ -326,6 +328,7 @@ interface PoliciesContentProps {
  */
 function PoliciesContent({
   isError,
+  error,
   isLoading,
   filter,
   filtered,
@@ -336,16 +339,29 @@ function PoliciesContent({
   showHistory,
 }: PoliciesContentProps) {
   if (isError) {
+    // AAASM-5250 — a 403 (no admin scope, AAASM-3995(a)) is a caller-side
+    // refusal, not a gateway malfunction: nothing is unexpected and nothing is
+    // broken, and Retry cannot succeed against a scope the caller does not
+    // have. `state={null}` is StatusState's own documented "informational, not
+    // a fault" surface (role="status", no fault badge) rather than reusing
+    // `unavailable`, whose announcement claims a request failed when none did.
+    const forbidden = error instanceof PoliciesHttpError && error.status === 403
     return (
       <StatusState
-        state="unavailable"
-        title="Failed to load policies"
-        description="The gateway returned an unexpected error."
+        state={forbidden ? null : 'unavailable'}
+        title={forbidden ? 'You do not have permission to view policy versions' : 'Failed to load policies'}
+        description={
+          forbidden
+            ? 'Listing policy versions requires admin scope.'
+            : 'The gateway returned an unexpected error.'
+        }
         testId="error-state"
         action={
-          <button type="button" className="truth-state__retry" onClick={onRetry}>
-            Retry
-          </button>
+          forbidden ? undefined : (
+            <button type="button" className="truth-state__retry" onClick={onRetry}>
+              Retry
+            </button>
+          )
         }
       />
     )
@@ -403,7 +419,7 @@ export function PoliciesPage() {
   // History toggle (AAASM-5143): off shows only the in-force version, on asks
   // the gateway for older (archived) versions too via include_archived.
   const [showHistory, setShowHistory] = useState(false)
-  const { data: policies, isLoading, isError, refetch } = usePoliciesQuery({
+  const { data: policies, isLoading, isError, error, refetch } = usePoliciesQuery({
     includeArchived: showHistory,
   })
   const { data: sandboxSummary } = useSandboxSummaryQuery({ window: '24h' })
@@ -559,6 +575,7 @@ export function PoliciesPage() {
 
       <PoliciesContent
         isError={isError}
+        error={error}
         isLoading={isLoading}
         filter={filter}
         filtered={filtered}

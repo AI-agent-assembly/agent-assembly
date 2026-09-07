@@ -231,6 +231,24 @@ describe('PoliciesPage — list states', () => {
     await user.click(screen.getByRole('button', { name: 'Retry' }))
     expect(refetch).toHaveBeenCalledTimes(1)
   })
+
+  // AAASM-5250 — a 403 is a caller-side refusal, not a gateway malfunction:
+  // no "unexpected error" claim, and no Retry, since retrying cannot succeed.
+  it('tells a 403 apart from a genuine failure and drops the useless Retry', () => {
+    mockPolicies({
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      error: new policiesApi.PoliciesHttpError(403, 'Failed to fetch policies'),
+      refetch: vi.fn(),
+    })
+    render(<PoliciesPage />, { wrapper: Wrapper })
+    const state = screen.getByTestId('error-state')
+    expect(state).toBeInTheDocument()
+    expect(state).toHaveAttribute('data-truth-state', 'empty')
+    expect(screen.getByRole('heading', { name: /do not have permission/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument()
+  })
 })
 
 describe('PoliciesPage — overlay wiring', () => {
