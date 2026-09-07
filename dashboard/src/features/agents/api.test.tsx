@@ -63,8 +63,12 @@ describe('FleetPage', () => {
   afterEach(() => { vi.restoreAllMocks() })
 
   it('renders skeleton rows while loading', () => {
+    // AAASM-5252 — isLoading and isPending are not interchangeable (v5:
+    // isLoading === isPending && isFetching); FleetPage reads isPending via
+    // certainFromShapedQuery, so a mock that sets only isLoading exercises the
+    // empty-payload branch instead of the in-flight one.
     vi.spyOn(agentsApi, 'useAgentsQuery').mockReturnValue(
-      mockQuery<Agent[]>({ data: undefined, isLoading: true, isError: false, refetch: vi.fn() }),
+      mockQuery<Agent[]>({ data: undefined, isLoading: true, isPending: true, isError: false, refetch: vi.fn() }),
     )
     render(<FleetPage />, { wrapper: ({ children }) => <Wrapper path="/">{children}</Wrapper> })
     expect(screen.getAllByTestId('agent-row-skeleton')).toHaveLength(5)
