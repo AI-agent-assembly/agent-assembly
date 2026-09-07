@@ -73,14 +73,17 @@ const QUARANTINE = [
   // in-place `drawer-panel`. Needs a product call on which side is correct.
   'verify-aaasm-94.spec.ts',
 
-  // --- Racy, not rotten (AAASM-5198) ------------------------------------
-  // Its "force layout settles" check treats two consecutive identical
-  // position samples as proof
-  // the d3 simulation stopped, which is not sound — on an idle machine the
-  // samples arrive fast enough to match mid-motion, and the later
-  // "cards do not move" assertion then fails against a still-moving graph.
-  // Fails 3/3 at --workers=1; passed under 6-worker load, i.e. it gets *more*
-  // likely to fail the quieter the runner, which is exactly a CI runner.
+  // --- Dead-button assertion superseded by shipped functionality (AAASM-6064)
+  // The racy "force layout settles" check this file was quarantined for is
+  // FIXED (AAASM-5198) — verified 3/3 stable at --workers=1. Re-measuring
+  // surfaced a second, unrelated failure in the same file: "an unconfigured
+  // limit never renders as $0" expects `node-detail-shadow-mode` to render as
+  // a disabled placeholder (AAASM-5140's "dead governance buttons"), but
+  // `EnforcementToggle` (AAASM-5618) now renders a real, enabled strengthen/
+  // shadow button there instead — test drift following a shipped feature, not
+  // confirmed here as a product regression. Quarantine is file-granular, so
+  // this one unrelated test blocks un-quarantining the whole file even though
+  // the ticket this entry originally cited is closed. See AAASM-6064.
   'verify-aaasm-5135.spec.ts',
 
   // --- Needs a real Rust gateway, which this job does not provision ------
