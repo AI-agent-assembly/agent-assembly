@@ -158,6 +158,10 @@ fn edge_to_response(edge: &Edge, is_cross_team: bool) -> EdgeResponse {
 
 /// Batch-compute `is_cross_team` for a set of edges by comparing team_id
 /// from the agent registry.  Missing agents → treated as team-less (false).
+///
+/// AAASM-5201 — keys on [`super::topology::team_of`], not the raw `team_id`:
+/// a blank id is no team, and this must never disagree with the graph
+/// projection's own `is_cross_team` answer for the same edge.
 fn compute_cross_team(edges: &[Edge], state: &AppState) -> Vec<bool> {
     // Collect all unique agent IDs
     let mut ids: HashSet<AgentId> = HashSet::new();
@@ -170,7 +174,10 @@ fn compute_cross_team(edges: &[Edge], state: &AppState) -> Vec<bool> {
     let team_map: HashMap<AgentId, Option<String>> = ids
         .into_iter()
         .map(|id| {
-            let team = state.agent_registry.get(id.as_bytes()).and_then(|r| r.team_id.clone());
+            let team = state
+                .agent_registry
+                .get(id.as_bytes())
+                .and_then(|r| super::topology::team_of(&r).map(str::to_owned));
             (id, team)
         })
         .collect();
@@ -681,5 +688,35 @@ mod tests {
         // AAASM-4150: a multibyte segment previously sliced a non-char-boundary
         // and panicked; hex::decode must reject it as a clean error.
         assert!(parse_agent_id("€0").is_err());
+    }
+
+    /// AAASM-5201 — a blank `team_id` must not make two agents look like they
+    /// belong to different teams. Before the fix, `team_map` here keyed on the
+    /// raw `team_id`, so `Some("")` vs. `Some("team-alpha")` compared unequal
+    /// and the edge was reported cross-team, disagreeing with the graph
+    /// projection's `is_cross_team` for the same pair.
+    #[tokio::test]
+    async fn a_blank_team_id_is_never_a_cross_team_boundary() {
+        use crate::routes::topology::graph_tests::{record, state_with};
+
+        let state = state_with(vec![record(0x01, "a", Some("")), record(0x02, "b", Some("team-alpha"))]);
+        state
+            .edge_repo
+            .insert(NewEdge {
+                source: AgentId::from_bytes([0x01; 16]),
+                target: AgentId::from_bytes([0x02; 16]),
+                edge_type: EdgeType::Calls,
+                metadata: None,
+            })
+            .await
+            .expect("edge inserted");
+
+        let edges = state
+            .edge_repo
+            .list_outgoing(AgentId::from_bytes([0x01; 16]), None, 10)
+            .await
+            .expect("list edges");
+
+        assert_eq!(compute_cross_team(&edges, &state), vec![false]);
     }
 }
