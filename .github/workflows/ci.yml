@@ -241,6 +241,16 @@ on:
     #
     # **If you add a job here, gate it on `needs.changes.outputs.*`** — this
     # filter is no longer a backstop.
+    #
+    # AAASM-5203: `types` explicitly lists the three GitHub defaults PLUS
+    # `labeled` — specifying `types` at all REPLACES the default set rather
+    # than adding to it, so omitting any of the three would silently stop this
+    # workflow firing on it. `labeled` exists so applying `run-coverage`
+    # (SonarCloud/Coverage's opt-in gate, both label-conditioned further down)
+    # re-evaluates immediately: without it, the label produced no new event
+    # and the PR had to be closed/reopened to force a fresh run — the
+    # workaround AAASM-5203 was filed over.
+    types: [opened, synchronize, reopened, labeled]
   schedule:
     - cron: "0 3 * * 1" # Mondays 03:00 UTC
   workflow_dispatch:
