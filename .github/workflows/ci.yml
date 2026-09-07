@@ -286,6 +286,9 @@ jobs:
       docs_governance_gate: ${{ steps.filter.outputs.docs_governance_gate }}
       qa_registry: ${{ steps.filter.outputs.qa_registry }}
       community_health: ${{ steps.filter.outputs.community_health }}
+      # AAASM-5375: mirror, glob for glob, actionlint.yml's own internal
+      # `changes` router — same reasoning as the satellites above.
+      workflow_syntax_gate: ${{ steps.filter.outputs.workflow_syntax_gate }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
@@ -640,6 +643,11 @@ jobs:
               - '**/README.md'
               - 'scripts/check_claim_vocabulary.py'
               - 'scripts/check_adr_citations.py'
+            # AAASM-5375: glob-for-glob copy of actionlint.yml's own `changes`
+            # router — see the comment on the `workflow_syntax_gate` output
+            # above for why this cannot reuse `governance`.
+            workflow_syntax_gate:
+              - '.github/workflows/**'
   # AAASM-2582: build the dashboard assets (embedded by aa-cli's build.rs)
   # exactly once and share them via an artifact, instead of running
   # `pnpm install && pnpm build` in each of build/clippy/test/coverage.
@@ -4018,6 +4026,17 @@ jobs:
     needs: [changes]
     if: needs.changes.outputs.docs_governance_gate == 'true'
     uses: ./.github/workflows/docs-governance.yml
+  # AAASM-5375: a workflow file with an unparseable expression produces zero
+  # check runs and vanishes from the checks list entirely, rather than
+  # failing — measured live when claude-code-conformance.yml's job-level
+  # `env:` referenced the steps-only `runner` context and failed to parse on
+  # six consecutive pushes with `gh pr checks` reporting green throughout.
+  # actionlint.yml statically validates every workflow file's syntax before
+  # that class of error can hide again.
+  workflow-syntax-gate:
+    needs: [changes]
+    if: needs.changes.outputs.workflow_syntax_gate == 'true'
+    uses: ./.github/workflows/actionlint.yml
 
   ci-success:
     name: CI Success
@@ -4146,6 +4165,12 @@ jobs:
       - doc-links-gate
       - release-completeness-gate
       - docs-governance-gate
+      # AAASM-5375: blocks, same pattern and same reasoning as the five
+      # satellites above — a workflow file that fails to parse is exactly the
+      # invisible-failure shape this ticket exists to end, and an advisory
+      # version of the check that catches it would be silent for the same
+      # reason the original defect was.
+      - workflow-syntax-gate
     steps:
       - name: Verify no required job failed or was cancelled
         run: |
