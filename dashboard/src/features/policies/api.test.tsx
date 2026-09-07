@@ -6,12 +6,14 @@ import {
   useActivePolicyQuery,
   useCreatePolicy,
   usePoliciesQuery,
+  PoliciesHttpError,
   type Policy,
 } from './api'
 
 interface FetchResult {
   data?: unknown
   error?: unknown
+  response?: { status: number }
 }
 
 function makeWrapper() {
@@ -90,6 +92,17 @@ describe('usePoliciesQuery', () => {
     const { result } = renderHook(() => usePoliciesQuery(), { wrapper })
     await waitFor(() => expect(result.current.isError).toBe(true))
     expect(result.current.error?.message).toBe('Failed to fetch policies')
+  })
+
+  // AAASM-5250 — the status has to survive so a consumer can tell a
+  // caller-side 403 (no admin scope) apart from a genuine backend failure.
+  it('carries the real HTTP status on failure', async () => {
+    get.mockResolvedValue({ error: { message: 'forbidden' }, response: { status: 403 } } satisfies FetchResult)
+    const { wrapper } = makeWrapper()
+    const { result } = renderHook(() => usePoliciesQuery(), { wrapper })
+    await waitFor(() => expect(result.current.isError).toBe(true))
+    expect(result.current.error).toBeInstanceOf(PoliciesHttpError)
+    expect((result.current.error as PoliciesHttpError).status).toBe(403)
   })
 
   it('requests active-only versions by default without a query string', async () => {
