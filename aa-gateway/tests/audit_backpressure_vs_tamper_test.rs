@@ -115,6 +115,29 @@ async fn backpressure_loss_reports_incomplete_not_tampered() {
     let path = dir.path().join("test-agent-sess.jsonl");
     let writer_task = tokio::spawn(writer.run());
 
+    // Await observable drain of the 2 entries already queued (seq 0, 1)
+    // before issuing burst 3 (AAASM-6035). Without this, burst 3 assumes
+    // the spawned writer has already been polled and drained the
+    // capacity-2 channel — under process-level parallelism (nextest) the
+    // writer task may not have run yet, so burst 3 itself can hit a still
+    // -full channel and drop into the same non-blocking `try_send` path as
+    // burst 2. That drop is unrecoverable: the file can then never reach
+    // the 4 lines the poll below waits for, so the bounded poll always
+    // times out. Reusing the bounded-poll idiom here makes "the channel
+    // has drained" an observed fact instead of a timing assumption.
+    let pre_burst_deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    loop {
+        let content = tokio::fs::read_to_string(&path).await.unwrap_or_default();
+        if content.lines().filter(|l| !l.trim().is_empty()).count() >= 2 {
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < pre_burst_deadline,
+            "writer never drained the pre-existing 2 entries before burst 3"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+
     // Burst 3: 2 more requests (seq 6, 7) — the channel has drained back
     // down to capacity, so these succeed and link to entry 1's hash (the
     // chain head never advanced past it while entries 2..5 were dropped).

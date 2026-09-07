@@ -52,6 +52,9 @@ async fn grpc_registered_agent_is_visible_via_rest() {
         .await
         .expect("local_hardened_at must construct");
     let registry = std::sync::Arc::clone(&state.agent_registry);
+    let policy_engine = std::sync::Arc::clone(&state.policy_engine);
+    let approval_queue = std::sync::Arc::clone(&state.approval_queue);
+    let audit_chain = state.audit_chain.clone();
 
     // Bind an ephemeral loopback port so the test is parallel-safe (the shipped
     // binary uses the fixed :50051; the serving logic is identical).
@@ -63,7 +66,14 @@ async fn grpc_registered_agent_is_visible_via_rest() {
 
     // The gRPC server future never completes on its own (pending shutdown); race
     // it against the client work so it is dropped when the assertions finish.
-    let serve = aa_api::server::serve_lifecycle_grpc(listener, registry, pending::<()>());
+    let serve = aa_api::server::serve_agent_plane_grpc(
+        listener,
+        registry,
+        policy_engine,
+        approval_queue,
+        audit_chain,
+        pending::<()>(),
+    );
 
     let work = async {
         // --- SDK registration over gRPC (the real aa-sdk-client wire path). ---

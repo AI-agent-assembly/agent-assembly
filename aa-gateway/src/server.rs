@@ -616,29 +616,63 @@ async fn select_challenge_store(
     }
 }
 
-/// Spawn the [`EscalationScheduler`] background task and return the `Arc<EscalationScheduler>`.
+/// Default gateway database path (AAASM-5010).
 ///
-/// The `run()` task is spawned internally. The returned `Arc` can be shared
-/// with `PolicyServiceImpl` (to register escalations) and `ApprovalServiceImpl`
-/// (to cancel them on decision).
-///
-/// Falls back gracefully — if the scheduler cannot be initialised (e.g. the
-/// persistence path is not writable), a warning is logged and `None` is returned
-/// so the rest of the server can still start.
+/// Resolves in this order:
+/// 1. `AA_GATEWAY_DB_PATH` environment variable, when set and non-empty —
+///    the file path itself, not a directory. Lets a nonroot deployment
+///    (e.g. the published distroless image, uid 65532, where `$HOME` is
+///    typically unset or unwritable) point the DB escalation scheduler at
+///    a writable/mounted location. Mirrors `AA_AUDIT_DIR`'s pattern for
+///    the audit sink ([`default_audit_dir`], AAASM-1601).
+/// 2. `$HOME/.aa/aa_gateway.db` (the historical default).
+fn default_gateway_db_path() -> PathBuf {
+    gateway_db_path_from(non_empty_env("AA_GATEWAY_DB_PATH"), std::env::var("HOME").ok())
+}
+
+/// The resolution rule for [`default_gateway_db_path`], with the environment
+/// passed in — same reasoning as [`audit_dir_from`] for why this is a pure
+/// function of its arguments rather than reading the environment itself.
+fn gateway_db_path_from(override_path: Option<PathBuf>, home: Option<String>) -> PathBuf {
+    match override_path {
+        Some(path) => path,
+        None => {
+            let home = home.unwrap_or_else(|| ".".to_string());
+            PathBuf::from(home).join(".aa").join("aa_gateway.db")
+        }
+    }
+}
+
 /// Start the [`DbEscalationScheduler`] and its background polling task.
 ///
-/// The scheduler connects to `~/.aa/aa_gateway.db`, runs pending migrations,
-/// and polls `pending_escalations` every 30 s. The returned `CancellationToken`
-/// must be cancelled at shutdown so the task flushes any due rows before exit.
+/// The scheduler connects to [`default_gateway_db_path`], runs pending
+/// migrations, and polls `pending_escalations` every 30 s. The returned
+/// `CancellationToken` must be cancelled at shutdown so the task flushes any
+/// due rows before exit.
 ///
-/// Falls back gracefully — if the DB cannot be opened a warning is logged and
-/// `None` is returned; the rest of the server continues without DB escalation.
+/// Falls back gracefully — if the DB's parent directory cannot be created or
+/// the DB cannot be opened, a warning is logged and `None` is returned; the
+/// rest of the server continues without DB escalation.
 async fn start_db_escalation_scheduler(
     approval_queue: Arc<ApprovalQueue>,
     token: CancellationToken,
 ) -> Option<Arc<DbEscalationScheduler>> {
-    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-    let db_path = std::path::PathBuf::from(home).join(".aa").join("aa_gateway.db");
+    let db_path = default_gateway_db_path();
+    // `sqlite://…?mode=rwc` creates the DB *file* but not its parent
+    // directory — on a fresh `$HOME` (or a first-run `AA_GATEWAY_DB_PATH`
+    // override pointing at a not-yet-created directory) the connect below
+    // fails with exactly the "unable to open database file" error this
+    // ticket reports, independent of the nonroot/writability question.
+    if let Some(parent) = db_path.parent() {
+        if let Err(e) = std::fs::create_dir_all(parent) {
+            tracing::warn!(
+                error = %e,
+                path = %parent.display(),
+                "failed to create gateway DB directory — DB escalation scheduler disabled"
+            );
+            return None;
+        }
+    }
     let db_url = format!("sqlite://{}?mode=rwc", db_path.display());
 
     let pool = match sqlx::SqlitePool::connect(&db_url).await {
@@ -982,7 +1016,7 @@ pub async fn serve_tcp(
         ApprovalServiceImpl::new_with_escalation(approval_queue, escalation_scheduler).with_db_scheduler(db_scheduler);
     let secrets_svc = SecretsServiceImpl::new(Arc::new(InMemorySecretsStore::new()));
 
-    let addr = listen_addr.parse()?;
+    let addr: std::net::SocketAddr = listen_addr.parse()?;
 
     // AAASM-3788 — mTLS wire point. The credential-token interceptor above is
     // the always-on authentication layer; mTLS is optional transport hardening.
@@ -1002,6 +1036,22 @@ pub async fn serve_tcp(
     }
 
     tracing::info!(%addr, "starting gRPC server on TCP (per-RPC credential auth enforced)");
+
+    // AAASM-6053: bind explicitly, before tonic's internal service setup, so a
+    // bind failure (e.g. `AddrInUse`) surfaces immediately as a returned
+    // `Err` rather than lazily inside `serve_with_shutdown`'s first poll —
+    // which on this codepath was observed to take several seconds (the
+    // service-construction work above runs first), long enough for
+    // `aa-cli`'s readiness probe to observe a successful TCP connect to
+    // whatever *else* already held the port and declare the gateway ready
+    // before this process ever attempted its own bind. The `listening on`
+    // log line below is the positive signal `aa-cli` now waits for instead
+    // of trusting a bare connect (see `wait_for_child_ready` in
+    // `aa-cli/src/commands/gateway/start.rs`) — it is only emitted once this
+    // process has actually bound the address itself.
+    let listener = tokio::net::TcpListener::bind(addr).await?;
+    tracing::info!(%addr, "{}", aa_core::gateway_readiness::TCP_LISTENING_MARKER);
+    let incoming = tokio_stream::wrappers::TcpListenerStream::new(listener);
 
     Server::builder()
         // AAASM-4759: unauthenticated liveness endpoint — see `serving_health_service`.
@@ -1035,7 +1085,7 @@ pub async fn serve_tcp(
                 .max_decoding_message_size(MAX_DECODING_MESSAGE_SIZE),
             auth.clone(),
         ))
-        .serve_with_shutdown(addr, async move {
+        .serve_with_incoming_shutdown(incoming, async move {
             shutdown_signal().await;
             db_token.cancel();
         })
@@ -1438,6 +1488,94 @@ mod tests {
             Some(PathBuf::from("/d/aa/audit")),
             "an empty override must fall through to the data directory, not become the audit \
              directory itself"
+        );
+    }
+
+    /// The default gateway DB path when nothing overrides it (AAASM-5010).
+    #[test]
+    fn gateway_db_path_defaults_to_home_dot_aa() {
+        assert_eq!(
+            gateway_db_path_from(None, Some("/home/dev".to_string())),
+            PathBuf::from("/home/dev/.aa/aa_gateway.db")
+        );
+    }
+
+    /// `AA_GATEWAY_DB_PATH` wins outright and is used verbatim as the file
+    /// path — unlike the audit directory, this override names a *file*, not
+    /// a directory to join `aa_gateway.db` onto, so a nonroot deployment can
+    /// point it at any writable/mounted path regardless of `$HOME`.
+    #[test]
+    fn gateway_db_path_override_is_used_verbatim_and_wins_over_home() {
+        let over = PathBuf::from("/data/gateway.db");
+        assert_eq!(
+            gateway_db_path_from(Some(over.clone()), Some("/home/dev".to_string())),
+            over
+        );
+        assert_eq!(
+            gateway_db_path_from(Some(PathBuf::from("/data/gateway.db")), None),
+            PathBuf::from("/data/gateway.db")
+        );
+    }
+
+    /// With neither the override nor `$HOME` set, the rule still names a
+    /// path — `.` was always the historical fallback for the DB (unlike the
+    /// audit sink, which deliberately refuses to fall back to a
+    /// working-directory-relative path per AAASM-5959). Preserved verbatim
+    /// here: no behaviour change for this ticket beyond adding the override.
+    #[test]
+    fn gateway_db_path_falls_back_to_dot_when_home_is_unset() {
+        assert_eq!(gateway_db_path_from(None, None), PathBuf::from("./.aa/aa_gateway.db"));
+    }
+
+    /// Serializes `AA_GATEWAY_DB_PATH`-mutating tests under `cargo test` (each
+    /// `cargo nextest` test already runs in its own process) — same pattern as
+    /// `aa-gateway/src/auth.rs`'s `ENV_LOCK`.
+    static GATEWAY_DB_PATH_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    /// AAASM-5010 end-to-end: `start_db_escalation_scheduler` must create a
+    /// not-yet-existing `AA_GATEWAY_DB_PATH` override's parent directory
+    /// rather than fail with "unable to open database file" — the exact
+    /// failure this ticket reports, reproduced here by pointing the override
+    /// at a nested tempdir path that doesn't exist until this call creates it.
+    ///
+    /// Plain `#[test]` on a private current-thread runtime rather than
+    /// `#[tokio::test]`, matching `aa-api/tests/serve_local_hardened.rs`:
+    /// `GATEWAY_DB_PATH_ENV_LOCK` must stay held for the whole env-dependent
+    /// body, and holding a `std::sync::MutexGuard` across an actual `.await`
+    /// point is `clippy::await_holding_lock` (denied via `-D warnings`);
+    /// driving the async work through `block_on` instead keeps the guard's
+    /// scope off the await points clippy inspects.
+    #[test]
+    fn start_db_escalation_scheduler_creates_a_missing_override_parent_directory() {
+        let _lock = GATEWAY_DB_PATH_ENV_LOCK.lock().unwrap();
+        let tmp = tempfile::tempdir().unwrap();
+        let db_path = tmp.path().join("nested").join("does-not-exist-yet").join("gateway.db");
+        assert!(
+            !db_path.parent().unwrap().exists(),
+            "the parent must not pre-exist for this test to mean anything"
+        );
+        std::env::set_var("AA_GATEWAY_DB_PATH", &db_path);
+
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("build runtime");
+        let token = CancellationToken::new();
+        let scheduler = rt.block_on(async {
+            let approval_queue = ApprovalQueue::new();
+            start_db_escalation_scheduler(approval_queue, token.clone()).await
+        });
+
+        std::env::remove_var("AA_GATEWAY_DB_PATH");
+        token.cancel();
+
+        assert!(
+            scheduler.is_some(),
+            "the scheduler must start once its DB directory is created, not stay disabled"
+        );
+        assert!(
+            db_path.exists(),
+            "the DB file itself must have been created at the override path"
         );
     }
 

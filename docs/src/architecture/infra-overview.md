@@ -263,6 +263,8 @@ Read in `aa-runtime/src/config.rs`:
 | `AA_ENFORCEMENT_MAX_FIELD_BYTES` | Oversized-field threshold; the enforcement stage redacts whole fields over the limit (fail-closed). |
 | `AA_GATEWAY_ENDPOINT` | gRPC endpoint of the gateway (shared with the SDK client). |
 | `AA_GATEWAY_FAIL_CLOSED` | Deny when the gateway is unreachable. |
+| `AA_GATEWAY_CREDENTIAL_TOKEN` | Authenticates the op-control (live kill-switch) `OpControlStream` subscription — required by any gateway enforcing per-RPC credential auth (AAASM-5009); requires `AA_GATEWAY_AGENT_ID` too. |
+| `AA_GATEWAY_AGENT_ID` | The registered `did:key` the credential above belongs to; distinct from `AA_AGENT_ID` above. |
 
 ### `aa-gateway` — registry, policy engine, budgets, audit
 
@@ -271,6 +273,7 @@ Read in `aa-runtime/src/config.rs`:
 | `AA_MODE` | `aa-gateway/src/main.rs` | Deployment mode: `legacy-grpc`, `local`, or `remote`. The gRPC service is always exposed; `--mode` overrides the env var. |
 | `AAASM_GATEWAY_PORT` | `aa-core/src/config.rs` | Gateway port in `local` mode. |
 | `AA_AUDIT_DIR` | `aa-gateway/src/server.rs` | Directory for the tamper-evident JSONL audit log. |
+| `AA_GATEWAY_DB_PATH` | `aa-gateway/src/server.rs` | SQLite file path for the DB-backed approval-escalation scheduler (default `$HOME/.aa/aa_gateway.db`; needed on nonroot/containerized deployments where `$HOME` is unset or unwritable, AAASM-5010). `--db-path` is a thin CLI alias. |
 | `AA_DATA_DIR` | `aa-gateway/src/policy/history/config.rs` | Base data dir; e.g. policy history lands under `$AA_DATA_DIR/policy-history/`. |
 | `AA_AUDIT_NATS_URL` + `AA_AUDIT_POSTGRES_URL` | `aa-gateway/src/audit_consumer.rs` | Both must be set to enable the async audit consumer (NATS → Postgres). |
 | `AA_SENSITIVE_DATA_PROJECTION_DB` | `aa-gateway/src/server.rs` | SQLite path for the durable sensitive-data projection. Unset or empty leaves the tier off. Read only under `legacy-grpc` (the default mode); a path that cannot be opened or migrated fails the boot. See [Sensitive-data projection](../operations/sensitive-data-projection.md). |
@@ -299,7 +302,7 @@ this loader. See [Data flows → Storage data flow](data-flows.md#storage-data-f
 
 | Knob | Where | Purpose / default |
 |---|---|---|
-| `AA_API_ADDR` | `aa-api/src/config.rs`, `aa-api/src/bin/aa-api-server.rs` | HTTP bind address. Default `127.0.0.1:7700` (`DEFAULT_ADDR`). |
+| `AA_API_ADDR` | `aa-api/src/config.rs`, `aa-api/src/bin/aa-api-server.rs` | HTTP bind address. Default `127.0.0.1:7700` (`DEFAULT_ADDR`). A non-loopback value refuses to start when `AASM_API_AUTH=off` (AAASM-6056, `check_local_api_bind_addr`) — that combination would serve an unauthenticated admin API on the network. |
 | `AA_AUTH` | `aa-auth/src/config.rs` | `off` disables auth (all requests treated as admin, logged as a warning); anything else = on. |
 | `AA_JWT_SECRET` | `aa-auth/src/config.rs` | HMAC key for JWT; **required** when auth is on, with a minimum length. |
 | `AA_API_KEYS_PATH` | `aa-auth/src/config.rs` | Path to the API-keys file. Default `~/.aa/api-keys.json`. |

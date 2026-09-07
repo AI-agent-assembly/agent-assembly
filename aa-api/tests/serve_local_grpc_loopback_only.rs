@@ -38,6 +38,8 @@ fn shipped_grpc_addr_is_loopback_only() {
 #[tokio::test]
 async fn served_grpc_listener_is_bound_to_loopback() {
     let registry = std::sync::Arc::new(aa_gateway::registry::AgentRegistry::new());
+    let policy_engine = std::sync::Arc::new(aa_gateway::engine::PolicyEngine::for_testing());
+    let approval_queue = aa_runtime::approval::ApprovalQueue::new();
 
     // Bind on the loopback host with an ephemeral port (parallel-safe); the
     // shipped binary uses the fixed loopback :50051 verified above.
@@ -60,7 +62,14 @@ async fn served_grpc_listener_is_bound_to_loopback() {
     // A loopback client can still reach it (the endpoint is functional, just
     // confined to localhost). Race the never-terminating server against a short
     // connect probe.
-    let serve = aa_api::server::serve_lifecycle_grpc(listener, registry, pending::<()>());
+    let serve = aa_api::server::serve_agent_plane_grpc(
+        listener,
+        registry,
+        policy_engine,
+        approval_queue,
+        None,
+        pending::<()>(),
+    );
     let probe = async {
         let stream = tokio::net::TcpStream::connect(bound).await;
         assert!(stream.is_ok(), "loopback client must reach the registration listener");

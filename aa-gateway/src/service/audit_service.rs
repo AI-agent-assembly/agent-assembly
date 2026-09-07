@@ -8,7 +8,7 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 use tonic::{Request, Response, Status};
 
-use aa_core::identity::{AgentId, SessionId};
+use aa_core::identity::AgentId;
 use aa_core::{AuditEntry, AuditEventType, Lineage};
 use aa_proto::assembly::audit::v1::audit_event::Detail;
 use aa_proto::assembly::audit::v1::audit_service_server::AuditService;
@@ -100,11 +100,9 @@ impl AuditServiceImpl {
             .map(registry_convert::proto_agent_id_to_key)
             .unwrap_or([0u8; 16]);
 
-        let session_id = if event.trace_id.is_empty() {
-            SessionId::from_bytes([0u8; 16])
-        } else {
-            SessionId::from_bytes(convert::hash_to_16(&event.trace_id))
-        };
+        // AAASM-5002 — shared with the sync `check_action` audit path so both
+        // ingestion paths agree on the empty-trace_id case.
+        let session_id = convert::session_id_from_trace(&event.trace_id);
 
         let timestamp_ns = event
             .occurred_at
