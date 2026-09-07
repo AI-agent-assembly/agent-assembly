@@ -166,6 +166,7 @@ fn reconcile_file_tick(path: &Path, slot: &Arc<ArcSwap<PolicyDocument>>) {
         return;
     };
     if slot.load().as_ref() != &output.document {
+        log_policy_reload(path, &output.document);
         slot.store(Arc::new(output.document));
     }
 }
@@ -230,8 +231,30 @@ fn handle_fs_event(res: notify::Result<notify::Event>, path: &Path, slot: &Arc<A
         return;
     }
     if let Ok(output) = PolicyValidator::from_yaml(&yaml) {
+        log_policy_reload(path, &output.document);
         slot.store(Arc::new(output.document));
     }
+}
+
+/// Log the operator-observable confirmation that a hot-reloaded policy is now
+/// live (AAASM-5005).
+///
+/// Before this, a swap into `slot` was silent: the developer-facing effect
+/// (the next request evaluates against the new document) was observable, but
+/// the operator who edited the file had no signal the edit had reached
+/// enforcement — they could only infer it indirectly, by asking someone to
+/// retry a call. `name`/`policy_version` come from the YAML envelope's
+/// `metadata.name`/`metadata.version` (`None` for the flat, non-envelope
+/// format) — whatever the document itself carries is what an operator diffing
+/// two edits would look for.
+fn log_policy_reload(path: &Path, document: &PolicyDocument) {
+    tracing::info!(
+        target: "audit",
+        path = %path.display(),
+        name = document.name.as_deref().unwrap_or("(unnamed)"),
+        policy_version = document.policy_version.as_deref().unwrap_or("(none)"),
+        "policy hot-reloaded"
+    );
 }
 
 /// Start a background watcher on the policy *directory* `dir` (AAASM-3497).
@@ -336,6 +359,7 @@ fn handle_cascade_event(
     // current cascade — never swap in a degraded one.
     match PolicyEngine::rebuild_cascade_state(dir) {
         Ok((primary, cascade)) => {
+            log_policy_reload(dir, &primary);
             policy_slot.store(primary);
             cascade_slot.store(Arc::new(cascade));
             // Bump the epoch so the cascade decision cache treats every prior
