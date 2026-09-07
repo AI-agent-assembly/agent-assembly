@@ -3,13 +3,13 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { UseQueryResult } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { CostsPage } from './CostsPage'
 import * as teamsApi from '../features/teams/api'
 import * as topologyApi from '../features/topology/api'
 import type { CostSummary, TopologyOverview } from '../features/teams/api'
 import type { TopologyGraph, TopologyNode } from '../features/topology/types'
+import { mockQuery } from '../test/mockQuery'
 
 // recharts (used by the reused CostBreakdownPanel) needs ResizeObserver in jsdom.
 class ResizeObserverStub {
@@ -24,20 +24,6 @@ class ResizeObserverStub {
   }
 }
 globalThis.ResizeObserver = ResizeObserverStub
-
-/**
- * A query result shaped the way TanStack Query v5 actually shapes one.
- *
- * `isPending` is derived from `isLoading` unless given explicitly, because the
- * two are not interchangeable — `isLoading === isPending && isFetching` — and
- * the code under test reads **`isPending`** (`certainFromQuery`). Mocks that set
- * only `isLoading` therefore left every in-flight assertion exercising a state
- * TanStack never produces, so the genuine in-flight rendering went uncovered
- * (AAASM-5185).
- */
-function mockQuery<T>(p: Record<string, unknown>): UseQueryResult<T, Error> {
-  return { isPending: p.isLoading === true, ...p } as unknown as UseQueryResult<T, Error>
-}
 
 function Wrapper({ children }: Readonly<{ children: ReactNode }>) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
