@@ -872,13 +872,15 @@ pub async fn get_team(
             .with_detail("Reading a team's topology requires admin scope or membership in that team"));
     }
 
-    // `params.org_id` is deliberately absent: unlike `get_overview`, this handler
-    // never reads it, so it cannot shape the body and naming it would only split
-    // the entry. If it ever starts filtering by org, it belongs in this key.
+    // AAASM-5202 — `params.org_id` now shapes the body (filters members to that
+    // org below), so it must be named here too, same as `get_overview`
+    // (AAASM-5181): omitting it would let `?org_id=A` and `?org_id=B` collide on
+    // one cached entry.
     let cache_key = cache_key_of(&[
         &tenant_cache_tag(&caller),
         &team_id,
         &opt_part(params.status.as_deref()),
+        &opt_part(params.org_id.as_deref()),
         &params.min_depth.unwrap_or(0).to_string(),
         &params.show_budget.unwrap_or(false).to_string(),
     ]);
@@ -905,6 +907,12 @@ pub async fn get_team(
                 .as_deref()
                 .map_or(true, |f| matches_status_filter(&r.status, f))
                 && params.min_depth.map_or(true, |d| r.depth >= d)
+                // AAASM-5202 — honour the declared `?org_id` param instead of
+                // silently ignoring it: a caller scoping the query believed it
+                // was scoped. Literal match against the record's `org_id`, same
+                // semantics `record_visible_to` uses — an org-less member never
+                // matches an explicit filter.
+                && params.org_id.as_deref().map_or(true, |oid| r.org_id.as_deref() == Some(oid))
         })
         .map(|r| {
             let mut node = AgentNode::from(&r);
@@ -1873,14 +1881,14 @@ mod overview_tests {
 
     /// [`record`] with an owning org — what an `?org_id` selector resolves
     /// against, and what `record_visible_to` scopes a non-admin caller to.
-    fn record_in_org(id_byte: u8, name: &str, team_id: Option<&str>, org_id: &str) -> AgentRecord {
+    pub(super) fn record_in_org(id_byte: u8, name: &str, team_id: Option<&str>, org_id: &str) -> AgentRecord {
         AgentRecord {
             org_id: Some(org_id.to_string()),
             ..record(id_byte, name, team_id)
         }
     }
 
-    fn org_filter(org_id: &str) -> TopologyFilterParams {
+    pub(super) fn org_filter(org_id: &str) -> TopologyFilterParams {
         TopologyFilterParams {
             org_id: Some(org_id.to_string()),
             ..Default::default()
@@ -2076,5 +2084,99 @@ mod overview_tests {
         assert_eq!(overview.teams[0].agent_count, 2);
         assert_eq!(overview.teams[0].root_agent_count, 2);
         assert!(overview.standalone_root_agents.is_empty());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Team-topology `?org_id` scoping tests (AAASM-5202)
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod team_tests {
+    use super::graph_tests::{admin, record, state_with};
+    use super::overview_tests::{org_filter, record_in_org};
+    use super::*;
+
+    async fn team_for(
+        caller: RequireRead,
+        state: &AppState,
+        team_id: &str,
+        params: TopologyFilterParams,
+    ) -> TeamTopology {
+        let (status, Json(topology)) = get_team(
+            caller,
+            Extension(state.clone()),
+            Path(team_id.to_string()),
+            Query(params),
+        )
+        .await
+        .expect("get_team succeeds");
+        assert_eq!(status, StatusCode::OK);
+        topology
+    }
+
+    fn node_names(nodes: &[AgentNode]) -> Vec<&str> {
+        nodes.iter().map(|n| n.name.as_str()).collect()
+    }
+
+    /// Before the fix, `?org_id` was declared in the OpenAPI params and parsed
+    /// off the query string, but the handler never read it — so it neither
+    /// scoped the lookup nor 400'd; a caller believed the filter was applied.
+    /// Two orgs sharing a team name must come back apart once it's honoured.
+    #[tokio::test]
+    async fn org_id_filters_a_team_shared_across_two_orgs() {
+        let state = state_with(vec![
+            record_in_org(0x01, "a-member", Some("shared"), "org-a"),
+            record_in_org(0x02, "b-member", Some("shared"), "org-b"),
+        ]);
+
+        let topology = team_for(admin(), &state, "shared", org_filter("org-a")).await;
+
+        assert_eq!(topology.agent_count, 1);
+        assert_eq!(node_names(&topology.members), vec!["a-member"]);
+    }
+
+    /// Omitting `?org_id` is a different query than filtering to one org — it
+    /// must still return every member, unfiltered (mirrors `opt_part`'s own
+    /// "absent vs. present-empty" distinction used in the cache key).
+    #[tokio::test]
+    async fn no_org_id_returns_every_member() {
+        let state = state_with(vec![
+            record_in_org(0x01, "a-member", Some("shared"), "org-a"),
+            record_in_org(0x02, "b-member", Some("shared"), "org-b"),
+        ]);
+
+        let topology = team_for(admin(), &state, "shared", TopologyFilterParams::default()).await;
+
+        assert_eq!(topology.agent_count, 2);
+    }
+
+    /// The body varies with `?org_id`, so the cache key must too, or the second
+    /// org's request would be served the first org's cached members for the
+    /// TTL — the exact AAASM-5181 regression shape, on a different endpoint.
+    #[tokio::test]
+    async fn one_admin_asking_about_two_orgs_gets_each_org_s_own_team() {
+        let state = state_with(vec![
+            record_in_org(0x01, "a-member", Some("shared"), "org-a"),
+            record_in_org(0x02, "b-member", Some("shared"), "org-b"),
+        ]);
+
+        let for_a = team_for(admin(), &state, "shared", org_filter("org-a")).await;
+        let for_b = team_for(admin(), &state, "shared", org_filter("org-b")).await;
+
+        assert_eq!(node_names(&for_a.members), vec!["a-member"]);
+        assert_eq!(node_names(&for_b.members), vec!["b-member"]);
+    }
+
+    /// An org-less member never matches an explicit `?org_id` filter — same
+    /// literal-match semantics `record_visible_to` uses, not a "belongs to
+    /// nothing, matches everything" fallback.
+    #[tokio::test]
+    async fn org_less_member_does_not_match_an_explicit_org_filter() {
+        let state = state_with(vec![record(0x01, "unclaimed", Some("shared"))]);
+
+        let topology = team_for(admin(), &state, "shared", org_filter("org-a")).await;
+
+        assert_eq!(topology.agent_count, 0);
     }
 }
