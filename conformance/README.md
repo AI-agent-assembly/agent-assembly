@@ -232,6 +232,18 @@ python conformance/runner/check_redact_equivalence.py --self-check
 sweep notices — a differential harness that silently compares one thing to itself
 reports zero mismatches forever and looks exactly like proof.
 
+AAASM-5374: `test_runner_redact.py` runs in CI as `conformance-runner-tests`,
+without `continue-on-error` — a regression here fails the PR. This is
+separate from the three SDK conformance placeholders below, which stay
+`continue-on-error: true` because there is no SDK yet for them to gate on.
+
+This directory has no Python linter configured (no ruff/mypy config,
+no `pyproject.toml`) — deliberate, not an oversight: the repo configures no
+Python linting anywhere, and this is a small, self-contained test harness
+with its own regression suite as the primary correctness signal. Revisit if
+`conformance/runner/` grows beyond what a differential sweep and 26 unit
+tests can keep honest.
+
 ## Adding new vectors
 
 1. Add a new `*.json` file to the appropriate `vectors/<category>/` directory.
@@ -243,7 +255,11 @@ Vector files are loaded in sorted filename order. Use a descriptive filename lik
 
 ## SDK conformance placeholders
 
-CI jobs for Python, Node.js, and Go SDK conformance runners are defined in
-`.github/workflows/ci.yml` and currently run as no-ops. Implement the SDK
-shim and remove the `continue-on-error: true` flag to gate merges on
-SDK conformance.
+CI jobs for Python, Node.js, and Go SDK conformance runners (`conformance-python`,
+`conformance-node`, `conformance-go`) are defined in `.github/workflows/ci.yml`
+and currently run as no-ops against an actual SDK — none has one wired up yet.
+Implement the SDK shim and remove the `continue-on-error: true` flag to gate
+merges on SDK conformance.
+
+These placeholders are distinct from `conformance-runner-tests`, which does
+gate merges today — see "Testing the runner itself" above.

@@ -2256,6 +2256,29 @@ jobs:
       - name: Run conformance suite (all categories)
         run: cargo test -p conformance
 
+  # AAASM-5374: gates the conformance *runner*, not an SDK. Without
+  # AA_SDK_MODULE set, `run()` returns True before loading a single vector
+  # (short-circuits at runner.py's own top), so `conformance-python` below
+  # never grades anything regardless of this job's result — that placeholder
+  # stays `continue-on-error: true` on purpose (AC4). What this job actually
+  # protects is runner.py's own splicing/coalescing/grading logic, which is
+  # real code with real defects (AAASM-5371, AAASM-5373) that shipped and
+  # stayed latent because nothing executed test_runner_redact.py in a way
+  # that could fail a build. No `continue-on-error` here: a regression in the
+  # harness must fail the PR.
+  conformance-runner-tests:
+    needs: [changes]
+    if: needs.changes.outputs.rust == 'true'
+    name: Conformance runner unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Run the runner's own regression tests
+        run: python conformance/runner/test_runner_redact.py
+
   # ---------------------------------------------------------------------------
   # SDK conformance placeholders — remove continue-on-error when SDK is ready
   # ---------------------------------------------------------------------------
@@ -2275,9 +2298,14 @@ jobs:
         run: pip install -r conformance/runner/requirements.txt
       - name: Run Python conformance runner
         run: python conformance/runner/runner.py
-        # AA_SDK_MODULE is unset — runner uses no-op stub and exits 1 until a
-        # real SDK implementation is wired up. Set AA_SDK_MODULE in a secrets or
-        # env block when the Python SDK ships.
+        # AAASM-5374: this comment previously claimed AA_SDK_MODULE being
+        # unset makes the runner "exit 1" -- it does not. run() short-circuits
+        # before loading a single vector and returns True (exit 0) when
+        # AA_SDK_MODULE is unset, so this step passes trivially and grades
+        # nothing. `continue-on-error: true` is still correct here (there is
+        # no SDK to gate on yet), but the placeholder's real regression
+        # coverage lives in `conformance-runner-tests` above, which does not
+        # have this escape hatch. Set AA_SDK_MODULE when the Python SDK ships.
 
   conformance-node:
     needs: [changes]
@@ -4118,6 +4146,12 @@ jobs:
       - isolation-backend-native-linux
       - benchmark
       - conformance
+      # AAASM-5374: blocks, unlike the three SDK placeholders below it. It
+      # asserts the conformance runner's own splicing/coalescing/grading logic
+      # is correct — real code with real defects (AAASM-5371, AAASM-5373) that
+      # shipped and stayed latent with no gate able to fail on it. No
+      # `continue-on-error` here on purpose.
+      - conformance-runner-tests
       - conformance-python
       - conformance-node
       - conformance-go
