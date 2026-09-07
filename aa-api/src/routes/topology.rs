@@ -372,7 +372,10 @@ fn build_policy_chain(
     if let Some(org_id) = lineage.org_id.as_deref() {
         tiers.push(("org", PolicyScope::Org(org_id.to_owned())));
     }
-    if let Some(team_id) = lineage.team_id.as_deref() {
+    // AAASM-5204 — `non_blank_team`, not the raw `team_id`: a blank id is no
+    // team, and pushing `PolicyScope::Team("")` would enter a scope for a
+    // team that does not exist.
+    if let Some(team_id) = non_blank_team(lineage.team_id.as_deref()) {
         tiers.push(("team", PolicyScope::Team(team_id.to_owned())));
     }
     tiers.push(("agent", PolicyScope::Agent(*agent_id)));
@@ -1655,6 +1658,27 @@ pub(crate) mod graph_tests {
         assert!(perms.allow.is_empty());
         assert!(perms.deny.is_empty());
         assert!(!perms.allow_restricted);
+    }
+
+    /// AAASM-5204 — a blank or whitespace-only `team_id` must not push a
+    /// `PolicyScope::Team` tier for a team that does not exist. Before the
+    /// fix, `build_policy_chain` used the raw `team_id`, so `Some("")` /
+    /// `Some("  ")` still opened a "team" row.
+    #[tokio::test]
+    async fn a_blank_or_whitespace_team_id_gets_no_team_tier() {
+        for team_id in ["", "   "] {
+            let state = state_with(vec![record(0x01, "a", Some(team_id))]);
+
+            let graph = graph_for(admin(), &state).await;
+            let perms = graph.nodes[0].effective_permissions.as_ref().expect("chain present");
+
+            let tiers: Vec<&str> = perms.chain.iter().map(|t| t.tier.as_str()).collect();
+            assert_eq!(
+                tiers,
+                vec!["global", "agent"],
+                "team_id {team_id:?} must not open a team tier"
+            );
+        }
     }
 
     /// AAASM-5106 / ADR 0024 — with no cascade loaded (every shipped deployment),
