@@ -1,0 +1,118 @@
+name: Workflow Syntax Check
+
+# AAASM-5375: a workflow file with an unparseable expression does not fail —
+# it produces zero check runs and vanishes from the checks list entirely.
+# `claude-code-conformance.yml` hit exactly this (a job-level `env:` block
+# referencing the steps-only `runner` context) and failed to parse on six
+# consecutive pushes with zero jobs, while `gh pr checks` reported everything
+# green throughout. actionlint statically validates every workflow file's
+# syntax and expression contexts, catching this class before it reaches a
+# workflow GitHub itself refuses to run.
+#
+# shellcheck and pyflakes integration are deliberately disabled
+# (`-shellcheck= -pyflakes=`): this gate's scope is workflow-file validity
+# (AAASM-5375's actual failure mode), not general shell-script quality. A
+# shellcheck finding inside a `run:` block is a separate concern with its own
+# false-positive risk — e.g. an intentionally-unquoted `$(...)` word-split in
+# release.yml's Apple notarization script — and making an unrelated style
+# warning block every PR's merge gate would be exactly the "trims a genuine
+# signal to fit a check nobody can act on" failure this org's governance
+# gates are written to avoid.
+
+on:
+  pull_request:
+    # Deliberately NOT path-filtered on the trigger itself, same reasoning as
+    # contact-metadata-check.yml: this is governance-bearing (CONTRIBUTING,
+    # "Which CI checks are governance-bearing") and a required check that
+    # doesn't reliably report blocks the PR forever. Selection happens in the
+    # `changes` job below instead.
+  push:
+    branches:
+      - main
+  # Lets ci.yml invoke this workflow's jobs directly so `ci-success` can
+  # genuinely `needs:` its conclusion, per the AAASM-5677 pattern.
+  workflow_call:
+
+# Literal group name, not `${{ github.workflow }}-${{ github.ref }}` — under
+# `workflow_call`, `github.workflow` resolves to the CALLING workflow's name
+# ("CI"), which every governance satellite this repo adds would also compute,
+# colliding in one concurrency group. `github.event_name` is appended so this
+# workflow's own `pull_request` trigger and ci.yml's `workflow_call`
+# invocation (same PR, same time) don't collide with each other either — see
+# contact-metadata-check.yml's identical comment for the live failure this
+# pattern produced elsewhere (PR #2087).
+concurrency:
+  group: actionlint-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  # Consulted for `pull_request` only. The `push` backstop stays unconditional
+  # so the gate still runs on the merge that breaks it.
+  changes:
+    name: Detect changed areas (Workflow Syntax)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    outputs:
+      workflows: ${{ steps.filter.outputs.workflows }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d  # v4.0.3
+        id: filter
+        with:
+          filters: |
+            workflows:
+              - '.github/workflows/**'
+
+  lint:
+    name: actionlint
+    needs: [changes]
+    # `!cancelled()` stops a skipped `changes` (every non-PR event) from
+    # force-skipping this job. A failed `changes` leaves the condition false,
+    # so this skips and the aggregate below turns red: fail closed.
+    if: >-
+      !cancelled() &&
+      (github.event_name != 'pull_request' || needs.changes.outputs.workflows == 'true')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Install actionlint
+        env:
+          VERSION: "1.7.12"
+          SHA256: "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8"
+        run: |
+          set -euo pipefail
+          archive="actionlint_${VERSION}_linux_amd64.tar.gz"
+          curl -fsSLO "https://github.com/rhysd/actionlint/releases/download/v${VERSION}/${archive}"
+          echo "${SHA256}  ${archive}" | sha256sum -c -
+          tar -xzf "${archive}" actionlint
+
+      - name: Validate every workflow file's syntax and expressions
+        run: ./actionlint -shellcheck= -pyflakes= -color
+
+  # The stable required context. Named separately from the job it aggregates
+  # so renaming an internal job cannot silently drop the branch-protection
+  # requirement, per the AAASM-5677 pattern.
+  workflow-syntax-success:
+    name: Workflow Syntax Success
+    needs: [changes, lint]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify no required job failed or was cancelled
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "Job results: $RESULTS"
+          for r in $RESULTS; do
+            case "$r" in
+              failure|cancelled)
+                echo "::error::A required Workflow Syntax job concluded with '$r'"
+                exit 1
+                ;;
+            esac
+          done
+          echo "All required Workflow Syntax jobs passed or were intentionally skipped."
