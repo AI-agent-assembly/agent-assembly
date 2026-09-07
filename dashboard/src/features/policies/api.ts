@@ -8,6 +8,22 @@ export type CreatePolicyRequest = components['schemas']['CreatePolicyRequest']
 export type SimulatePolicyRequest = components['schemas']['SimulatePolicyRequest']
 export type SimulatePolicyResponse = components['schemas']['SimulatePolicyResponse']
 
+/**
+ * Thrown by {@link usePoliciesQuery} instead of a bare `Error` so a consumer
+ * can tell a caller-side refusal (403 — no admin scope, AAASM-3995(a)) apart
+ * from a genuine backend failure (AAASM-5250). Mirrors
+ * `features/sensitiveData/api.ts`'s `SensitiveDataHttpError`.
+ */
+export class PoliciesHttpError extends Error {
+  readonly status: number
+
+  constructor(status: number, message: string) {
+    super(message)
+    this.name = 'PoliciesHttpError'
+    this.status = status
+  }
+}
+
 export interface PoliciesQueryOptions {
   /**
    * Skip the request entirely.
@@ -53,7 +69,7 @@ export function usePoliciesQuery({
     queryKey: [...POLICIES_QUERY_KEY, { includeArchived }],
     enabled,
     queryFn: async () => {
-      const { data, error } = await api.GET('/api/v1/policies', {
+      const { data, error, response } = await api.GET('/api/v1/policies', {
         // Only send the param in history mode. The endpoint already defaults to
         // active-only, so omitting it when false keeps the default request URL
         // exactly `/api/v1/policies` (no query string) — the URL every existing
@@ -62,7 +78,10 @@ export function usePoliciesQuery({
         // consumers matching the bare path (AAASM-5143).
         params: { query: includeArchived ? { include_archived: true } : {} },
       })
-      if (error) throw new Error('Failed to fetch policies')
+      // AAASM-5250 — carry the real status so a caller-side 403 (no admin
+      // scope, AAASM-3995(a)) can be told apart from a genuine backend
+      // failure. A bare Error here is indistinguishable from either.
+      if (error) throw new PoliciesHttpError(response?.status ?? 0, 'Failed to fetch policies')
       // AAASM-4892: /policies returns a paginated { items, total } object.
       // AAASM-5186: a 200 whose body carries no `items` is a malformed
       // response, not an empty policy set — `?? []` here turned it into a
