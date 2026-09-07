@@ -520,6 +520,68 @@ mod tests {
         );
     }
 
+    /// AAASM-5005: a successful hot-reload swap must log an
+    /// operator-observable confirmation naming the new policy — before this,
+    /// the swap was completely silent and the only way to notice one had
+    /// happened was to ask a developer to retry a call.
+    ///
+    /// Drives [`handle_fs_event`] directly (same rationale as
+    /// [`invalid_yaml_keeps_previous_policy`]): the swap decision is
+    /// deterministic, so there's no reason to route this through a real
+    /// watcher and a notification-arrival race. Tracing capture follows the
+    /// `BufWriter` + `tracing_subscriber::fmt().with_writer(...)` +
+    /// `subscriber::with_default` pattern already established in
+    /// `aa-runtime/src/runtime.rs`'s eBPF logging tests.
+    #[test]
+    fn hot_reload_logs_the_new_policy_s_name_and_version() {
+        use std::sync::Mutex;
+        use tracing::subscriber;
+        use tracing_subscriber::fmt::MakeWriter;
+
+        const NAMED_YAML: &str = "apiVersion: agent-assembly/v1\nkind: Policy\n\
+             metadata:\n  name: golden-path\n  version: \"1.1.0\"\n\
+             spec:\n  tools:\n    search:\n      allow: false\n";
+
+        #[derive(Clone, Default)]
+        struct BufWriter(Arc<Mutex<Vec<u8>>>);
+        impl std::io::Write for BufWriter {
+            fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+                self.0.lock().unwrap().extend_from_slice(buf);
+                Ok(buf.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        impl<'a> MakeWriter<'a> for BufWriter {
+            type Writer = BufWriter;
+            fn make_writer(&'a self) -> Self::Writer {
+                self.clone()
+            }
+        }
+
+        let tmp = NamedTempFile::new().unwrap();
+        let path = tmp.path();
+        write_file(path, NAMED_YAML);
+
+        let slot = Arc::new(ArcSwap::new(Arc::new(parse_doc(ALLOW_YAML))));
+
+        let sink = BufWriter::default();
+        let subscriber = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::INFO)
+            .with_writer(sink.clone())
+            .finish();
+        subscriber::with_default(subscriber, || {
+            handle_fs_event(modify_event(path), path, &slot);
+        });
+
+        let out = String::from_utf8_lossy(&sink.0.lock().unwrap()).to_string();
+        assert!(
+            out.contains("policy hot-reloaded") && out.contains("golden-path") && out.contains("1.1.0"),
+            "expected a log line naming the reloaded policy's name and version, got: {out:?}"
+        );
+    }
+
     /// A content-change `Modify` event for `path`, shaped as the notify
     /// backends report one.
     fn modify_event(path: &Path) -> notify::Result<notify::Event> {
