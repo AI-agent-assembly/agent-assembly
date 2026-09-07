@@ -257,6 +257,37 @@ test.describe('AAASM-5173 — truthfulness primitives', () => {
       })
     })
 
+    test(`a 403 is told apart from a genuine failure, with no Retry (${theme})`, async ({
+      page,
+    }) => {
+      // AAASM-5250 — a caller without admin scope (AAASM-3995(a)) got the same
+      // "unexpected error" + Retry as a real 500, even though nothing was
+      // unexpected and Retry could never succeed against a scope the caller
+      // does not have.
+      const harness = await bootstrap(page, theme)
+      await page.route('**/api/v1/policies**', (r) =>
+        r.fulfill({ status: 403, json: { detail: 'admin scope required' } }),
+      )
+      await openPolicies(page)
+
+      const surface = page.getByTestId('error-state')
+      // Same retry-delay shape as the 500 case above — TanStack's default
+      // retries land the terminal failure ~7s after the first 403.
+      await expect(surface).toBeVisible({ timeout: 20_000 })
+      // Informational, not a fault: no truth-state badge and a polite role,
+      // unlike the 500 case above.
+      await expect(surface).toHaveAttribute('data-truth-state', 'empty')
+      await expect(surface).toHaveAttribute('role', 'status')
+      await expect(surface).toContainText(/do not have permission/i)
+      await expect(surface.getByRole('button', { name: 'Retry' })).toHaveCount(0)
+
+      await page.screenshot({
+        path: `${EVIDENCE_DIR}/status-state-forbidden-${theme}.png`,
+        fullPage: true,
+      })
+      expect(harness.errors).toEqual([])
+    })
+
     test(`a genuinely empty result stays a known answer (${theme})`, async ({ page }) => {
       // The other half of the convergence: zero rows is a fact the query
       // actually returned, so it carries no absence badge and no fault tone.
