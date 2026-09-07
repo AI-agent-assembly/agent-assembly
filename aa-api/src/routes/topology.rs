@@ -55,18 +55,26 @@ fn parse_agent_id(id: &str) -> Result<[u8; 16], ProblemDetail> {
     })
 }
 
-/// The record's team, treating a blank `team_id` as no team at all.
+/// Blank-tolerant "no team" filter, shared by every site that must treat
+/// `Some("")` the same as `None` (AAASM-5182/5201/5204).
 ///
 /// "This agent has no team" reaches the topology projection in two shapes: the
 /// registry stores `None` when no team was given, but also accepts `Some("")` —
 /// `validate_tenant_id` (AAASM-4190) rejects only control characters, not an
 /// empty or whitespace-only id. Both must group as *no team*. Admitting a blank
-/// id as a team invents one that does not exist: it inflates `team_count`, and
-/// the group it creates has no name to render (AAASM-5182). The id is returned
-/// unchanged when it is not blank, so grouping still keys on exactly what was
-/// registered.
-fn team_of(record: &AgentRecord) -> Option<&str> {
-    record.team_id.as_deref().filter(|team| !team.trim().is_empty())
+/// id as a team invents one that does not exist: it inflates `team_count`
+/// (AAASM-5182), makes `cross_team` see a boundary crossing that isn't one
+/// (AAASM-5201), and can push a `PolicyScope::Team("")` for a team that does
+/// not exist (AAASM-5204). The id is returned unchanged when it is not blank,
+/// so every caller still keys on exactly what was registered.
+pub(crate) fn non_blank_team(team_id: Option<&str>) -> Option<&str> {
+    team_id.filter(|team| !team.trim().is_empty())
+}
+
+/// The record's team, treating a blank `team_id` as no team at all — see
+/// [`non_blank_team`].
+pub(crate) fn team_of(record: &AgentRecord) -> Option<&str> {
+    non_blank_team(record.team_id.as_deref())
 }
 
 fn matches_status_filter(status: &AgentStatus, filter: &str) -> bool {
@@ -1200,8 +1208,13 @@ pub async fn get_topology_graph(
         .collect();
 
     // Doubles as the edge-visibility set and the `cross_team` team lookup.
-    let teams_by_id: HashMap<[u8; 16], Option<String>> =
-        records.iter().map(|r| (r.agent_id, r.team_id.clone())).collect();
+    // AAASM-5201 — key on `team_of`, not the raw `team_id`: a blank id is no
+    // team, and `is_cross_team` must never see `Some("")` as a real team on
+    // one side and disagree with `edges::compute_cross_team`'s own answer.
+    let teams_by_id: HashMap<[u8; 16], Option<String>> = records
+        .iter()
+        .map(|r| (r.agent_id, team_of(r).map(str::to_owned)))
+        .collect();
 
     // AAASM-5045 / AAASM-5099 — enrich each node's owner / policy_count /
     // budget / effective_permissions from live registry, policy-engine, and
@@ -1301,7 +1314,7 @@ mod tests {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
-mod graph_tests {
+pub(crate) mod graph_tests {
     use super::*;
     use crate::auth::{AuthenticatedCaller, Tenant};
     use aa_core::topology::NewEdge;
@@ -1326,7 +1339,7 @@ mod graph_tests {
 
     /// Minimal registered agent. Only the fields the graph projection reads
     /// carry meaningful values.
-    pub(super) fn record(id_byte: u8, name: &str, team_id: Option<&str>) -> AgentRecord {
+    pub(crate) fn record(id_byte: u8, name: &str, team_id: Option<&str>) -> AgentRecord {
         AgentRecord {
             agent_id: [id_byte; 16],
             name: name.to_string(),
@@ -1362,7 +1375,7 @@ mod graph_tests {
         }
     }
 
-    pub(super) fn state_with(records: Vec<AgentRecord>) -> AppState {
+    pub(crate) fn state_with(records: Vec<AgentRecord>) -> AppState {
         let state = AppState::local_in_memory().expect("state builds");
         for r in records {
             state.agent_registry.register(r).expect("register");
@@ -1545,6 +1558,19 @@ mod graph_tests {
             record(0x01, "a", Some("team-alpha")),
             record(0x02, "b", Some("team-alpha")),
         ]);
+        insert_edge(&state, 0x01, 0x02, EdgeType::Calls).await;
+
+        let graph = graph_for(admin(), &state).await;
+        assert!(!graph.edges[0].cross_team);
+    }
+
+    /// AAASM-5201 — a blank `team_id` must not make two agents look like they
+    /// belong to different teams. Before the fix, `teams_by_id` keyed on the
+    /// raw `team_id` here, so `Some("")` vs. `Some("team-alpha")` compared
+    /// unequal and the edge was reported cross-team.
+    #[tokio::test]
+    async fn a_blank_team_id_is_never_a_cross_team_boundary() {
+        let state = state_with(vec![record(0x01, "a", Some("")), record(0x02, "b", Some("team-alpha"))]);
         insert_edge(&state, 0x01, 0x02, EdgeType::Calls).await;
 
         let graph = graph_for(admin(), &state).await;
