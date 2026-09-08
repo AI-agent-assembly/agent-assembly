@@ -7,14 +7,24 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-> Merged since `0.0.1-rc.6` and **not yet released**. Everything below is the
-> Developer Integration programme (Epic
-> [AAASM-5272](https://lightning-dust-mite.atlassian.net/browse/AAASM-5272)):
-> governing an AI *dev tool* — Claude Code, Codex, Copilot, Windsurf — as a
+> Merged since `0.0.1-rc.6` and **not yet released**. The *Developer Integration
+> programme* section below (Epic
+> [AAASM-5272](https://lightning-dust-mite.atlassian.net/browse/AAASM-5272)) was
+> the first work merged after rc.6; three further programmes merged since (execution
+> isolation, trusted upstream proxy chaining, and a batch of gateway/proxy security
+> fixes) are captured under their own headings further down. Internal-only tooling
+> — the release-qa/release-assurance orchestration scripts, dependency bumps, and CI
+> plumbing that make up a large share of the raw commit count — is intentionally not
+> itemized here at the same narrative depth as product-facing changes; that's this
+> file's existing convention, not an omission of anything user- or security-facing.
+
+### Developer Integration programme (Epic AAASM-5272)
+
+> Governing an AI *dev tool* — Claude Code, Codex, Copilot, Windsurf — as a
 > first-class lifecycle rather than a one-shot launch wrapper. The whole surface
 > is **off by default** and **absent from the published crate**; see *Changed*.
 
-### Added
+#### Added
 
 - **`install` reports the ratified outcome, over DI-API 5** (AAASM-5674) — the
   runtime now *states* whether an apply modified the host, so `aasm
@@ -160,7 +170,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   keeps every verb it had; a peer too old to state provenance is told which
   version could not answer, and nothing is invented in the field's place.
 
-### Changed
+#### Changed
 
 - **`aasm integrations` is stripped from the published crate** (AAASM-5309) —
   it joins `aasm run` and `aasm tools` in the `devtool` region removed by
@@ -181,7 +191,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   dependency. `docs/src/devtools/plugins.md` was rewritten accordingly and now
   renders as part of the book.
 
-### Security
+#### Security
 
 - **Administrator-managed settings write** (AAASM-5298) — the **only**
   privileged, root-owned write the product performs. macOS only, **off by
@@ -225,6 +235,167 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   kept as two separate lists so a reader can tell a measurement from a documented
   belief. Neither list is asserted to be exhaustive: "no finding" is not "no
   bypass".
+
+### Execution isolation programme (`aa-isolation*`)
+
+> A new, backend-neutral execution-isolation layer for `aasm run`: the CLI can
+> confine a governed launch's descendant processes instead of only intercepting
+> their network calls. Three backends ship, each reached only when the host
+> actually supports it — an absent backend is reported absent, never silently
+> upgraded to a stronger one.
+
+#### Added
+
+- **Backend-neutral execution isolation contract** (AAASM-5704, AAASM-5707) — a
+  capability-requirements model that lowers AASM policy into concrete execution
+  constraints (filesystem scope, network reachability, process confinement) with
+  explicit policy gaps named rather than assumed satisfied.
+- **Linux `sandlock` backend** (AAASM-5708, AAASM-5709, AAASM-5712) — the first
+  isolation backend, built on Landlock, gated on measured denials rather than
+  configuration alone; ships with an adversarial process-boundary conformance
+  suite and descendant-confinement / minimized-ambient-authority enforcement at
+  launch.
+- **AASM-native Linux backend** (AAASM-5802, AAASM-5803, AAASM-5804, AAASM-5805) —
+  a second Linux backend adding seccomp syscall enforcement and `/proc` scoping so
+  a delegated child's environment becomes a real credential boundary, with its own
+  adversarial suite and three-arm (unconfined / sandlock / native) benchmark.
+- **macOS VM backend** (AAASM-5812, AAASM-5813, AAASM-5814, AAASM-5837) — boots a
+  real Linux guest via `Virtualization.framework` (virtiofs + vsock transport,
+  Landlock-capable guest kernel) and runs `aa-isolation-launch` unmodified inside
+  it; ships with a host↔guest launch protocol, guest licensing/adversarial
+  coverage, and an informational cold-start benchmark. This backend measures
+  rather than assumes its own capability — AAASM-5813 adds a real capability
+  probe instead of inferring support from configuration.
+- **`aasm run` isolation wiring** (AAASM-5705, AAASM-5706, AAASM-5710, AAASM-5711,
+  AAASM-5808) — `aasm run` gains an `--isolation` selector including a
+  capability-aware `auto` mode, and reports *requested versus achieved* isolation
+  rather than silently downgrading.
+
+#### Fixed
+
+- **`terminal_exec` allow collapsing to a whole-domain deny** (AAASM-5816).
+- **Cross-process detached/re-parented descendant scenario** made real and
+  un-ignored (AAASM-6041, AAASM-5849).
+- **`can_observe()`'s doc claim corrected** to match its actual behavior
+  (AAASM-6040).
+
+#### Security
+
+- **Credential exposure refused in confinement argv** (AAASM-5940, Linux
+  `sandlock` backend) — a confined launch can no longer leak a credential via its
+  own process argv.
+- **Cwd-relative `$PATH` entries rejected in launcher lookups** (AAASM-5979) — a
+  launcher resolving a binary via a relative `$PATH` entry could be tricked into
+  running an attacker-planted binary from the current directory; entries are now
+  refused rather than silently resolved.
+
+### Trusted upstream proxy chaining (ADR 0036)
+
+> Lets `aa-proxy` sit in front of an *enterprise's own* upstream proxy instead of
+> requiring direct egress, while keeping every existing interception/redaction
+> guarantee.
+
+#### Added
+
+- **Core dial path + managed routing** (AAASM-5851, AAASM-5922) — `aa-proxy` can
+  chain through a declared, trusted upstream proxy endpoint per ADR 0036, with
+  `aasm run` warning when a governed launch overrides an ambient proxy
+  (AAASM-5897) rather than silently losing coverage.
+- **Per-launch dedicated proxy** (AAASM-5859, AAASM-5860, AAASM-5861, AAASM-5862,
+  AAASM-5863) — each `aasm run` now gets its own proxy instance (own audit path,
+  ready-file directory, shared CA directory) instead of sharing ambient state
+  across launches, wired via a `ProxyGuard` that spawns, waits for readiness, and
+  tears down gracefully.
+- **Provider-aware credential auth-header injection** (AAASM-5926) — the proxy can
+  inject a provider's own auth header for a chained upstream without the agent
+  process ever holding that credential.
+- **Codex CA-trust support** (AAASM-5856) — Codex joins Claude Code on the
+  managed-CA-trust path.
+
+#### Security
+
+- **Full negative-control matrix for enterprise proxy chaining** (AAASM-5924) —
+  the chaining path is covered by adversarial tests, not just the happy path,
+  plus a Release Assurance golden journey.
+- **Ambient proxy-routing env sanitized; enterprise-route install flags locked
+  down** (AAASM-5923, ADR 0036).
+- **CA cert/key persistence made atomic and lock-safe** (AAASM-5928) — a crash or
+  concurrent launch during CA-material persistence could previously leave a
+  torn/partial file.
+- **`serverAuth` EKU set on minted MitM leaf certs** (AAASM-5931) — MitM'd
+  connections now present a certificate whose extended key usage matches what a
+  strict TLS client expects.
+- **macOS System Keychain CA install made conditional** (AAASM-5978) —
+  `AA_PROXY_SYSTEM_TRUST_INSTALL=never` opts a managed launch (e.g. one that
+  already trusts the CA via `NODE_EXTRA_CA_CERTS`) out of the admin-authorization
+  prompt instead of always requiring it.
+- **Chunked and close-delimited MCP response bodies decoded** (AAASM-5645) — a
+  response using either transfer encoding was previously not fully captured for
+  interception/redaction.
+
+### Sensitive-data analytics and audit correlation
+
+#### Added
+
+- **Sensitive-data analytics and drill-down** (AAASM-5359 API, AAASM-5360
+  dashboard) — operator-facing endpoints and dashboard views over what the
+  redaction pipeline has caught, not just that it ran.
+- **Dashboard secret alerts correlated to their proxy redaction event**
+  (AAASM-5871, AAASM-5905, AAASM-5293) — an alert on the dashboard now links back
+  to the specific proxy-side redaction record that produced it.
+- **`ApprovalStore` / `ApprovalQueue`, SQLite-backed** (AAASM-5657) — pending
+  approvals are now persisted (gateway + API wired to a shared SQLite store)
+  instead of living only in memory.
+
+#### Security
+
+- **SDK-audit `decision_id` correlation** (AAASM-5002) — an audit record can now
+  be tied back to the exact policy decision that produced it, across
+  `aa-gateway`, `aa-core`, `aa-cli` and the proto wire format.
+- **Audit backpressure loss distinguished from tampering** (AAASM-5626) — a
+  dropped-under-load audit record is no longer indistinguishable from a tampered
+  one.
+- **Two more audit producers' gap-vs-tamper bug fixed** (AAASM-6020) — the same
+  class of bug AAASM-5626 fixed, found on two additional producers.
+
+### Gateway, proxy and CLI security fixes
+
+> Fail-closed and non-loopback-bind fixes found and closed this cycle, listed
+> individually because each closes a real gap rather than hardening something
+> already safe.
+
+#### Fixed
+
+- **`aa-runtime` refuses an unauthenticated non-loopback metrics bind**
+  (AAASM-5985).
+- **`aa-cli`/`aa-api` refuse an unauthenticated non-loopback bind**, with an
+  explicit `--host` override for the operator who wants one (AAASM-6056).
+- **`aa-gateway` refuses a non-loopback local-mode bind** without an explicit
+  opt-in (AAASM-5011).
+- **`aa-gateway` stops logging the full webhook URL at `INFO`** on every startup
+  (AAASM-5973) — a webhook URL commonly carries an embedded credential/token.
+- **Agent-registry tenant scoping made a type-level property** (AAASM-5648) — a
+  tenant boundary that was previously only enforced by convention is now
+  enforced by the type system.
+- **`CheckAction` returns `Pending` immediately** instead of blocking for the
+  full approval hold (AAASM-4986) — a caller waiting on an approval decision no
+  longer appears hung.
+- **Retention-policy semantics disagreement fixed** across `aa-gateway`,
+  `aa-core` and `aa-api` (AAASM-5774) — the three components had drifted to
+  different interpretations of the same retention setting.
+- **`aa-gateway`/`aa-runtime` emit degradation on budget/eBPF-policy load
+  failure** (AAASM-5647) instead of silently running unconstrained.
+- **Policy hot-reload gains an operator-observable confirmation** (AAASM-5005) —
+  a policy file edit picked up by the gateway now logs the reloaded policy's name
+  and version; previously the swap was completely silent. Related reconciler
+  correctness fixes: comparing against the live slot instead of a private
+  baseline (AAASM-6052), a backing poll for the policy watcher (AAASM-5382), and
+  a `Drop` that no longer blocks on the poll interval (AAASM-6033).
+- **`aa-gateway` fails boot loudly on a stale sensitive-data table shape**
+  (AAASM-5788) instead of starting in a degraded, unstated state.
+- **Team/org scoping fixes on the topology API** (AAASM-5202, AAASM-5201,
+  AAASM-5204) — `get_team`, `cross_team` and `build_policy_chain` no longer treat
+  a blank team id as a real team or ignore an explicit `org_id` filter.
 
 ## [0.0.1-rc.6] — 2026-07-16 (pre-release)
 
