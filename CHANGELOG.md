@@ -7,7 +7,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-> Merged since `0.0.1-rc.6` and **not yet released**. The *Developer Integration
+## [0.0.1-rc.7] — 2026-09-08 (pre-release)
+
+> Merged since `0.0.1-rc.6`. The *Developer Integration
 > programme* section below (Epic
 > [AAASM-5272](https://lightning-dust-mite.atlassian.net/browse/AAASM-5272)) was
 > the first work merged after rc.6; three further programmes merged since (execution
