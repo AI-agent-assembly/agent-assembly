@@ -21,6 +21,11 @@
       "digest": "sha256:b98853769ac0230c2ef8e29c7ae04ac4fcefa7022378c9253fae1bd4ff10d23b",
       "evidence_cell": "Published-artifact install path requires a published rc.7 CLI release; none exists pre-tag. Class-1 structural gap (see Waivers).",
       "evidence_ref": "**UNTESTED_OR_BLOCKED**",
+      "exception": {
+        "approved_by": "Bryant Liu (verified ai-agent-assembly org owner, Chisanan232) \u2014 chat approval, AAASM-6067 campaign, 2026-09-08",
+        "kind": "waiver",
+        "ref": "AAASM-6067-waiver-published-artifact"
+      },
       "execution_lanes": [
         "release"
       ],
@@ -51,6 +56,11 @@
       "digest": "sha256:1528190960abcdf2c54c40677e48d2d5e8a79c026b840b9e63e9c30ac952cbbc",
       "evidence_cell": "Published-artifact gateway install path requires a published rc.7 artifact; none exists pre-tag. Class-1 structural gap (see Waivers).",
       "evidence_ref": "**UNTESTED_OR_BLOCKED**",
+      "exception": {
+        "approved_by": "Bryant Liu (verified ai-agent-assembly org owner, Chisanan232) \u2014 chat approval, AAASM-6067 campaign, 2026-09-08",
+        "kind": "waiver",
+        "ref": "AAASM-6067-waiver-published-artifact"
+      },
       "execution_lanes": [
         "release"
       ],
@@ -150,6 +160,11 @@
       "digest": "sha256:634288e343a6b808d15e8b78f712fb59f4e957e8f023fe92e48901f38d079459",
       "evidence_cell": "Registry-declared `fidelity: published_artifact`; containers worker could only verify against the currently-published rc.6 image. Class-1 structural gap (see Waivers).",
       "evidence_ref": "**UNTESTED_OR_BLOCKED**",
+      "exception": {
+        "approved_by": "Bryant Liu (verified ai-agent-assembly org owner, Chisanan232) \u2014 chat approval, AAASM-6067 campaign, 2026-09-08",
+        "kind": "waiver",
+        "ref": "AAASM-6067-waiver-published-artifact"
+      },
       "execution_lanes": [
         "release"
       ],
@@ -180,6 +195,11 @@
       "digest": "sha256:e01f447fb9487f93fbbb1aaf71c8f16fb2eeeeb5df9e3c99552200beac4a80d7",
       "evidence_cell": "Registry entry itself declares `lifecycle_state: manual_live`, `fidelity: published_artifact`, evidence selector pointing at this file. Full 12-step operator journey cannot genuinely complete against a public artifact pre-tag. Class-1 structural gap (see Waivers).",
       "evidence_ref": "**UNTESTED_OR_BLOCKED**",
+      "exception": {
+        "approved_by": "Bryant Liu (verified ai-agent-assembly org owner, Chisanan232) \u2014 chat approval, AAASM-6067 campaign, 2026-09-08",
+        "kind": "waiver",
+        "ref": "AAASM-6067-waiver-published-artifact"
+      },
       "execution_lanes": [
         "release"
       ],
