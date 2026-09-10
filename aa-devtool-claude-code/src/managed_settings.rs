@@ -354,6 +354,66 @@ impl MacOsAdminAuthority {
             detail: "endpoint-managed settings are a macOS mechanism".to_string(),
         })
     }
+
+    #[cfg(not(target_os = "macos"))]
+    fn availability_impl(&self) -> Authorization {
+        Authorization::Unavailable {
+            detail: "endpoint-managed settings are a macOS mechanism".to_string(),
+        }
+    }
+
+    // AAASM-6067/J79: this used to check `std::io::stdin().is_terminal()`,
+    // which is wrong on two independent counts, discovered only when the
+    // real end-to-end `aasm integrations install` path was exercised for
+    // the first time (AAASM-5308 had been "unmeasured on every host,
+    // including this project's own" precisely because nothing had). First,
+    // `osascript … with administrator privileges` raises a native GUI
+    // authorization dialog through Security/Authorization Services, which
+    // needs a live GUI (Aqua) session for the invoking UID — not a
+    // controlling terminal; empirically confirmed by running the exact
+    // `osascript` invocation with all three of its own stdio streams
+    // null'd and no controlling terminal at all, from a fully detached
+    // background process, and the dialog still appeared. Second, this
+    // check does not even run in the process with the user's terminal:
+    // `aasm integrations install` plans client-side (where stdin genuinely
+    // is a TTY) but applies server-side, inside the `aa-runtime` daemon
+    // `aasm` itself auto-starts — and that daemon is deliberately started
+    // with `Stdio::null()` on all three streams (`aa-cli/src/commands/
+    // integrations/session.rs`'s `ProcessSpawner`), since it is meant to
+    // outlive any single CLI invocation. So the old check refused every
+    // real interactive install, unconditionally, on every host, forever —
+    // not a flaky edge case, a guaranteed one, which is exactly why this
+    // path had never been measured before.
+    //
+    // The replacement checks the real precondition instead: whether a GUI
+    // session exists for this process's own UID at all (`launchctl print
+    // gui/<uid>`, exit 0 iff one does) — true for a login/GUI session
+    // regardless of which process or whether it holds a terminal, false
+    // for a genuinely headless context (SSH with no Screen Sharing, most
+    // CI runners) where raising a dialog could never succeed. This does
+    // not weaken the security boundary: the real enforcement is
+    // Authorization Services' own dialog at the moment `run()` below
+    // actually invokes `osascript`, unconditionally on every install —
+    // this is only the pre-flight signal for whether that call is even
+    // worth attempting.
+    //
+    // Gated to macOS (mirroring `run`/`applescript_quote` above): its only
+    // caller is the macOS `availability()`, and `gui_session_exists` below
+    // is itself macOS-only, so an ungated body would be dead code that
+    // `-D warnings` rejects on a Linux build.
+    #[cfg(target_os = "macos")]
+    fn availability_impl(&self) -> Authorization {
+        let uid = unsafe { libc::getuid() };
+        if !gui_session_exists(uid) {
+            return Authorization::NonInteractive {
+                detail: format!(
+                    "no GUI session for uid {uid} (`launchctl print gui/{uid}` failed), so an \
+                     administrator authorization dialog could not be raised"
+                ),
+            };
+        }
+        Authorization::Available
+    }
 }
 
 impl PrivilegedFileAuthority for MacOsAdminAuthority {
@@ -362,18 +422,7 @@ impl PrivilegedFileAuthority for MacOsAdminAuthority {
     }
 
     fn availability(&self) -> Authorization {
-        if !cfg!(target_os = "macos") {
-            return Authorization::Unavailable {
-                detail: "endpoint-managed settings are a macOS mechanism".to_string(),
-            };
-        }
-        use std::io::IsTerminal;
-        if !std::io::stdin().is_terminal() {
-            return Authorization::NonInteractive {
-                detail: "stdin is not a terminal, so an administrator prompt could not be answered".to_string(),
-            };
-        }
-        Authorization::Available
+        self.availability_impl()
     }
 
     fn install_file(&self, target: &Path, staged: &Path) -> Result<(), ManagedSettingsError> {
@@ -394,6 +443,25 @@ impl PrivilegedFileAuthority for MacOsAdminAuthority {
         self.guard(target)?;
         self.run(&format!("/bin/rm -f -- {}", Self::shell_quote(target)))
     }
+}
+
+/// Whether `uid` has a live GUI (Aqua) session — the real precondition for
+/// `osascript … with administrator privileges` to raise its dialog, not the
+/// TTY-ness of any particular process's stdin (see [`MacOsAdminAuthority::
+/// availability`]'s doc comment for why the two are not interchangeable).
+/// `launchctl print gui/<uid>` exits `0` iff a GUI session for `uid` exists,
+/// regardless of which process asks or whether it holds a terminal.
+#[cfg(target_os = "macos")]
+fn gui_session_exists(uid: u32) -> bool {
+    std::process::Command::new("/bin/launchctl")
+        .arg("print")
+        .arg(format!("gui/{uid}"))
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|status| status.success())
+        .unwrap_or(false)
 }
 
 /// What is already sitting at the managed path.
@@ -1420,6 +1488,58 @@ mod tests {
         );
         let err = authority.delete_file(&host.target).expect_err("refused");
         assert!(matches!(err, ManagedSettingsError::AuthorizationUnavailable { .. }));
+    }
+
+    /// Regression for AAASM-6067/J79: `availability()` used to key off
+    /// `std::io::stdin().is_terminal()`, which this very test process already
+    /// disproves as a usable signal — a `cargo test`/`cargo nextest` binary's
+    /// own stdin is never a TTY (test harnesses redirect it), yet a normal
+    /// dev machine plainly has a GUI session an administrator dialog could
+    /// use. Under the old check this assertion would have failed on every
+    /// macOS dev machine and in every CI run alike, for the wrong reason: not
+    /// "no GUI session" but "stdin isn't a terminal", which is true here and
+    /// is also true inside the real `aa-runtime` daemon the actual install
+    /// path executes this step in (AAASM-6067's write-up has the full call
+    /// chain) — the same wrong reason, reached two different ways, and
+    /// either one made `Authorization::Available` unreachable through the
+    /// real `aasm integrations install` path on any host, forever.
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn availability_does_not_depend_on_this_processs_own_stdin() {
+        use std::io::IsTerminal;
+        assert!(
+            !std::io::stdin().is_terminal(),
+            "this test's own premise needs a non-TTY stdin to be meaningful; \
+             if a test harness ever attaches one, this assertion (not the \
+             code under test) is what should be revisited"
+        );
+        match (MacOsAdminAuthority).availability() {
+            // Expected on a real dev machine / GUI-attended CI runner.
+            Authorization::Available => {}
+            // Still acceptable — e.g. a headless CI runner with genuinely no
+            // GUI session — but it must be refused for *that* reason.
+            Authorization::NonInteractive { detail } => {
+                assert!(
+                    detail.contains("GUI session"),
+                    "must refuse for the GUI-session reason, not a stdin/terminal \
+                     one — got: {detail}"
+                );
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+    }
+
+    /// `gui_session_exists` must not simply return `true` unconditionally —
+    /// confirm it can genuinely say no, for a uid that (on every CI runner
+    /// and every normal dev machine) has no GUI session of its own.
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn gui_session_exists_is_false_for_a_uid_with_no_session() {
+        assert!(
+            !gui_session_exists(0),
+            "root has no GUI session on a normal host — if this ever becomes \
+             true, this check has stopped discriminating anything"
+        );
     }
 
     #[test]
